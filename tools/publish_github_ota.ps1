@@ -70,7 +70,7 @@ if ($LASTEXITCODE -eq 0) {
     }
 } else {
     Write-Host "Creating GitHub Release $Tag..."
-    & gh release create $Tag $FirmwarePath --title "Firmware $Version" --notes "Firmware release for $ProjectName, version $Version." --repo $Repository
+    & gh release create $Tag $FirmwarePath --title "Firmware $Version" --notes "Firmware release for $ProjectName, version $Version." --target $Branch --repo $Repository
     if ($LASTEXITCODE -ne 0) {
         throw "Could not create GitHub Release $Tag"
     }
