@@ -431,6 +431,36 @@ static void ota_check_for_update(void)
     }
 }
 
+/*
+ * Confirm the running image only after the application has completed its
+ * startup sequence. If it is still pending verification, a reboot before
+ * this point will allow the bootloader to roll back to the previous image.
+ */
+static void ota_confirm_running_firmware_if_pending(void)
+{
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (running == NULL) {
+        ESP_LOGE(TAG, "Could not get running OTA partition");
+        return;
+    }
+
+    esp_ota_img_states_t state;
+    esp_err_t err = esp_ota_get_state_partition(running, &state);
+
+    if (err == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
+        err = esp_ota_mark_app_valid_cancel_rollback();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Could not confirm running firmware: %s",
+                     esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "Running firmware confirmed; rollback cancelled");
+        }
+    } else if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "Could not read OTA image state: %s",
+                 esp_err_to_name(err));
+    }
+}
+
 static void ota_manager_task(void *arg)
 {
     (void)arg;
@@ -500,6 +530,12 @@ esp_err_t ota_manager_start(void)
     if (s_task != NULL) {
         return ESP_OK;
     }
+
+    /*
+     * ota_manager_start() is called by the application after its critical
+     * startup steps have succeeded. Keep rollback confirmation inside OTA.
+     */
+    ota_confirm_running_firmware_if_pending();
 
     if (xTaskCreate(
             ota_manager_task,
