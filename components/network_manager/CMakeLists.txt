@@ -13,6 +13,7 @@ idf_component_register(
     REQUIRES
         esp_event
         esp_common
+        esp_wifi
 
     PRIV_REQUIRES
         esp_hosted
