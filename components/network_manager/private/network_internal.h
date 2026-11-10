@@ -82,9 +82,8 @@ typedef struct network_manager {
     char password[65];
     network_status_t status;
 
-    bool retry_pending;
-    uint8_t retry_attempt;
-    TickType_t retry_due;
+    bool scan_pending;
+    TickType_t scan_due;
 
     esp_event_handler_instance_t wifi_event_instance;
     esp_event_handler_instance_t ip_event_instance;
