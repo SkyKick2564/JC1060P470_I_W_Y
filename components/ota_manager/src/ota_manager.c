@@ -17,14 +17,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#if !defined(CONFIG_OTA_MANAGER_AUTH_TOKEN)
-#error "OTA_MANAGER_AUTH_TOKEN must be configured"
-#endif
-
-#if !defined(CONFIG_OTA_MANAGER_MANIFEST_URL)
-#error "OTA_MANAGER_MANIFEST_URL must be configured"
-#endif
-
 #define OTA_TASK_STACK_SIZE       8192
 #define OTA_TASK_PRIORITY         4
 #define OTA_NO_NETWORK_RETRY_MS   5000
@@ -32,11 +24,15 @@
 #define OTA_MANIFEST_MAX_SIZE     4096
 #define OTA_DOWNLOAD_CHUNK_SIZE   4096
 #define OTA_TOKEN_MAX_LEN         127
+#define OTA_MANIFEST_URL_MAX_LEN  255
 #define OTA_SHA256_HEX_LEN        64
 
 static const char *TAG = "ota_manager";
 static network_manager_handle_t s_network;
 static TaskHandle_t s_task;
+static char s_manifest_url[OTA_MANIFEST_URL_MAX_LEN + 1];
+static char s_auth_token[OTA_TOKEN_MAX_LEN + 1];
+static uint32_t s_check_interval_sec;
 
 typedef struct {
     char project[48];
@@ -183,7 +179,7 @@ static esp_err_t ota_http_open_get(const char *url,
     }
 
     esp_err_t err = esp_http_client_set_header(
-        client, "X-OTA-Token", CONFIG_OTA_MANAGER_AUTH_TOKEN);
+        client, "X-OTA-Token", s_auth_token);
     if (err == ESP_OK) {
         err = esp_http_client_open(client, 0);
     }
@@ -212,7 +208,7 @@ static esp_err_t ota_fetch_manifest(ota_manifest_t *manifest)
     esp_http_client_handle_t client = NULL;
     int64_t content_length = 0;
     esp_err_t err = ota_http_open_get(
-        CONFIG_OTA_MANAGER_MANIFEST_URL, &client, &content_length);
+        s_manifest_url, &client, &content_length);
     if (err != ESP_OK) {
         return err;
     }
@@ -439,10 +435,10 @@ static void ota_manager_task(void *arg)
 {
     (void)arg;
     const TickType_t check_interval =
-        pdMS_TO_TICKS(CONFIG_OTA_MANAGER_CHECK_INTERVAL_SEC * 1000);
+        pdMS_TO_TICKS(s_check_interval_sec * 1000U);
 
     ESP_LOGI(TAG, "OTA task started; manifest: %s",
-             CONFIG_OTA_MANAGER_MANIFEST_URL);
+             s_manifest_url);
 
     for (;;) {
         network_status_t status = {0};
@@ -457,26 +453,42 @@ static void ota_manager_task(void *arg)
     }
 }
 
-esp_err_t ota_manager_init(network_manager_handle_t network)
+esp_err_t ota_manager_init(
+    network_manager_handle_t network,
+    const ota_manager_config_t *config)
 {
-    if (network == NULL) {
+    if (network == NULL || config == NULL ||
+        config->manifest_url == NULL || config->auth_token == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     if (s_network != NULL) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (strlen(CONFIG_OTA_MANAGER_AUTH_TOKEN) < 16 ||
-        strlen(CONFIG_OTA_MANAGER_AUTH_TOKEN) > OTA_TOKEN_MAX_LEN) {
-        ESP_LOGE(TAG, "Set OTA token to 16-127 characters");
+
+    size_t url_length = strlen(config->manifest_url);
+    size_t token_length = strlen(config->auth_token);
+    if (url_length == 0 || url_length > OTA_MANIFEST_URL_MAX_LEN) {
+        ESP_LOGE(TAG, "Manifest URL must contain 1-%u characters",
+                 OTA_MANIFEST_URL_MAX_LEN);
         return ESP_ERR_INVALID_ARG;
     }
-    if (CONFIG_OTA_MANAGER_MANIFEST_URL[0] == '\0') {
-        ESP_LOGE(TAG, "Set OTA manifest URL in menuconfig");
+    if (token_length < 16 || token_length > OTA_TOKEN_MAX_LEN) {
+        ESP_LOGE(TAG, "OTA token must contain 16-127 characters");
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (config->check_interval_sec < 10 ||
+        config->check_interval_sec > 3600) {
+        ESP_LOGE(TAG, "OTA check interval must be between 10 and 3600 seconds");
         return ESP_ERR_INVALID_ARG;
     }
 
+    memcpy(s_manifest_url, config->manifest_url, url_length + 1);
+    memcpy(s_auth_token, config->auth_token, token_length + 1);
+    s_check_interval_sec = config->check_interval_sec;
     s_network = network;
-    ESP_LOGI(TAG, "OTA Manager initialized");
+
+    ESP_LOGI(TAG, "OTA Manager initialized (interval=%lu sec)",
+             (unsigned long)s_check_interval_sec);
     return ESP_OK;
 }
 
