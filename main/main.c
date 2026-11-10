@@ -4,6 +4,7 @@
 #include "esp_err.h"
 
 #include "network_manager.h"
+#include "ota_manager.h"
 
 static const char *TAG = "app";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
