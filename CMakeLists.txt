@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 
 set(APP_VERSION_FILE "${CMAKE_CURRENT_LIST_DIR}/version.txt")
 file(STRINGS "${APP_VERSION_FILE}" APP_VERSION LIMIT_COUNT 1)
-if(NOT APP_VERSION MATCHES "^[0-9]+(\\.[0-9]+){1,3}$")
+if(NOT APP_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
     message(FATAL_ERROR "version.txt must contain a numeric version such as 1.0.0")
 endif()
 
