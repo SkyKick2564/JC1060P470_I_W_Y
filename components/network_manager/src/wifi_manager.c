@@ -32,6 +32,16 @@ esp_err_t wifi_manager_init(void)
         return err;
     }
 
+    /*
+     * Keep Wi-Fi credentials in RAM. Network Manager owns persistent storage
+     * and writes saved profiles only from its set_config() request.
+     */
+    err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    if (err != ESP_OK) {
+        esp_wifi_deinit();
+        return err;
+    }
+
     s_wifi_initialized = true;
     return ESP_OK;
 }
