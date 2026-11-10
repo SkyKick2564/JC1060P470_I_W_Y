@@ -11,7 +11,7 @@ idf_component_register(
         app_update
         esp_partition
         esp_app_format
-        json
+
         mbedtls
         esp_system
         freertos
