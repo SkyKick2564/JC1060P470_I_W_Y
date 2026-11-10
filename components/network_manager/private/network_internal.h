@@ -88,7 +88,6 @@ typedef struct network_manager {
     TickType_t scan_due;
 
     bool ap_scan_enabled;
-    TickType_t ap_scan_due;
     wifi_ap_record_t scan_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
     uint16_t scan_count;
     uint16_t scan_total_found;
