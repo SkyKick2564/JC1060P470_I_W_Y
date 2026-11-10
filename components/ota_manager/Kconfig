@@ -1,0 +1,11 @@
+menu "OTA Manager"
+
+config OTA_MANAGER_AUTH_TOKEN
+    string "OTA upload authentication token"
+    default ""
+    help
+        Shared secret required in the X-OTA-Token HTTP header.
+        Set a random token of at least 16 characters before enabling OTA.
+        Do not publish this token or commit it to the repository.
+
+endmenu
