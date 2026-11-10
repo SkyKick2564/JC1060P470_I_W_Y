@@ -277,7 +277,10 @@ static void network_manager_process_wifi_connected(
 {
     xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
 
-    size_t ssid_len = strnlen(ssid, sizeof(manager->status.ssid) - 1);
+    size_t ssid_len = strlen(ssid);
+    if (ssid_len >= sizeof(manager->status.ssid)) {
+        ssid_len = sizeof(manager->status.ssid) - 1;
+    }
     memcpy(manager->status.ssid, ssid, ssid_len);
     manager->status.ssid[ssid_len] = '\0';
     manager->status.wifi_connected = true;
@@ -765,7 +768,13 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
         network_request_t exit_request = {
             .type = NETWORK_REQUEST_EXIT
         };
-        network_manager_submit(manager, &exit_request);
+        esp_err_t exit_err = network_manager_submit(manager, &exit_request);
+        if (exit_err != ESP_OK) {
+            /* Keep the task-owned object alive if hardware cleanup failed. */
+            ESP_LOGE(TAG, "Network Manager cleanup failed: %s",
+                     esp_err_to_name(exit_err));
+            return err;
+        }
 
         vQueueDelete(manager->queue);
         vSemaphoreDelete(manager->status_mutex);
