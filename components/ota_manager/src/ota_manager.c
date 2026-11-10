@@ -102,7 +102,7 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
         if (received <= 0) {
             ESP_LOGE(TAG, "Firmware receive failed: %d", received);
             esp_ota_abort(ota_handle);
-            return ota_send_error(req, HTTPD_500,
+            return ota_send_error(req, "500 Internal Server Error",
                                   "Firmware upload interrupted");
         }
 
@@ -110,7 +110,7 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_ota_write failed: %s", esp_err_to_name(err));
             esp_ota_abort(ota_handle);
-            return ota_send_error(req, HTTPD_500,
+            return ota_send_error(req, "500 Internal Server Error",
                                   "Could not write firmware image");
         }
 
@@ -128,7 +128,7 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Could not select new boot partition: %s",
                  esp_err_to_name(err));
-        return ota_send_error(req, HTTPD_500,
+        return ota_send_error(req, "500 Internal Server Error",
                               "Could not select new firmware");
     }
 
