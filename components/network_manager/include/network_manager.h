@@ -1,4 +1,4 @@
-﻿#ifndef NETWORK_MANAGER_H
+#ifndef NETWORK_MANAGER_H
 #define NETWORK_MANAGER_H
 
 #include <stdbool.h>
@@ -47,13 +47,23 @@ typedef struct {
 /* Network Manager Handle */
 typedef struct network_manager *network_manager_handle_t;
 
-/* Lifecycle */
+/*
+ * Lifecycle
+ *
+ * The manager owns a FreeRTOS task and command/event queue.
+ * Public control APIs submit commands to that task and wait for completion.
+ */
 esp_err_t network_manager_init(network_manager_handle_t *out_handle);
 esp_err_t network_manager_start(network_manager_handle_t handle);
 esp_err_t network_manager_stop(network_manager_handle_t handle);
 esp_err_t network_manager_deinit(network_manager_handle_t handle);
 
-/* Wi-Fi Configuration */
+/*
+ * Wi-Fi Configuration
+ *
+ * Configuration is stored in NVS and survives a reboot.
+ * Set/clear configuration while stopped; start the manager afterward.
+ */
 esp_err_t network_manager_set_wifi_config(
     network_manager_handle_t handle,
     const char *ssid,
@@ -69,6 +79,5 @@ esp_err_t network_manager_get_status(
     network_manager_handle_t handle,
     network_status_t *status
 );
-
 
 #endif /* NETWORK_MANAGER_H */
