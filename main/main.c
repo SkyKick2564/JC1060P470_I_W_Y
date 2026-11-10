@@ -2,6 +2,8 @@
 
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_ota_ops.h"
+#include "esp_partition.h"
 
 #include "network_manager.h"
 #include "ota_manager.h"
@@ -56,6 +58,31 @@ static void on_wifi_scan_updated(
     ESP_LOGI(TAG, "========================================");
 }
 
+
+/*
+ * Confirm a newly installed image only after the core managers have started.
+ * This completes the rollback-protection handshake for OTA boot.
+ */
+static void confirm_running_firmware_if_pending(void)
+{
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state;
+    esp_err_t err = esp_ota_get_state_partition(running, &state);
+
+    if (err == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
+        err = esp_ota_mark_app_valid_cancel_rollback();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Could not confirm running firmware: %s",
+                     esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "Running firmware confirmed; rollback cancelled");
+        }
+    } else if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "Could not read OTA image state: %s",
+                 esp_err_to_name(err));
+    }
+}
+
 void app_main(void)
 {
     network_manager_handle_t network = NULL;
@@ -102,6 +129,8 @@ void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "OTA Manager task started");
+
+    confirm_running_firmware_if_pending();
 
     /* Existing Wi-Fi scan test harness. */
     err = network_manager_start_scan(network);
