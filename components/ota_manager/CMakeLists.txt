@@ -10,4 +10,6 @@ idf_component_register(
         app_update
         esp_event
         esp_system
+        freertos
+        esp_partition
 )
