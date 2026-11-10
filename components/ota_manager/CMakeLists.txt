@@ -12,4 +12,6 @@ idf_component_register(
         esp_system
         freertos
         esp_partition
+        esp_app_format
+        log
 )
