@@ -44,7 +44,7 @@ static void network_manager_post_event(network_event_id_t event_id)
 static void network_manager_schedule_reconnect_scan(
     network_manager_t *manager)
 {
-    if (!manager->started || !manager->config_valid) {
+    if (!manager->started || manager->saved_profile_count == 0) {
         manager->reconnect_scan_pending = false;
         return;
     }
@@ -72,71 +72,99 @@ static void network_manager_schedule_ap_scan(network_manager_t *manager)
              NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
 }
 
+static bool network_manager_wifi_config_is_valid(
+    const network_saved_wifi_config_t *config)
+{
+    return config->ssid[0] != '\0' &&
+        memchr(config->ssid, '\0', sizeof(config->ssid)) != NULL &&
+        memchr(config->password, '\0', sizeof(config->password)) != NULL;
+}
+
 static esp_err_t network_manager_load_wifi_config(network_manager_t *manager)
 {
-    network_saved_wifi_config_t saved = {0};
+    network_saved_wifi_profiles_t saved = {0};
     size_t size = sizeof(saved);
-
-    esp_err_t err = nvs_get_blob(
-        manager->nvs_handle,
-        NETWORK_MANAGER_NVS_WIFI_KEY,
-        &saved,
-        &size
-    );
+    esp_err_t err = nvs_get_blob(manager->nvs_handle,
+        NETWORK_MANAGER_NVS_WIFI_KEY, &saved, &size);
 
     if (err == ESP_ERR_NVS_NOT_FOUND) {
-        manager->config_valid = false;
+        network_saved_wifi_config_t legacy = {0};
+        size = sizeof(legacy);
+        err = nvs_get_blob(manager->nvs_handle,
+            NETWORK_MANAGER_NVS_LEGACY_WIFI_KEY, &legacy, &size);
+
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            manager->saved_profile_count = 0;
+            ESP_LOGI(TAG, "No saved Wi-Fi profiles");
+            return ESP_OK;
+        }
+        if (err != ESP_OK) return err;
+        if (size != sizeof(legacy) ||
+            !network_manager_wifi_config_is_valid(&legacy)) {
+            ESP_LOGE(TAG, "Legacy Wi-Fi configuration is invalid");
+            return ESP_ERR_INVALID_SIZE;
+        }
+
+        manager->saved_profiles[0] = legacy;
+        manager->saved_profile_count = 1;
+        ESP_LOGI(TAG, "Loaded legacy Wi-Fi profile (migration deferred)");
         return ESP_OK;
     }
 
-    if (err != ESP_OK) {
-        return err;
-    }
-
+    if (err != ESP_OK) return err;
     if (size != sizeof(saved) ||
-        saved.ssid[0] == '\0' ||
-        memchr(saved.ssid, '\0', sizeof(saved.ssid)) == NULL ||
-        memchr(saved.password, '\0', sizeof(saved.password)) == NULL) {
-        ESP_LOGE(TAG, "Stored Wi-Fi configuration is invalid");
+        saved.count > NETWORK_MANAGER_MAX_SAVED_WIFI) {
+        ESP_LOGE(TAG, "Stored Wi-Fi profile list has invalid size or count");
         return ESP_ERR_INVALID_SIZE;
     }
 
-    memcpy(manager->ssid, saved.ssid, sizeof(manager->ssid));
-    memcpy(manager->password, saved.password, sizeof(manager->password));
-    manager->config_valid = true;
+    for (uint8_t i = 0; i < saved.count; ++i) {
+        if (!network_manager_wifi_config_is_valid(&saved.profiles[i])) {
+            ESP_LOGE(TAG, "Stored Wi-Fi profile %u is invalid", (unsigned)i);
+            return ESP_ERR_INVALID_SIZE;
+        }
+    }
 
-    ESP_LOGI(TAG, "Saved Wi-Fi configuration loaded");
+    memcpy(manager->saved_profiles, saved.profiles,
+           saved.count * sizeof(saved.profiles[0]));
+    manager->saved_profile_count = saved.count;
+    ESP_LOGI(TAG, "Loaded %u saved Wi-Fi profile(s)",
+             (unsigned)manager->saved_profile_count);
     return ESP_OK;
 }
 
-static esp_err_t network_manager_save_wifi_config(
+static esp_err_t network_manager_save_wifi_profiles(
     network_manager_t *manager,
-    const network_saved_wifi_config_t *config)
+    const network_saved_wifi_config_t *profiles,
+    uint8_t count)
 {
-    esp_err_t err = nvs_set_blob(
-        manager->nvs_handle,
-        NETWORK_MANAGER_NVS_WIFI_KEY,
-        config,
-        sizeof(*config)
-    );
+    network_saved_wifi_profiles_t saved = {0};
+    if (count > NETWORK_MANAGER_MAX_SAVED_WIFI) return ESP_ERR_INVALID_ARG;
 
-    if (err != ESP_OK) {
-        return err;
-    }
+    saved.count = count;
+    memcpy(saved.profiles, profiles, count * sizeof(saved.profiles[0]));
+
+    esp_err_t err = nvs_set_blob(manager->nvs_handle,
+        NETWORK_MANAGER_NVS_WIFI_KEY, &saved, sizeof(saved));
+    if (err != ESP_OK) return err;
+
+    /* Legacy cleanup is included in this explicit set_config() write. */
+    err = nvs_erase_key(manager->nvs_handle,
+        NETWORK_MANAGER_NVS_LEGACY_WIFI_KEY);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) return err;
 
     return nvs_commit(manager->nvs_handle);
 }
 
 static esp_err_t network_manager_erase_wifi_config(network_manager_t *manager)
 {
-    esp_err_t err = nvs_erase_key(
-        manager->nvs_handle,
-        NETWORK_MANAGER_NVS_WIFI_KEY
-    );
+    esp_err_t err = nvs_erase_key(manager->nvs_handle,
+        NETWORK_MANAGER_NVS_WIFI_KEY);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) return err;
 
-    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-        return err;
-    }
+    err = nvs_erase_key(manager->nvs_handle,
+        NETWORK_MANAGER_NVS_LEGACY_WIFI_KEY);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) return err;
 
     return nvs_commit(manager->nvs_handle);
 }
@@ -324,7 +352,7 @@ static void network_manager_process_wifi_disconnected(
     }
     network_manager_post_event(NETWORK_EVENT_WIFI_DISCONNECTED);
 
-    if (manager->started && manager->config_valid) {
+    if (manager->started && manager->saved_profile_count > 0) {
         network_manager_schedule_reconnect_scan(manager);
     } else {
         manager->reconnect_scan_pending = false;
@@ -423,34 +451,19 @@ static esp_err_t network_manager_process_request(
         if (!manager->initialized || manager->started) {
             return ESP_ERR_INVALID_STATE;
         }
-
-        if (manager->config_valid) {
-            err = wifi_manager_set_config(manager->ssid, manager->password);
-            if (err != ESP_OK) {
-                return err;
-            }
-        }
-
         err = wifi_manager_start();
-        if (err != ESP_OK) {
-            return err;
-        }
+        if (err != ESP_OK) return err;
 
         manager->started = true;
         manager->reconnect_scan_pending = false;
         manager->ap_scan_pending = false;
-
         xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
         manager->status.state = NETWORK_STATE_STARTED;
         xSemaphoreGive(manager->status_mutex);
 
-        if (manager->config_valid) {
-            err = wifi_manager_connect();
-            if (err != ESP_OK) {
-                ESP_LOGW(TAG, "Initial connect request failed: %s",
-                         esp_err_to_name(err));
-                network_manager_schedule_reconnect_scan(manager);
-            }
+        if (manager->saved_profile_count > 0) {
+            manager->reconnect_scan_due = xTaskGetTickCount();
+            manager->reconnect_scan_pending = true;
         }
 
         network_manager_post_event(NETWORK_EVENT_STARTED);
@@ -493,27 +506,52 @@ static esp_err_t network_manager_process_request(
 
         const network_saved_wifi_config_t *config =
             &request->data.wifi_config;
+        network_saved_wifi_config_t candidate[NETWORK_MANAGER_MAX_SAVED_WIFI];
+        uint8_t candidate_count = manager->saved_profile_count;
+        bool updated = false;
 
-        err = wifi_manager_set_config(config->ssid, config->password);
+        memcpy(candidate, manager->saved_profiles,
+               candidate_count * sizeof(candidate[0]));
+
+        for (uint8_t i = 0; i < candidate_count; ++i) {
+            if (strcmp(candidate[i].ssid, config->ssid) == 0) {
+                candidate[i] = *config;
+                updated = true;
+                ESP_LOGI(TAG, "Updating saved Wi-Fi profile: %s", config->ssid);
+                break;
+            }
+        }
+
+        if (!updated) {
+            if (candidate_count < NETWORK_MANAGER_MAX_SAVED_WIFI) {
+                candidate[candidate_count++] = *config;
+                ESP_LOGI(TAG, "Adding saved Wi-Fi profile: %s", config->ssid);
+            } else {
+                candidate[NETWORK_MANAGER_MAX_SAVED_WIFI - 1] = *config;
+                ESP_LOGW(TAG, "Profile list full; replacing last profile with: %s",
+                         config->ssid);
+            }
+        }
+
+        err = network_manager_save_wifi_profiles(manager, candidate, candidate_count);
         if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Saving Wi-Fi profiles failed: %s", esp_err_to_name(err));
             return err;
         }
 
-        err = network_manager_save_wifi_config(manager, config);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Saving Wi-Fi configuration failed: %s",
-                     esp_err_to_name(err));
-            return err;
-        }
-
-        memcpy(manager->ssid, config->ssid, sizeof(manager->ssid));
-        memcpy(manager->password, config->password, sizeof(manager->password));
-        manager->config_valid = true;
+        memset(manager->saved_profiles, 0, sizeof(manager->saved_profiles));
+        memcpy(manager->saved_profiles, candidate,
+               candidate_count * sizeof(candidate[0]));
+        manager->saved_profile_count = candidate_count;
 
         network_manager_post_event(NETWORK_EVENT_CONFIG_CHANGED);
-        ESP_LOGI(TAG, "Wi-Fi configuration saved");
+        ESP_LOGI(TAG, "Saved Wi-Fi profiles: %u/%u",
+                 (unsigned)manager->saved_profile_count,
+                 NETWORK_MANAGER_MAX_SAVED_WIFI);
         break;
     }
+
+
 
     case NETWORK_REQUEST_CLEAR_CONFIG:
         if (!manager->initialized || manager->started) {
@@ -525,9 +563,8 @@ static esp_err_t network_manager_process_request(
             return err;
         }
 
-        memset(manager->ssid, 0, sizeof(manager->ssid));
-        memset(manager->password, 0, sizeof(manager->password));
-        manager->config_valid = false;
+        memset(manager->saved_profiles, 0, sizeof(manager->saved_profiles));
+        manager->saved_profile_count = 0;
 
         network_manager_post_event(NETWORK_EVENT_CONFIG_CHANGED);
         ESP_LOGI(TAG, "Wi-Fi configuration erased");
@@ -566,9 +603,8 @@ static esp_err_t network_manager_process_request(
         }
 
         manager->initialized = false;
-        manager->config_valid = false;
-        memset(manager->ssid, 0, sizeof(manager->ssid));
-        memset(manager->password, 0, sizeof(manager->password));
+        manager->saved_profile_count = 0;
+        memset(manager->saved_profiles, 0, sizeof(manager->saved_profiles));
         *exit_task = true;
         ESP_LOGI(TAG, "Network Manager deinitialized");
         break;
@@ -610,7 +646,7 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     wifi_connected = manager->status.wifi_connected;
     xSemaphoreGive(manager->status_mutex);
 
-    bool reconnect_needed = manager->config_valid && !wifi_connected;
+    bool reconnect_needed = manager->saved_profile_count > 0 && !wifi_connected;
     if (!reconnect_needed) {
         manager->reconnect_scan_pending = false;
         reconnect_scan_due = false;
@@ -635,7 +671,7 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
                 pdMS_TO_TICKS(NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
             manager->ap_scan_pending = true;
         }
-        if (manager->config_valid && !wifi_connected) {
+        if (manager->saved_profile_count > 0 && !wifi_connected) {
             manager->reconnect_scan_due = xTaskGetTickCount() +
                 pdMS_TO_TICKS(NETWORK_MANAGER_RECONNECT_SCAN_INTERVAL_MS);
             manager->reconnect_scan_pending = true;
@@ -674,28 +710,35 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     }
 
     if (reconnect_needed) {
-        bool saved_network_found = false;
+        const network_saved_wifi_config_t *best_profile = NULL;
+        int8_t best_rssi = INT8_MIN;
 
         for (uint16_t i = 0; i < count; ++i) {
-            if (strncmp((const char *)records[i].ssid,
-                        manager->ssid,
-                        sizeof(records[i].ssid)) == 0) {
-                saved_network_found = true;
-                ESP_LOGI(TAG, "Saved Wi-Fi network found (RSSI: %d dBm)",
-                         records[i].rssi);
-                break;
+            for (uint8_t j = 0; j < manager->saved_profile_count; ++j) {
+                const network_saved_wifi_config_t *profile =
+                    &manager->saved_profiles[j];
+                if (strncmp((const char *)records[i].ssid, profile->ssid,
+                            sizeof(records[i].ssid)) == 0 &&
+                    (best_profile == NULL || records[i].rssi > best_rssi)) {
+                    best_profile = profile;
+                    best_rssi = records[i].rssi;
+                }
             }
         }
 
-        if (saved_network_found) {
-            ESP_LOGI(TAG, "Attempting Wi-Fi reconnect");
-            err = wifi_manager_connect();
+        if (best_profile != NULL) {
+            ESP_LOGI(TAG, "Best saved Wi-Fi: %s (RSSI: %d dBm)",
+                     best_profile->ssid, best_rssi);
+            err = wifi_manager_set_config(best_profile->ssid, best_profile->password);
+            if (err == ESP_OK) {
+                ESP_LOGI(TAG, "Attempting Wi-Fi connection");
+                err = wifi_manager_connect();
+            }
             if (err != ESP_OK) {
-                ESP_LOGW(TAG, "Reconnect request failed: %s",
-                         esp_err_to_name(err));
+                ESP_LOGW(TAG, "Connection request failed: %s", esp_err_to_name(err));
             }
         } else {
-            ESP_LOGI(TAG, "Saved Wi-Fi network not found (%u APs scanned)",
+            ESP_LOGI(TAG, "No saved Wi-Fi network visible (%u APs scanned)",
                      total_found);
         }
     }
@@ -703,7 +746,7 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     if (manager->ap_scan_enabled) {
         network_manager_schedule_ap_scan(manager);
     }
-    if (manager->config_valid && !wifi_connected) {
+    if (manager->saved_profile_count > 0 && !wifi_connected) {
         network_manager_schedule_reconnect_scan(manager);
     }
 }
