@@ -86,7 +86,7 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
     err = esp_ota_begin(update_partition, req->content_len, &ota_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
-        return ota_send_error(req, HTTPD_500, "Could not begin OTA update");
+        return ota_send_error(req, "500 Internal Server Error", "Could not begin OTA update");
     }
 
     remaining = req->content_len;
