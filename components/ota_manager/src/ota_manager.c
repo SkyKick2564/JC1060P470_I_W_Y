@@ -9,6 +9,7 @@
 #include "cJSON.h"
 #include "esp_app_desc.h"
 #include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
@@ -24,7 +25,7 @@
 #define OTA_MANIFEST_MAX_SIZE     4096
 #define OTA_DOWNLOAD_CHUNK_SIZE   4096
 #define OTA_TOKEN_MAX_LEN         127
-#define OTA_MANIFEST_URL_MAX_LEN  255
+#define OTA_MANIFEST_URL_MAX_LEN  512
 #define OTA_SHA256_HEX_LEN        64
 
 static const char *TAG = "ota_manager";
@@ -37,7 +38,7 @@ static uint32_t s_check_interval_sec;
 typedef struct {
     char project[48];
     char version[32];
-    char firmware_url[256];
+    char firmware_url[512];
     char sha256[OTA_SHA256_HEX_LEN + 1];
     size_t size;
 } ota_manifest_t;
@@ -171,6 +172,14 @@ static esp_err_t ota_http_open_get(const char *url,
         .timeout_ms = OTA_HTTP_TIMEOUT_MS,
         .buffer_size = OTA_DOWNLOAD_CHUNK_SIZE,
         .buffer_size_tx = 1024,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        /*
+         * GitHub Releases redirect downloads to release-assets.githubusercontent.com.
+         * Handle redirects explicitly because this component uses the streaming
+         * open/fetch_headers/read API rather than esp_http_client_perform().
+         */
+        .disable_auto_redirect = true,
+        .max_redirection_count = 5,
         .keep_alive_enable = false
     };
 
@@ -188,25 +197,60 @@ static esp_err_t ota_http_open_get(const char *url,
         err = esp_http_client_set_header(
             client, "X-OTA-Token", s_auth_token);
     }
-    if (err == ESP_OK) {
-        err = esp_http_client_open(client, 0);
-    }
     if (err != ESP_OK) {
         esp_http_client_cleanup(client);
         return err;
     }
 
-    int64_t content_length = esp_http_client_fetch_headers(client);
-    int status = esp_http_client_get_status_code(client);
-    if (out_server_reachable != NULL && status > 0) {
-        *out_server_reachable = true;
+    int64_t content_length = -1;
+    int status = 0;
+    bool response_received = false;
+
+    for (int redirect = 0; redirect <= 5; redirect++) {
+        err = esp_http_client_open(client, 0);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "HTTP connection failed: %s", esp_err_to_name(err));
+            break;
+        }
+
+        content_length = esp_http_client_fetch_headers(client);
+        status = esp_http_client_get_status_code(client);
+        if (status > 0) {
+            response_received = true;
+            if (out_server_reachable != NULL) {
+                *out_server_reachable = true;
+            }
+        }
+
+        bool is_redirect = status == 301 || status == 302 || status == 303 ||
+                           status == 307 || status == 308;
+        if (!is_redirect) {
+            break;
+        }
+
+        if (redirect == 5) {
+            ESP_LOGE(TAG, "HTTP redirect limit exceeded");
+            err = ESP_FAIL;
+            break;
+        }
+
+        err = esp_http_client_set_redirection(client);
+        esp_http_client_close(client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Could not follow HTTP redirect: %s",
+                     esp_err_to_name(err));
+            break;
+        }
     }
-    if (status != 200 || content_length < 0) {
-        ESP_LOGE(TAG, "HTTP GET failed: status=%d length=%lld",
-                 status, (long long)content_length);
+
+    if (err != ESP_OK || status != 200 || content_length < 0) {
+        if (response_received) {
+            ESP_LOGE(TAG, "HTTP GET failed: status=%d length=%lld",
+                     status, (long long)content_length);
+        }
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
-        return ESP_FAIL;
+        return err != ESP_OK ? err : ESP_FAIL;
     }
 
     *out_client = client;
@@ -510,9 +554,9 @@ static void ota_manager_task(void *arg)
             ota_check_for_update(&endpoint_reachable);
 
             if (endpoint_reachable && !endpoint_was_reachable) {
-                ESP_LOGI(TAG, "Internet available (OTA server responded)");
+                ESP_LOGI(TAG, "Internet available (GitHub OTA manifest responded)");
             } else if (!endpoint_reachable && endpoint_was_reachable) {
-                ESP_LOGW(TAG, "Internet unavailable (OTA server unreachable)");
+                ESP_LOGW(TAG, "Internet unavailable (GitHub OTA endpoint unreachable)");
             }
             endpoint_was_reachable = endpoint_reachable;
             vTaskDelay(check_interval);
