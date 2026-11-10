@@ -13,7 +13,7 @@
 #include "freertos/task.h"
 
 #define NETWORK_MANAGER_QUEUE_LENGTH       16
-#define NETWORK_MANAGER_TASK_STACK_SIZE    4096
+#define NETWORK_MANAGER_TASK_STACK_SIZE    6144
 #define NETWORK_MANAGER_TASK_PRIORITY      5
 #define NETWORK_MANAGER_NVS_NAMESPACE      "network_mgr"
 #define NETWORK_MANAGER_NVS_WIFI_KEY      "wifi_config"
