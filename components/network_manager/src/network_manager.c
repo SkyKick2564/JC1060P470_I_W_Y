@@ -11,8 +11,7 @@
 #include "nvs_flash.h"
 
 #define NETWORK_MANAGER_HOSTED_TIMEOUT_MS 10000
-#define NETWORK_MANAGER_RETRY_INITIAL_MS  1000
-#define NETWORK_MANAGER_RETRY_MAX_MS     30000
+#define NETWORK_MANAGER_SCAN_INTERVAL_MS 3000
 
 static const char *TAG = "network_manager";
 
@@ -41,36 +40,19 @@ static void network_manager_post_event(network_event_id_t event_id)
     }
 }
 
-static void network_manager_schedule_retry(network_manager_t *manager)
+static void network_manager_schedule_scan(network_manager_t *manager)
 {
     if (!manager->started || !manager->config_valid) {
-        manager->retry_pending = false;
+        manager->scan_pending = false;
         return;
     }
 
-    uint32_t delay_ms = NETWORK_MANAGER_RETRY_INITIAL_MS;
+    manager->scan_due = xTaskGetTickCount() +
+                        pdMS_TO_TICKS(NETWORK_MANAGER_SCAN_INTERVAL_MS);
+    manager->scan_pending = true;
 
-    for (uint8_t i = 0; i < manager->retry_attempt; ++i) {
-        if (delay_ms >= NETWORK_MANAGER_RETRY_MAX_MS / 2) {
-            delay_ms = NETWORK_MANAGER_RETRY_MAX_MS;
-            break;
-        }
-        delay_ms *= 2;
-    }
-
-    if (delay_ms > NETWORK_MANAGER_RETRY_MAX_MS) {
-        delay_ms = NETWORK_MANAGER_RETRY_MAX_MS;
-    }
-
-    if (manager->retry_attempt < 6) {
-        manager->retry_attempt++;
-    }
-
-    manager->retry_due = xTaskGetTickCount() + pdMS_TO_TICKS(delay_ms);
-    manager->retry_pending = true;
-
-    ESP_LOGW(TAG, "Reconnect scheduled in %lu ms",
-             (unsigned long)delay_ms);
+    ESP_LOGI(TAG, "Next saved-network scan in %u ms",
+             NETWORK_MANAGER_SCAN_INTERVAL_MS);
 }
 
 static esp_err_t network_manager_load_wifi_config(network_manager_t *manager)
@@ -323,9 +305,9 @@ static void network_manager_process_wifi_disconnected(
     network_manager_post_event(NETWORK_EVENT_WIFI_DISCONNECTED);
 
     if (manager->started && manager->config_valid) {
-        network_manager_schedule_retry(manager);
+        network_manager_schedule_scan(manager);
     } else {
-        manager->retry_pending = false;
+        manager->scan_pending = false;
     }
 }
 
@@ -356,8 +338,7 @@ static void network_manager_process_got_ip(
 
     xSemaphoreGive(manager->status_mutex);
 
-    manager->retry_pending = false;
-    manager->retry_attempt = 0;
+    manager->scan_pending = false;
     network_manager_post_event(NETWORK_EVENT_GOT_IP);
 }
 
@@ -430,8 +411,7 @@ static esp_err_t network_manager_process_request(
         }
 
         manager->started = true;
-        manager->retry_pending = false;
-        manager->retry_attempt = 0;
+        manager->scan_pending = false;
 
         xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
         manager->status.state = NETWORK_STATE_STARTED;
@@ -556,25 +536,57 @@ static esp_err_t network_manager_process_request(
     return err;
 }
 
-static void network_manager_try_reconnect(network_manager_t *manager)
+static void network_manager_scan_and_reconnect(network_manager_t *manager)
 {
-    if (!manager->retry_pending ||
-        (int32_t)(xTaskGetTickCount() - manager->retry_due) < 0) {
+    if (!manager->scan_pending ||
+        (int32_t)(xTaskGetTickCount() - manager->scan_due) < 0) {
         return;
     }
 
-    manager->retry_pending = false;
+    manager->scan_pending = false;
 
     if (!manager->started || !manager->config_valid) {
         return;
     }
 
-    ESP_LOGI(TAG, "Attempting Wi-Fi reconnect");
+    ESP_LOGI(TAG, "Scanning for saved Wi-Fi network: %s", manager->ssid);
 
-    esp_err_t err = wifi_manager_connect();
+    esp_err_t err = wifi_manager_scan();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Wi-Fi scan failed: %s", esp_err_to_name(err));
+        network_manager_schedule_scan(manager);
+        return;
+    }
+
+    uint16_t count = 0;
+    uint16_t total_found = 0;
+    const wifi_ap_record_t *records =
+        wifi_manager_get_scan_results(&count, &total_found);
+    bool saved_network_found = false;
+
+    for (uint16_t i = 0; i < count; ++i) {
+        if (strncmp((const char *)records[i].ssid,
+                    manager->ssid,
+                    sizeof(records[i].ssid)) == 0) {
+            saved_network_found = true;
+            ESP_LOGI(TAG, "Saved Wi-Fi network found (RSSI: %d dBm)",
+                     records[i]. rssi);
+            break;
+        }
+    }
+
+    if (!saved_network_found) {
+        ESP_LOGI(TAG, "Saved Wi-Fi network not found (%u APs scanned)",
+                 total_found);
+        network_manager_schedule_scan(manager);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Attempting Wi-Fi reconnect");
+    err = wifi_manager_connect();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Reconnect request failed: %s", esp_err_to_name(err));
-        network_manager_schedule_retry(manager);
+        network_manager_schedule_scan(manager);
     }
 }
 
@@ -586,10 +598,10 @@ static void network_manager_task(void *arg)
     for (;;) {
         TickType_t wait_ticks = portMAX_DELAY;
 
-        if (manager->retry_pending) {
+        if (manager->scan_pending) {
             TickType_t now = xTaskGetTickCount();
-            if ((int32_t)(manager->retry_due - now) > 0) {
-                wait_ticks = manager->retry_due - now;
+            if ((int32_t)(manager->scan_due - now) > 0) {
+                wait_ticks = manager->scan_due - now;
             } else {
                 wait_ticks = 0;
             }
@@ -618,7 +630,7 @@ static void network_manager_task(void *arg)
             }
         }
 
-        network_manager_try_reconnect(manager);
+        network_manager_scan_and_reconnect(manager);
     }
 }
 
