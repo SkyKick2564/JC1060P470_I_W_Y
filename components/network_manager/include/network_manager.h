@@ -61,11 +61,14 @@ esp_err_t network_manager_stop(network_manager_handle_t handle);
 esp_err_t network_manager_deinit(network_manager_handle_t handle);
 
 /*
- * Wi-Fi Configuration
+ * Saved Wi-Fi Profiles
  *
- * Configuration is stored in NVS and survives a reboot.
- * Set/clear configuration while stopped; start the manager afterward.
+ * Up to 20 profiles are stored in NVS. Calling set_wifi_config() adds a new
+ * SSID or updates the password of an existing SSID. If the list is full,
+ * the last profile is replaced. Set/clear configuration while stopped;
+ * start the manager afterward.
  */
+#define NETWORK_MANAGER_MAX_SAVED_WIFI 20
 esp_err_t network_manager_set_wifi_config(
     network_manager_handle_t handle,
     const char *ssid,
