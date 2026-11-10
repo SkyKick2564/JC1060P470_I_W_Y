@@ -724,7 +724,7 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     ESP_LOGI(TAG, "Wi-Fi scan complete: %u APs found, %u cached",
              total_found, count);
 
-    if (manager->ap_scan_enabled && ap_scan_due) {
+    if (manager->ap_scan_enabled) {
         network_manager_post_event(NETWORK_EVENT_SCAN_UPDATED);
     }
 
