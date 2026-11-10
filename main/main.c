@@ -69,16 +69,16 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Network Manager initialized");
 
-    err = network_manager_set_wifi_config(
-        network,
-        "Pol.Div2",
-        "1122334455"
-    );
+    // err = network_manager_set_wifi_config(
+    //     network,
+    //     "Pol.Div2",
+    //     "1122334455"
+    // );
 
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Wi-Fi config failed: %s", esp_err_to_name(err));
-        return;
-    }
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "Wi-Fi config failed: %s", esp_err_to_name(err));
+    //     return;
+    // }
 
     ESP_LOGI(TAG, "Wi-Fi configuration set");
 
