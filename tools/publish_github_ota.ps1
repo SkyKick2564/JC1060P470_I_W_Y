@@ -85,7 +85,7 @@ $Manifest = [ordered]@{
 }
 $ManifestJson = $Manifest | ConvertTo-Json
 New-Item -ItemType Directory -Force -Path (Split-Path $ManifestPath) | Out-Null
-$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllText($ManifestPath, $ManifestJson + "`n", $Utf8NoBom)
 
 Invoke-Git -GitArgs @("add", "--", "ota/manifest.json")
