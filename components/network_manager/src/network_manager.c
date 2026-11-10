@@ -422,7 +422,7 @@ static esp_err_t network_manager_process_request(
             if (err != ESP_OK) {
                 ESP_LOGW(TAG, "Initial connect request failed: %s",
                          esp_err_to_name(err));
-                network_manager_schedule_retry(manager);
+                network_manager_schedule_scan(manager);
             }
         }
 
@@ -436,7 +436,7 @@ static esp_err_t network_manager_process_request(
         }
 
         manager->started = false;
-        manager->retry_pending = false;
+        manager->scan_pending = false;
 
         err = wifi_manager_stop();
         if (err != ESP_OK) {
@@ -570,7 +570,7 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
                     sizeof(records[i].ssid)) == 0) {
             saved_network_found = true;
             ESP_LOGI(TAG, "Saved Wi-Fi network found (RSSI: %d dBm)",
-                     records[i]. rssi);
+                     records[i].rssi);
             break;
         }
     }
