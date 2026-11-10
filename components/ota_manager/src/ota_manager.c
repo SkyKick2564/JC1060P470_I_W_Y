@@ -18,7 +18,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define OTA_TASK_STACK_SIZE       8192
+#define OTA_TASK_STACK_SIZE       16384
 #define OTA_TASK_PRIORITY         4
 #define OTA_NO_NETWORK_RETRY_MS   5000
 #define OTA_HTTP_TIMEOUT_MS       15000
