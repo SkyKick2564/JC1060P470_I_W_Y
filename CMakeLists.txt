@@ -5,4 +5,4 @@
 cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(JC1060P470_I_W_Y)
+project(JC1060P470_I_W_Y VERSION 1.0.0)
