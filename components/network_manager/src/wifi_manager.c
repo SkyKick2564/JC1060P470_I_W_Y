@@ -52,12 +52,15 @@ esp_err_t wifi_manager_set_config(
     }
 
     /*
-     * Keep the current project's compatibility setting: 802.11 b/g/n.
+     * Keep the current project's compatibility setting: 802.11 b/g/n/ax.
      * Return the error instead of aborting the whole application.
      */
     esp_err_t err = esp_wifi_set_protocol(
         WIFI_IF_STA,
-        WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N
+        WIFI_PROTOCOL_11B |
+        WIFI_PROTOCOL_11G |
+        WIFI_PROTOCOL_11N |
+        WIFI_PROTOCOL_11AX
     );
     if (err != ESP_OK) {
         return err;
@@ -78,10 +81,10 @@ esp_err_t wifi_manager_set_config(
     config.sta.mbo_enabled = false;
     config.sta.ft_enabled = false;
 
+    config.sta.threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK;
+
     memcpy(config.sta.ssid, ssid, ssid_len);
     memcpy(config.sta.password, password, password_len);
-
-    config.sta.threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK;
 
     return esp_wifi_set_config(WIFI_IF_STA, &config);
 }
