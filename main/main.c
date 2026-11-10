@@ -3,9 +3,6 @@
 
 #include "esp_log.h"
 #include "esp_err.h"
-#include "esp_ota_ops.h"
-#include "esp_partition.h"
-
 #include "network_manager.h"
 #include "ota_manager.h"
 #include "app_config.h"
@@ -61,30 +58,6 @@ static void on_wifi_scan_updated(
 }
 
 
-/*
- * Confirm a newly installed image only after the core managers have started.
- * This completes the rollback-protection handshake for OTA boot.
- */
-static void confirm_running_firmware_if_pending(void)
-{
-    const esp_partition_t *running = esp_ota_get_running_partition();
-    esp_ota_img_states_t state;
-    esp_err_t err = esp_ota_get_state_partition(running, &state);
-
-    if (err == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
-        err = esp_ota_mark_app_valid_cancel_rollback();
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Could not confirm running firmware: %s",
-                     esp_err_to_name(err));
-        } else {
-            ESP_LOGI(TAG, "Running firmware confirmed; rollback cancelled");
-        }
-    } else if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
-        ESP_LOGW(TAG, "Could not read OTA image state: %s",
-                 esp_err_to_name(err));
-    }
-}
-
 void app_main(void)
 {
     network_manager_handle_t network = NULL;
@@ -128,23 +101,25 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Network Manager started");
 
-    if (ota_initialized) {
-        err = ota_manager_start();
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "OTA Manager start failed; networking will continue: %s",
-                     esp_err_to_name(err));
-        } else {
-            ESP_LOGI(TAG, "OTA Manager task started");
-        }
-    }
-
-    confirm_running_firmware_if_pending();
-
-    /* Existing Wi-Fi scan test harness. */
+    /* Existing Wi-Fi scan test harness; complete app startup before OTA starts. */
     err = network_manager_start_scan(network);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Start scan failed: %s", esp_err_to_name(err));
         return;
     }
     ESP_LOGI(TAG, "Wi-Fi scanning enabled");
+
+    /*
+     * Start OTA last. OTA Manager performs pending-image confirmation
+     * internally, after the application's critical startup steps succeeded.
+     */
+    if (ota_initialized) {
+        err = ota_manager_start();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "OTA Manager start failed; networking will continue: %s",
+                     esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "OTA Manager started");
+        }
+    }
 }
