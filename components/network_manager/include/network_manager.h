@@ -6,6 +6,7 @@
 
 #include "esp_err.h"
 #include "esp_event.h"
+#include "esp_wifi.h"
 
 /* Network Manager Event Base */
 ESP_EVENT_DECLARE_BASE(NETWORK_MANAGER_EVENT);
@@ -29,7 +30,8 @@ typedef enum {
     NETWORK_EVENT_LOST_IP,
     NETWORK_EVENT_INTERNET_CONNECTED,
     NETWORK_EVENT_INTERNET_DISCONNECTED,
-    NETWORK_EVENT_CONFIG_CHANGED
+    NETWORK_EVENT_CONFIG_CHANGED,
+    NETWORK_EVENT_SCAN_UPDATED
 } network_event_id_t;
 
 /* Current Network Status */
@@ -78,6 +80,34 @@ esp_err_t network_manager_clear_wifi_config(
 esp_err_t network_manager_get_status(
     network_manager_handle_t handle,
     network_status_t *status
+);
+
+/*
+ * Wi-Fi AP scanning
+ *
+ * Start periodic scanning while the Wi-Fi screen is visible. The manager
+ * refreshes its RAM snapshot and posts NETWORK_EVENT_SCAN_UPDATED.
+ * Stop scanning when the screen is closed. The latest snapshot remains
+ * readable until the next scan or manager deinitialization.
+ */
+#define NETWORK_MANAGER_MAX_SCAN_RESULTS 20
+
+esp_err_t network_manager_start_scan(network_manager_handle_t handle);
+esp_err_t network_manager_stop_scan(network_manager_handle_t handle);
+
+/*
+ * Copy the latest scan snapshot.
+ * *count receives the number of records cached (up to capacity).
+ * *total_found receives the total number of APs reported by the scan.
+ * If capacity is too small, returns ESP_ERR_INVALID_SIZE and sets *count
+ * to the required record count without copying records.
+ */
+esp_err_t network_manager_get_scan_results(
+    network_manager_handle_t handle,
+    wifi_ap_record_t *records,
+    uint16_t capacity,
+    uint16_t *count,
+    uint16_t *total_found
 );
 
 #endif /* NETWORK_MANAGER_H */
