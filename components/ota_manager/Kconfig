@@ -1,11 +1,25 @@
 menu "OTA Manager"
 
+config OTA_MANAGER_MANIFEST_URL
+    string "Firmware manifest URL"
+    default "http://192.168.0.10:8080/manifest.json"
+    help
+        URL of manifest.json served by tools/ota_server.py on the development PC.
+        Replace the example IP with the PC's LAN IPv4 address.
+
 config OTA_MANAGER_AUTH_TOKEN
-    string "OTA upload authentication token"
+    string "OTA authentication token"
     default ""
     help
-        Shared secret required in the X-OTA-Token HTTP header.
-        Set a random token of at least 16 characters before enabling OTA.
-        Do not publish this token or commit it to the repository.
+        Shared secret sent in the X-OTA-Token HTTP header to the local firmware server.
+        Use the same 16-127 character token configured when starting ota_server.py.
+
+config OTA_MANAGER_CHECK_INTERVAL_SEC
+    int "Firmware check interval (seconds)"
+    range 10 3600
+    default 60
+    help
+        How often OTA Manager checks the local firmware server while the network
+        manager reports that the station has an IP address.
 
 endmenu
