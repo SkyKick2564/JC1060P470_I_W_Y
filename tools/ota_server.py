@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 
 PROJECT_NAME = "JC1060P470_I_W_Y"
-DEFAULT_FIRMWARE = Path("build/JC1060P470P470_I_W_Y.bin")
+DEFAULT_FIRMWARE = Path("build/JC1060P470_I_W_Y.bin")
 DEFAULT_VERSION_FILE = Path("version.txt")
 DEFAULT_PORT = 8080
 TOKEN_HEADER = "X-OTA-Token"
