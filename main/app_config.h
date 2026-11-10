@@ -4,12 +4,13 @@
 #include "ota_manager.h"
 
 /*
- * Application-level OTA settings.
- * Change these values here; ota_manager component remains reusable.
+ * Public GitHub-hosted OTA manifest.
+ * The manifest is maintained in the repository; firmware binaries are
+ * attached to versioned GitHub Releases.
  */
 static const ota_manager_config_t APP_OTA_CONFIG = {
-    .manifest_url = "http://192.168.1.2:8080/manifest.json",
-    .auth_token = "JC1060P470_OTA_2026_SecureKey",
+    .manifest_url = "https://raw.githubusercontent.com/SkyKick2564/JC1060P470_I_W_Y/network-manager-freertos-task/ota/manifest.json",
+    .auth_token = NULL,
     .check_interval_sec = 60,
 };
 
