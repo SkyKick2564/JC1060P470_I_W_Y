@@ -21,6 +21,9 @@ static void on_wifi_scan_updated(
         (network_manager_handle_t)arg;
     uint16_t count = 0;
     uint16_t total_found = 0;
+    (void)event_base;
+    (void)event_id;
+    (void)event_data;
 
     esp_err_t err = network_manager_get_scan_results(
         network,
