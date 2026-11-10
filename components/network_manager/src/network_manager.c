@@ -72,6 +72,31 @@ static void network_manager_schedule_ap_scan(network_manager_t *manager)
              NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
 }
 
+static esp_err_t network_manager_apply_wifi_config(
+    network_manager_t *manager,
+    const network_saved_wifi_config_t *config)
+{
+    esp_err_t err = wifi_manager_set_config(config->ssid, config->password);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Applying Wi-Fi config failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    err = wifi_manager_connect();
+    if (err != ESP_OK) {
+        manager->wifi_connecting = false;
+        ESP_LOGW(TAG, "Wi-Fi connection request failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    manager->wifi_connecting = true;
+    manager->reconnect_scan_pending = false;
+    ESP_LOGI(TAG, "Connecting to App-selected Wi-Fi: %s", config->ssid);
+    return ESP_OK;
+}
+
 static bool network_manager_wifi_config_is_valid(
     const network_saved_wifi_config_t *config)
 {
@@ -355,6 +380,23 @@ static void network_manager_process_wifi_disconnected(
     }
     network_manager_post_event(NETWORK_EVENT_WIFI_DISCONNECTED);
 
+    /*
+     * A runtime config change waits for the old connection to fully drop
+     * before applying the new station configuration.
+     */
+    if (manager->started && manager->wifi_config_switch_pending) {
+        network_saved_wifi_config_t config = manager->pending_wifi_config;
+        manager->wifi_config_switch_pending = false;
+        memset(&manager->pending_wifi_config, 0,
+               sizeof(manager->pending_wifi_config));
+
+        esp_err_t err = network_manager_apply_wifi_config(manager, &config);
+        if (err != ESP_OK) {
+            network_manager_schedule_reconnect_scan(manager);
+        }
+        return;
+    }
+
     if (manager->started && manager->saved_profile_count > 0) {
         network_manager_schedule_reconnect_scan(manager);
     } else {
@@ -480,6 +522,9 @@ static esp_err_t network_manager_process_request(
 
         manager->started = false;
         manager->wifi_connecting = false;
+        manager->wifi_config_switch_pending = false;
+        memset(&manager->pending_wifi_config, 0,
+               sizeof(manager->pending_wifi_config));
         manager->reconnect_scan_pending = false;
         manager->ap_scan_enabled = false;
         manager->ap_scan_pending = false;
@@ -504,7 +549,7 @@ static esp_err_t network_manager_process_request(
         break;
 
     case NETWORK_REQUEST_SET_CONFIG: {
-        if (!manager->initialized || manager->started) {
+        if (!manager->initialized) {
             return ESP_ERR_INVALID_STATE;
         }
 
@@ -547,11 +592,58 @@ static esp_err_t network_manager_process_request(
         memcpy(manager->saved_profiles, candidate,
                candidate_count * sizeof(candidate[0]));
         manager->saved_profile_count = candidate_count;
+        memcpy(manager->preferred_wifi_ssid, config->ssid,
+               sizeof(manager->preferred_wifi_ssid));
 
         network_manager_post_event(NETWORK_EVENT_CONFIG_CHANGED);
         ESP_LOGI(TAG, "Saved Wi-Fi profiles: %u/%u",
                  (unsigned)manager->saved_profile_count,
                  NETWORK_MANAGER_MAX_SAVED_WIFI);
+
+        /*
+         * If a previous switch is waiting for WIFI_EVENT_STA_DISCONNECTED,
+         * keep only the newest App-selected configuration.
+         */
+        if (manager->started && manager->wifi_config_switch_pending) {
+            manager->pending_wifi_config = *config;
+            break;
+        }
+
+        if (manager->started) {
+            bool wifi_connected;
+            xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+            wifi_connected = manager->status.wifi_connected;
+            xSemaphoreGive(manager->status_mutex);
+
+            if (wifi_connected || manager->wifi_connecting) {
+                manager->pending_wifi_config = *config;
+                manager->wifi_config_switch_pending = true;
+                manager->reconnect_scan_pending = false;
+                manager->ap_scan_pending = false;
+
+                err = wifi_manager_disconnect();
+                if (err == ESP_OK) {
+                    ESP_LOGI(TAG, "Disconnecting current Wi-Fi before switching to: %s",
+                             config->ssid);
+                    break;
+                }
+
+                manager->wifi_config_switch_pending = false;
+                memset(&manager->pending_wifi_config, 0,
+                       sizeof(manager->pending_wifi_config));
+                if (err != ESP_ERR_WIFI_NOT_CONNECT) {
+                    ESP_LOGE(TAG, "Wi-Fi disconnect before config switch failed: %s",
+                             esp_err_to_name(err));
+                    return err;
+                }
+            }
+
+            err = network_manager_apply_wifi_config(manager, config);
+            if (err != ESP_OK) {
+                network_manager_schedule_reconnect_scan(manager);
+                return err;
+            }
+        }
         break;
     }
 
@@ -638,6 +730,13 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     }
 
     if (!manager->started) {
+        manager->ap_scan_pending = false;
+        manager->reconnect_scan_pending = false;
+        return;
+    }
+
+    /* Wait for the old link to disconnect before applying a new config. */
+    if (manager->wifi_config_switch_pending) {
         manager->ap_scan_pending = false;
         manager->reconnect_scan_pending = false;
         return;
@@ -732,15 +831,45 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
         const network_saved_wifi_config_t *best_profile = NULL;
         int8_t best_rssi = INT8_MIN;
 
-        for (uint16_t i = 0; i < count; ++i) {
-            for (uint8_t j = 0; j < manager->saved_profile_count; ++j) {
-                const network_saved_wifi_config_t *profile =
-                    &manager->saved_profiles[j];
-                if (strncmp((const char *)records[i].ssid, profile->ssid,
-                            sizeof(records[i].ssid)) == 0 &&
-                    (best_profile == NULL || records[i].rssi > best_rssi)) {
-                    best_profile = profile;
-                    best_rssi = records[i].rssi;
+        /*
+         * Prefer the most recently selected SSID from the App. If it is not
+         * visible, fall back to the strongest visible saved profile.
+         */
+        bool preferred_found = false;
+        if (manager->preferred_wifi_ssid[0] != '\0') {
+            for (uint16_t i = 0; i < count; ++i) {
+                if (strncmp((const char *)records[i].ssid,
+                            manager->preferred_wifi_ssid,
+                            sizeof(records[i].ssid)) != 0) {
+                    continue;
+                }
+
+                for (uint8_t j = 0; j < manager->saved_profile_count; ++j) {
+                    const network_saved_wifi_config_t *profile =
+                        &manager->saved_profiles[j];
+                    if (strcmp(profile->ssid, manager->preferred_wifi_ssid) == 0 &&
+                        (best_profile == NULL || records[i].rssi > best_rssi)) {
+                        best_profile = profile;
+                        best_rssi = records[i].rssi;
+                        preferred_found = true;
+                    }
+                }
+            }
+        }
+
+        if (!preferred_found) {
+            best_profile = NULL;
+            best_rssi = INT8_MIN;
+            for (uint16_t i = 0; i < count; ++i) {
+                for (uint8_t j = 0; j < manager->saved_profile_count; ++j) {
+                    const network_saved_wifi_config_t *profile =
+                        &manager->saved_profiles[j];
+                    if (strncmp((const char *)records[i].ssid, profile->ssid,
+                                sizeof(records[i].ssid)) == 0 &&
+                        (best_profile == NULL || records[i].rssi > best_rssi)) {
+                        best_profile = profile;
+                        best_rssi = records[i].rssi;
+                    }
                 }
             }
         }
