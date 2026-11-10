@@ -60,23 +60,23 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
     size_t remaining;
 
     if (!ota_authenticate(req)) {
-        return ota_send_error(req, HTTPD_401,
+        return ota_send_error(req, "401 Unauthorized",
                               "Unauthorized: invalid OTA token");
     }
 
     if (req->content_len < sizeof(esp_image_header_t)) {
-        return ota_send_error(req, HTTPD_400,
+        return ota_send_error(req, "400 Bad Request",
                               "Invalid firmware image length");
     }
 
     update_partition = esp_ota_get_next_update_partition(NULL);
     if (update_partition == NULL) {
-        return ota_send_error(req, HTTPD_500,
+        return ota_send_error(req, "500 Internal Server Error",
                               "No OTA update partition available");
     }
 
     if (req->content_len > update_partition->size) {
-        return ota_send_error(req, HTTPD_413,
+        return ota_send_error(req, "413 Content Too Large",
                               "Firmware image exceeds OTA partition size");
     }
 
