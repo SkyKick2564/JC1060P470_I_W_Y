@@ -84,6 +84,7 @@ typedef struct network_manager {
     bool netif_initialized;
     bool initialized;
     bool started;
+    bool wifi_connecting;
 
     network_saved_wifi_config_t saved_profiles[NETWORK_MANAGER_MAX_SAVED_WIFI];
     uint8_t saved_profile_count;
