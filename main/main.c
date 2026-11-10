@@ -10,30 +10,6 @@ static const char *TAG = "app";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 
 /*
- * Start the local OTA service once the station has obtained an IP address.
- * Network Manager remains responsible for Wi-Fi connection/reconnection.
- */
-static void on_network_got_ip(
-    void *arg,
-    esp_event_base_t event_base,
-    int32_t event_id,
-    void *event_data)
-{
-    (void)arg;
-    (void)event_base;
-    (void)event_id;
-    (void)event_data;
-
-    esp_err_t err = ota_manager_start();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "OTA service start failed: %s", esp_err_to_name(err));
-        return;
-    }
-
-    ESP_LOGI(TAG, "OTA service is available on the local network");
-}
-
-/*
  * Called when Network Manager completes a Wi-Fi scan.
  */
 static void on_wifi_scan_updated(
@@ -86,79 +62,52 @@ void app_main(void)
     esp_err_t err;
 
     err = network_manager_init(&network);
-
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Init failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Network Manager init failed: %s",
+                 esp_err_to_name(err));
         return;
     }
-
     ESP_LOGI(TAG, "Network Manager initialized");
 
-    // err = network_manager_set_wifi_config(
-    //     network,
-    //     "iPhone Pom",
-    //     "Pom123456"
-    // );
+    err = ota_manager_init(network);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "OTA Manager init failed: %s", esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "OTA Manager initialized");
 
-    // if (err != ESP_OK) {
-    //     ESP_LOGE(TAG, "Wi-Fi config failed: %s", esp_err_to_name(err));
-    //     return;
-    // }
-
-    ESP_LOGI(TAG, "Wi-Fi configuration set");
-
-    /* 3. Register scan update event */
     err = esp_event_handler_register(
         NETWORK_MANAGER_EVENT,
         NETWORK_EVENT_SCAN_UPDATED,
         on_wifi_scan_updated,
         network
     );
-
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Event registration failed: %s",
+        ESP_LOGE(TAG, "Wi-Fi scan event registration failed: %s",
                  esp_err_to_name(err));
         return;
     }
 
-    ESP_LOGI(TAG, "Wi-Fi scan event registered");
-
-    /* Start OTA only after Network Manager reports a valid IP address. */
-    err = esp_event_handler_register(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_GOT_IP,
-        on_network_got_ip,
-        NULL
-    );
-
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Network event registration failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-
-    ESP_LOGI(TAG, "Network GOT_IP event registered");
-
-
-    /* 4. Start Network Manager */
     err = network_manager_start(network);
-
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Start failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Network Manager start failed: %s",
+                 esp_err_to_name(err));
         return;
     }
-
     ESP_LOGI(TAG, "Network Manager started");
 
-    /* 5. Simulate App opening Wi-Fi settings */
-    ESP_LOGI(TAG, "App: Opening Wi-Fi settings");
+    err = ota_manager_start();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "OTA Manager start failed: %s", esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "OTA Manager task started");
 
+    /* Existing Wi-Fi scan test harness. */
     err = network_manager_start_scan(network);
-
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Start scan failed: %s", esp_err_to_name(err));
         return;
     }
-
-    ESP_LOGI(TAG, "App: Wi-Fi scanning enabled");
+    ESP_LOGI(TAG, "Wi-Fi scanning enabled");
 }
