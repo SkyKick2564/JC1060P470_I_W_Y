@@ -64,3 +64,14 @@ and do not expose port 8080 to the internet.
 
 Do not change the version file while the server is running. Restart the server
 after every build so it serves the new image and its matching manifest.
+
+## Rollback protection
+
+Rollback confirmation is owned by the OTA Manager. The application starts
+Network Manager and completes its critical startup steps first, then calls
+`ota_manager_start()`. At that point OTA Manager checks whether the running
+image is `ESP_OTA_IMG_PENDING_VERIFY` and confirms it with ESP-IDF. If the
+application reboots before reaching `ota_manager_start()`, the bootloader can
+roll back to the previous firmware. Keep `ota_manager_start()` after all
+critical application initialization (for example, display and touch startup
+when those are added).
