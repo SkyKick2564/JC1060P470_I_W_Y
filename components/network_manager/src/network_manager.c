@@ -12,6 +12,7 @@
 
 #define NETWORK_MANAGER_HOSTED_TIMEOUT_MS 10000
 #define NETWORK_MANAGER_SCAN_INTERVAL_MS 3000
+#define NETWORK_MANAGER_AP_SCAN_INTERVAL_MS 5000
 
 static const char *TAG = "network_manager";
 
@@ -437,6 +438,7 @@ static esp_err_t network_manager_process_request(
 
         manager->started = false;
         manager->scan_pending = false;
+        manager->ap_scan_enabled = false;
 
         err = wifi_manager_stop();
         if (err != ESP_OK) {
@@ -504,6 +506,25 @@ static esp_err_t network_manager_process_request(
         ESP_LOGI(TAG, "Wi-Fi configuration erased");
         break;
 
+    case NETWORK_REQUEST_START_SCAN:
+        if (!manager->initialized || !manager->started) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        manager->ap_scan_enabled = true;
+        manager->ap_scan_due = xTaskGetTickCount();
+        ESP_LOGI(TAG, "Wi-Fi AP scan started");
+        break;
+
+    case NETWORK_REQUEST_STOP_SCAN:
+        if (!manager->initialized) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        manager->ap_scan_enabled = false;
+        ESP_LOGI(TAG, "Wi-Fi AP scan stopped");
+        break;
+
     case NETWORK_REQUEST_DEINIT:
         if (!manager->initialized || manager->started) {
             return ESP_ERR_INVALID_STATE;
@@ -538,23 +559,46 @@ static esp_err_t network_manager_process_request(
 
 static void network_manager_scan_and_reconnect(network_manager_t *manager)
 {
-    if (!manager->scan_pending ||
-        (int32_t)(xTaskGetTickCount() - manager->scan_due) < 0) {
+    TickType_t now = xTaskGetTickCount();
+    bool reconnect_due = manager->scan_pending &&
+        (int32_t)(now - manager->scan_due) >= 0;
+    bool ap_scan_due = manager->ap_scan_enabled &&
+        (int32_t)(now - manager->ap_scan_due) >= 0;
+
+    if (!reconnect_due && !ap_scan_due) {
         return;
     }
 
-    manager->scan_pending = false;
+    if (reconnect_due) {
+        manager->scan_pending = false;
+    }
 
-    if (!manager->started || !manager->config_valid) {
+    if (!manager->started) {
         return;
     }
 
-    ESP_LOGI(TAG, "Scanning for saved Wi-Fi network: %s", manager->ssid);
+    bool wifi_connected;
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    wifi_connected = manager->status.wifi_connected;
+    xSemaphoreGive(manager->status_mutex);
+
+    if (!ap_scan_due && (!manager->config_valid || wifi_connected)) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Scanning for Wi-Fi access points");
 
     esp_err_t err = wifi_manager_scan();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Wi-Fi scan failed: %s", esp_err_to_name(err));
-        network_manager_schedule_scan(manager);
+
+        if (manager->config_valid && !wifi_connected) {
+            network_manager_schedule_scan(manager);
+        }
+        if (manager->ap_scan_enabled) {
+            manager->ap_scan_due = xTaskGetTickCount() +
+                pdMS_TO_TICKS(NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
+        }
         return;
     }
 
@@ -562,31 +606,61 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     uint16_t total_found = 0;
     const wifi_ap_record_t *records =
         wifi_manager_get_scan_results(&count, &total_found);
-    bool saved_network_found = false;
 
-    for (uint16_t i = 0; i < count; ++i) {
-        if (strncmp((const char *)records[i].ssid,
-                    manager->ssid,
-                    sizeof(records[i].ssid)) == 0) {
-            saved_network_found = true;
-            ESP_LOGI(TAG, "Saved Wi-Fi network found (RSSI: %d dBm)",
-                     records[i].rssi);
-            break;
+    if (count > NETWORK_MANAGER_MAX_SCAN_RESULTS) {
+        count = NETWORK_MANAGER_MAX_SCAN_RESULTS;
+    }
+
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    if (count > 0) {
+        memcpy(manager->scan_records, records,
+               count * sizeof(manager->scan_records[0]));
+    }
+    if (count < NETWORK_MANAGER_MAX_SCAN_RESULTS) {
+        memset(&manager->scan_records[count], 0,
+               (NETWORK_MANAGER_MAX_SCAN_RESULTS - count) *
+               sizeof(manager->scan_records[0]));
+    }
+    manager->scan_count = count;
+    manager->scan_total_found = total_found;
+    xSemaphoreGive(manager->status_mutex);
+
+    ESP_LOGI(TAG, "Wi-Fi scan complete: %u APs found, %u cached",
+             total_found, count);
+    network_manager_post_event(NETWORK_EVENT_SCAN_UPDATED);
+
+    if (manager->config_valid && !wifi_connected) {
+        bool saved_network_found = false;
+
+        for (uint16_t i = 0; i < count; ++i) {
+            if (strncmp((const char *)records[i].ssid,
+                        manager->ssid,
+                        sizeof(records[i].ssid)) == 0) {
+                saved_network_found = true;
+                ESP_LOGI(TAG, "Saved Wi-Fi network found (RSSI: %d dBm)",
+                         records[i].rssi);
+                break;
+            }
+        }
+
+        if (saved_network_found) {
+            ESP_LOGI(TAG, "Attempting Wi-Fi reconnect");
+            err = wifi_manager_connect();
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "Reconnect request failed: %s",
+                         esp_err_to_name(err));
+                network_manager_schedule_scan(manager);
+            }
+        } else {
+            ESP_LOGI(TAG, "Saved Wi-Fi network not found (%u APs scanned)",
+                     total_found);
+            network_manager_schedule_scan(manager);
         }
     }
 
-    if (!saved_network_found) {
-        ESP_LOGI(TAG, "Saved Wi-Fi network not found (%u APs scanned)",
-                 total_found);
-        network_manager_schedule_scan(manager);
-        return;
-    }
-
-    ESP_LOGI(TAG, "Attempting Wi-Fi reconnect");
-    err = wifi_manager_connect();
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Reconnect request failed: %s", esp_err_to_name(err));
-        network_manager_schedule_scan(manager);
+    if (manager->ap_scan_enabled) {
+        manager->ap_scan_due = xTaskGetTickCount() +
+            pdMS_TO_TICKS(NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
     }
 }
 
@@ -598,12 +672,25 @@ static void network_manager_task(void *arg)
     for (;;) {
         TickType_t wait_ticks = portMAX_DELAY;
 
+        TickType_t now = xTaskGetTickCount();
+
         if (manager->scan_pending) {
-            TickType_t now = xTaskGetTickCount();
-            if ((int32_t)(manager->scan_due - now) > 0) {
-                wait_ticks = manager->scan_due - now;
-            } else {
-                wait_ticks = 0;
+            TickType_t remaining =
+                (int32_t)(manager->scan_due - now) > 0
+                    ? manager->scan_due - now
+                    : 0;
+            if (remaining < wait_ticks) {
+                wait_ticks = remaining;
+            }
+        }
+
+        if (manager->ap_scan_enabled) {
+            TickType_t remaining =
+                (int32_t)(manager->ap_scan_due - now) > 0
+                    ? manager->ap_scan_due - now
+                    : 0;
+            if (remaining < wait_ticks) {
+                wait_ticks = remaining;
             }
         }
 
@@ -899,5 +986,65 @@ esp_err_t network_manager_get_status(
     memcpy(status, &handle->status, sizeof(*status));
     xSemaphoreGive(handle->status_mutex);
 
+    return ESP_OK;
+}
+
+esp_err_t network_manager_start_scan(network_manager_handle_t handle)
+{
+    if (handle == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    network_request_t request = {
+        .type = NETWORK_REQUEST_START_SCAN
+    };
+    return network_manager_submit(handle, &request);
+}
+
+esp_err_t network_manager_stop_scan(network_manager_handle_t handle)
+{
+    if (handle == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    network_request_t request = {
+        .type = NETWORK_REQUEST_STOP_SCAN
+    };
+    return network_manager_submit(handle, &request);
+}
+
+esp_err_t network_manager_get_scan_results(
+    network_manager_handle_t handle,
+    wifi_ap_record_t *records,
+    uint16_t capacity,
+    uint16_t *count,
+    uint16_t *total_found)
+{
+    if (handle == NULL || count == NULL || total_found == NULL ||
+        (records == NULL && capacity != 0)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(handle->status_mutex, portMAX_DELAY);
+
+    if (!handle->initialized) {
+        xSemaphoreGive(handle->status_mutex);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    *count = handle->scan_count;
+    *total_found = handle->scan_total_found;
+
+    if (capacity < handle->scan_count) {
+        xSemaphoreGive(handle->status_mutex);
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    if (handle->scan_count > 0) {
+        memcpy(records, handle->scan_records,
+               handle->scan_count * sizeof(handle->scan_records[0]));
+    }
+
+    xSemaphoreGive(handle->status_mutex);
     return ESP_OK;
 }
