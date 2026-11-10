@@ -8,6 +8,7 @@
 
 #include "network_manager.h"
 #include "ota_manager.h"
+#include "app_config.h"
 
 static const char *TAG = "app";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
@@ -98,7 +99,7 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Network Manager initialized");
 
-    err = ota_manager_init(network);
+    err = ota_manager_init(network, &APP_OTA_CONFIG);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
                  esp_err_to_name(err));
