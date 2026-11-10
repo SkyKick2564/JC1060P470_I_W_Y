@@ -6,12 +6,14 @@ idf_component_register(
         "include"
 
     REQUIRES
-        esp_http_server
+        network_manager
+        esp_http_client
         app_update
-        esp_event
-        esp_system
-        freertos
         esp_partition
         esp_app_format
+        json
+        mbedtls
+        esp_system
+        freertos
         log
 )
