@@ -8,6 +8,7 @@
 
 typedef struct {
     const char *manifest_url;
+    /* Optional: NULL or empty for public OTA endpoints. */
     const char *auth_token;
     uint32_t check_interval_sec;
 } ota_manager_config_t;
