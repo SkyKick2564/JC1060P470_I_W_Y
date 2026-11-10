@@ -13,7 +13,7 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
-#include "mbedtls/sha256.h"
+#include "psa/crypto.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -315,9 +315,18 @@ static esp_err_t ota_download_and_install(const ota_manifest_t *manifest)
         goto cleanup_http;
     }
 
-    mbedtls_sha256_context sha;
-    mbedtls_sha256_init(&sha);
-    if (mbedtls_sha256_starts_ret(&sha, 0) != 0) {
+    psa_hash_operation_t sha = PSA_HASH_OPERATION_INIT;
+    psa_status_t psa_status = psa_crypto_init();
+    if (psa_status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "PSA crypto initialization failed: %d",
+                 (int)psa_status);
+        err = ESP_FAIL;
+        goto abort_ota;
+    }
+
+    psa_status = psa_hash_setup(&sha, PSA_ALG_SHA_256);
+    if (psa_status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "PSA SHA-256 setup failed: %d", (int)psa_status);
         err = ESP_FAIL;
         goto abort_ota;
     }
@@ -344,7 +353,9 @@ static esp_err_t ota_download_and_install(const ota_manifest_t *manifest)
             goto abort_ota;
         }
 
-        if (mbedtls_sha256_update_ret(&sha, buffer, (size_t)received) != 0) {
+        psa_status = psa_hash_update(&sha, buffer, (size_t)received);
+        if (psa_status != PSA_SUCCESS) {
+            ESP_LOGE(TAG, "PSA SHA-256 update failed: %d", (int)psa_status);
             err = ESP_FAIL;
             goto abort_ota;
         }
@@ -354,12 +365,15 @@ static esp_err_t ota_download_and_install(const ota_manifest_t *manifest)
                  (unsigned)downloaded, (unsigned)manifest->size);
     }
 
-    unsigned char digest[32];
-    if (mbedtls_sha256_finish_ret(&sha, digest) != 0) {
+    uint8_t digest[32];
+    size_t digest_length = 0;
+    psa_status = psa_hash_finish(
+        &sha, digest, sizeof(digest), &digest_length);
+    if (psa_status != PSA_SUCCESS || digest_length != sizeof(digest)) {
+        ESP_LOGE(TAG, "PSA SHA-256 finish failed: %d", (int)psa_status);
         err = ESP_FAIL;
         goto abort_ota;
     }
-    mbedtls_sha256_free(&sha);
 
     if (!ota_sha256_matches(digest, manifest->sha256)) {
         ESP_LOGE(TAG, "Firmware SHA-256 does not match manifest");
@@ -391,7 +405,7 @@ static esp_err_t ota_download_and_install(const ota_manifest_t *manifest)
     return ESP_OK;
 
 abort_ota:
-    mbedtls_sha256_free(&sha);
+    psa_hash_abort(&sha);
     esp_ota_abort(ota_handle);
 cleanup_http:
     esp_http_client_close(client);
