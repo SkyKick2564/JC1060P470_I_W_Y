@@ -81,6 +81,17 @@ void app_main(void)
         ESP_LOGI(TAG, "OTA Manager initialized");
     }
 
+    err = network_manager_set_wifi_config(
+        network,
+        "PoomChalermpol_2.4G",
+        "pomchalermpol123"
+    );
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Wi-Fi config failed: %s", esp_err_to_name(err));
+        return;
+    }
+
     err = esp_event_handler_register(
         NETWORK_MANAGER_EVENT,
         NETWORK_EVENT_SCAN_UPDATED,

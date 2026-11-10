@@ -4323,6 +4323,12 @@ CONFIG_WL_SECTOR_SIZE=4096
 # end of Wear Levelling
 
 #
+# OTA Manager
+#
+CONFIG_OTA_MANAGER_AUTH_TOKEN="JC1060P470_OTA_2026_SecureKey"
+# end of OTA Manager
+
+#
 # CMake Utilities
 #
 # default:
