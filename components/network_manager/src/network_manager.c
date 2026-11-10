@@ -16,6 +16,13 @@
 
 static const char *TAG = "network_manager";
 
+static void network_manager_event_handler(
+    void *arg,
+    esp_event_base_t event_base,
+    int32_t event_id,
+    void *event_data
+);
+
 ESP_EVENT_DEFINE_BASE(NETWORK_MANAGER_EVENT);
 
 static void network_manager_post_event(network_event_id_t event_id)
@@ -270,7 +277,9 @@ static void network_manager_process_wifi_connected(
 {
     xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
 
-    strlcpy(manager->status.ssid, ssid, sizeof(manager->status.ssid));
+    size_t ssid_len = strnlen(ssid, sizeof(manager->status.ssid) - 1);
+    memcpy(manager->status.ssid, ssid, ssid_len);
+    manager->status.ssid[ssid_len] = '\0';
     manager->status.wifi_connected = true;
     manager->status.has_ip = false;
     manager->status.ip_address[0] = '\0';
