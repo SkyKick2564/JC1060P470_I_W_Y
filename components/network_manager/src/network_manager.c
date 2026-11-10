@@ -318,7 +318,8 @@ static void network_manager_process_wifi_connected(
 
     xSemaphoreGive(manager->status_mutex);
 
-    /* A successful Wi-Fi association ends reconnect scanning. */
+    /* A successful Wi-Fi association ends the connection attempt. */
+    manager->wifi_connecting = false;
     manager->reconnect_scan_pending = false;
 
     ESP_LOGI(TAG, "Wi-Fi connected: %s", ssid);
@@ -344,6 +345,8 @@ static void network_manager_process_wifi_disconnected(
         : NETWORK_STATE_STOPPED;
 
     xSemaphoreGive(manager->status_mutex);
+
+    manager->wifi_connecting = false;
 
     ESP_LOGW(TAG, "Wi-Fi disconnected, reason: %u", reason);
 
@@ -476,6 +479,7 @@ static esp_err_t network_manager_process_request(
         }
 
         manager->started = false;
+        manager->wifi_connecting = false;
         manager->reconnect_scan_pending = false;
         manager->ap_scan_enabled = false;
         manager->ap_scan_pending = false;
@@ -639,6 +643,23 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
         return;
     }
 
+    /*
+     * Do not scan while association is in progress. Keep the Settings scan
+     * request pending, but move it forward to avoid a busy loop.
+     */
+    if (manager->wifi_connecting) {
+        manager->reconnect_scan_pending = false;
+
+        if (manager->ap_scan_enabled) {
+            manager->ap_scan_due = xTaskGetTickCount() +
+                pdMS_TO_TICKS(NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
+            manager->ap_scan_pending = true;
+        } else {
+            manager->ap_scan_pending = false;
+        }
+        return;
+    }
+
     bool wifi_connected;
     xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
     wifi_connected = manager->status.wifi_connected;
@@ -731,8 +752,12 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
             if (err == ESP_OK) {
                 ESP_LOGI(TAG, "Attempting Wi-Fi connection");
                 err = wifi_manager_connect();
+                if (err == ESP_OK) {
+                    manager->wifi_connecting = true;
+                }
             }
             if (err != ESP_OK) {
+                manager->wifi_connecting = false;
                 ESP_LOGW(TAG, "Connection request failed: %s", esp_err_to_name(err));
             }
         } else {
@@ -744,7 +769,8 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     if (manager->ap_scan_enabled) {
         network_manager_schedule_ap_scan(manager);
     }
-    if (manager->saved_profile_count > 0 && !wifi_connected) {
+    if (manager->saved_profile_count > 0 &&
+        !wifi_connected && !manager->wifi_connecting) {
         network_manager_schedule_reconnect_scan(manager);
     }
 }
