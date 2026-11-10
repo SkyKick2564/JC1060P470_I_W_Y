@@ -6,6 +6,7 @@
 
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_app_format.h"
 #include "esp_partition.h"
 #include "esp_system.h"
 #include "esp_http_server.h"
@@ -56,7 +57,6 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
 {
     esp_err_t err;
     esp_ota_handle_t ota_handle = 0;
-    bool ota_in_progress = false;
     const esp_partition_t *update_partition;
     uint8_t buffer[OTA_WRITE_CHUNK_SIZE];
     size_t remaining;
@@ -90,7 +90,6 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
         ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
         return ota_send_error(req, HTTPD_500, "Could not begin OTA update");
     }
-    ota_in_progress = true;
 
     remaining = req->content_len;
     while (remaining > 0) {
@@ -105,7 +104,6 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
         if (received <= 0) {
             ESP_LOGE(TAG, "Firmware receive failed: %d", received);
             esp_ota_abort(ota_handle);
-            ota_in_progress = false;
             return ota_send_error(req, HTTPD_500,
                                   "Firmware upload interrupted");
         }
@@ -114,8 +112,7 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_ota_write failed: %s", esp_err_to_name(err));
             esp_ota_abort(ota_handle);
-            ota_in_progress = false;
-            return ota_send_error(req, HTTPD_500,
+                    return ota_send_error(req, HTTPD_500,
                                   "Could not write firmware image");
         }
 
