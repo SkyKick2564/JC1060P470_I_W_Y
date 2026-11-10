@@ -11,7 +11,8 @@
 #include "nvs_flash.h"
 
 #define NETWORK_MANAGER_HOSTED_TIMEOUT_MS 10000
-#define NETWORK_MANAGER_SCAN_INTERVAL_MS 3000
+#define NETWORK_MANAGER_RECONNECT_SCAN_INTERVAL_MS 5000
+#define NETWORK_MANAGER_AP_SCAN_INTERVAL_MS 5000
 
 static const char *TAG = "network_manager";
 
@@ -40,20 +41,35 @@ static void network_manager_post_event(network_event_id_t event_id)
     }
 }
 
-static void network_manager_schedule_scan(network_manager_t *manager)
+static void network_manager_schedule_reconnect_scan(
+    network_manager_t *manager)
 {
-    if (!manager->started ||
-        (!manager->config_valid && !manager->ap_scan_enabled)) {
-        manager->scan_pending = false;
+    if (!manager->started || !manager->config_valid) {
+        manager->reconnect_scan_pending = false;
         return;
     }
 
-    manager->scan_due = xTaskGetTickCount() +
-                        pdMS_TO_TICKS(NETWORK_MANAGER_SCAN_INTERVAL_MS);
-    manager->scan_pending = true;
+    manager->reconnect_scan_due = xTaskGetTickCount() +
+        pdMS_TO_TICKS(NETWORK_MANAGER_RECONNECT_SCAN_INTERVAL_MS);
+    manager->reconnect_scan_pending = true;
 
-    ESP_LOGI(TAG, "Next Wi-Fi scan in %u ms",
-             NETWORK_MANAGER_SCAN_INTERVAL_MS);
+    ESP_LOGI(TAG, "Next reconnect scan in %u ms",
+             NETWORK_MANAGER_RECONNECT_SCAN_INTERVAL_MS);
+}
+
+static void network_manager_schedule_ap_scan(network_manager_t *manager)
+{
+    if (!manager->started || !manager->ap_scan_enabled) {
+        manager->ap_scan_pending = false;
+        return;
+    }
+
+    manager->ap_scan_due = xTaskGetTickCount() +
+        pdMS_TO_TICKS(NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
+    manager->ap_scan_pending = true;
+
+    ESP_LOGI(TAG, "Next AP list scan in %u ms",
+             NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
 }
 
 static esp_err_t network_manager_load_wifi_config(network_manager_t *manager)
@@ -274,6 +290,9 @@ static void network_manager_process_wifi_connected(
 
     xSemaphoreGive(manager->status_mutex);
 
+    /* A successful Wi-Fi association ends reconnect scanning. */
+    manager->reconnect_scan_pending = false;
+
     ESP_LOGI(TAG, "Wi-Fi connected: %s", ssid);
     network_manager_post_event(NETWORK_EVENT_WIFI_CONNECTED);
 }
@@ -306,9 +325,9 @@ static void network_manager_process_wifi_disconnected(
     network_manager_post_event(NETWORK_EVENT_WIFI_DISCONNECTED);
 
     if (manager->started && manager->config_valid) {
-        network_manager_schedule_scan(manager);
+        network_manager_schedule_reconnect_scan(manager);
     } else {
-        manager->scan_pending = false;
+        manager->reconnect_scan_pending = false;
     }
 }
 
@@ -339,10 +358,12 @@ static void network_manager_process_got_ip(
 
     xSemaphoreGive(manager->status_mutex);
 
+    manager->reconnect_scan_pending = false;
+
     if (manager->ap_scan_enabled) {
-        network_manager_schedule_scan(manager);
+        network_manager_schedule_ap_scan(manager);
     } else {
-        manager->scan_pending = false;
+        manager->ap_scan_pending = false;
     }
     network_manager_post_event(NETWORK_EVENT_GOT_IP);
 }
@@ -416,7 +437,8 @@ static esp_err_t network_manager_process_request(
         }
 
         manager->started = true;
-        manager->scan_pending = false;
+        manager->reconnect_scan_pending = false;
+        manager->ap_scan_pending = false;
 
         xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
         manager->status.state = NETWORK_STATE_STARTED;
@@ -427,7 +449,7 @@ static esp_err_t network_manager_process_request(
             if (err != ESP_OK) {
                 ESP_LOGW(TAG, "Initial connect request failed: %s",
                          esp_err_to_name(err));
-                network_manager_schedule_scan(manager);
+                network_manager_schedule_reconnect_scan(manager);
             }
         }
 
@@ -441,8 +463,9 @@ static esp_err_t network_manager_process_request(
         }
 
         manager->started = false;
-        manager->scan_pending = false;
+        manager->reconnect_scan_pending = false;
         manager->ap_scan_enabled = false;
+        manager->ap_scan_pending = false;
 
         err = wifi_manager_stop();
         if (err != ESP_OK) {
@@ -516,9 +539,9 @@ static esp_err_t network_manager_process_request(
         }
 
         manager->ap_scan_enabled = true;
-        manager->scan_due = xTaskGetTickCount();
-        manager->scan_pending = true;
-        ESP_LOGI(TAG, "Wi-Fi scan updates enabled");
+        manager->ap_scan_due = xTaskGetTickCount();
+        manager->ap_scan_pending = true;
+        ESP_LOGI(TAG, "Wi-Fi AP list updates enabled");
         break;
 
     case NETWORK_REQUEST_STOP_SCAN:
@@ -527,16 +550,9 @@ static esp_err_t network_manager_process_request(
         }
 
         manager->ap_scan_enabled = false;
+        manager->ap_scan_pending = false;
 
-        xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
-        bool wifi_connected = manager->status.wifi_connected;
-        xSemaphoreGive(manager->status_mutex);
-
-        if (!manager->config_valid || wifi_connected) {
-            manager->scan_pending = false;
-        }
-
-        ESP_LOGI(TAG, "Wi-Fi scan updates disabled");
+        ESP_LOGI(TAG, "Wi-Fi AP list updates disabled");
         break;
 
     case NETWORK_REQUEST_DEINIT:
@@ -574,16 +590,18 @@ static esp_err_t network_manager_process_request(
 static void network_manager_scan_and_reconnect(network_manager_t *manager)
 {
     TickType_t now = xTaskGetTickCount();
-    bool scan_due = manager->scan_pending &&
-        (int32_t)(now - manager->scan_due) >= 0;
+    bool ap_scan_due = manager->ap_scan_pending &&
+        (int32_t)(now - manager->ap_scan_due) >= 0;
+    bool reconnect_scan_due = manager->reconnect_scan_pending &&
+        (int32_t)(now - manager->reconnect_scan_due) >= 0;
 
-    if (!scan_due) {
+    if (!ap_scan_due && !reconnect_scan_due) {
         return;
     }
 
-    manager->scan_pending = false;
-
     if (!manager->started) {
+        manager->ap_scan_pending = false;
+        manager->reconnect_scan_pending = false;
         return;
     }
 
@@ -593,7 +611,16 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     xSemaphoreGive(manager->status_mutex);
 
     bool reconnect_needed = manager->config_valid && !wifi_connected;
-    if (!manager->ap_scan_enabled && !reconnect_needed) {
+    if (!reconnect_needed) {
+        manager->reconnect_scan_pending = false;
+        reconnect_scan_due = false;
+    }
+
+    /* One radio scan can serve both purposes when both timers are due. */
+    manager->ap_scan_pending = false;
+    manager->reconnect_scan_pending = false;
+
+    if (!ap_scan_due && !reconnect_scan_due) {
         return;
     }
 
@@ -603,9 +630,15 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Wi-Fi scan failed: %s", esp_err_to_name(err));
 
-        if (manager->ap_scan_enabled ||
-            (manager->config_valid && !wifi_connected)) {
-            network_manager_schedule_scan(manager);
+        if (manager->ap_scan_enabled) {
+            manager->ap_scan_due = xTaskGetTickCount() +
+                pdMS_TO_TICKS(NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
+            manager->ap_scan_pending = true;
+        }
+        if (manager->config_valid && !wifi_connected) {
+            manager->reconnect_scan_due = xTaskGetTickCount() +
+                pdMS_TO_TICKS(NETWORK_MANAGER_RECONNECT_SCAN_INTERVAL_MS);
+            manager->reconnect_scan_pending = true;
         }
         return;
     }
@@ -635,7 +668,10 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
 
     ESP_LOGI(TAG, "Wi-Fi scan complete: %u APs found, %u cached",
              total_found, count);
-    network_manager_post_event(NETWORK_EVENT_SCAN_UPDATED);
+
+    if (manager->ap_scan_enabled && ap_scan_due) {
+        network_manager_post_event(NETWORK_EVENT_SCAN_UPDATED);
+    }
 
     if (reconnect_needed) {
         bool saved_network_found = false;
@@ -664,9 +700,11 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
         }
     }
 
-    if (manager->ap_scan_enabled ||
-        (manager->config_valid && !wifi_connected)) {
-        network_manager_schedule_scan(manager);
+    if (manager->ap_scan_enabled) {
+        network_manager_schedule_ap_scan(manager);
+    }
+    if (manager->config_valid && !wifi_connected) {
+        network_manager_schedule_reconnect_scan(manager);
     }
 }
 
@@ -680,10 +718,20 @@ static void network_manager_task(void *arg)
 
         TickType_t now = xTaskGetTickCount();
 
-        if (manager->scan_pending) {
+        if (manager->ap_scan_pending) {
             TickType_t remaining =
-                (int32_t)(manager->scan_due - now) > 0
-                    ? manager->scan_due - now
+                (int32_t)(manager->ap_scan_due - now) > 0
+                    ? manager->ap_scan_due - now
+                    : 0;
+            if (remaining < wait_ticks) {
+                wait_ticks = remaining;
+            }
+        }
+
+        if (manager->reconnect_scan_pending) {
+            TickType_t remaining =
+                (int32_t)(manager->reconnect_scan_due - now) > 0
+                    ? manager->reconnect_scan_due - now
                     : 0;
             if (remaining < wait_ticks) {
                 wait_ticks = remaining;
