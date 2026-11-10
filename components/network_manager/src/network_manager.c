@@ -551,8 +551,6 @@ static esp_err_t network_manager_process_request(
         break;
     }
 
-
-
     case NETWORK_REQUEST_CLEAR_CONFIG:
         if (!manager->initialized || manager->started) {
             return ESP_ERR_INVALID_STATE;
@@ -567,7 +565,7 @@ static esp_err_t network_manager_process_request(
         manager->saved_profile_count = 0;
 
         network_manager_post_event(NETWORK_EVENT_CONFIG_CHANGED);
-        ESP_LOGI(TAG, "Wi-Fi configuration erased");
+        ESP_LOGI(TAG, "Saved Wi-Fi profiles cleared");
         break;
 
     case NETWORK_REQUEST_START_SCAN:
