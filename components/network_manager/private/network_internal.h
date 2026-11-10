@@ -18,7 +18,6 @@
 #define NETWORK_MANAGER_NVS_NAMESPACE          "network_mgr"
 #define NETWORK_MANAGER_NVS_WIFI_KEY           "wifi_profiles"
 #define NETWORK_MANAGER_NVS_LEGACY_WIFI_KEY    "wifi_config"
-#define NETWORK_MANAGER_MAX_SAVED_WIFI         20
 
 typedef enum {
     NETWORK_MESSAGE_REQUEST,
