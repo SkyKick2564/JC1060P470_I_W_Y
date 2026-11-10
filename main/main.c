@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 
 #include "esp_log.h"
@@ -87,6 +88,7 @@ void app_main(void)
 {
     network_manager_handle_t network = NULL;
     esp_err_t err;
+    bool ota_initialized = false;
 
     err = network_manager_init(&network);
     if (err != ESP_OK) {
@@ -98,10 +100,12 @@ void app_main(void)
 
     err = ota_manager_init(network);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "OTA Manager init failed: %s", esp_err_to_name(err));
-        return;
+        ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
+                 esp_err_to_name(err));
+    } else {
+        ota_initialized = true;
+        ESP_LOGI(TAG, "OTA Manager initialized");
     }
-    ESP_LOGI(TAG, "OTA Manager initialized");
 
     err = esp_event_handler_register(
         NETWORK_MANAGER_EVENT,
@@ -123,12 +127,15 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Network Manager started");
 
-    err = ota_manager_start();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "OTA Manager start failed: %s", esp_err_to_name(err));
-        return;
+    if (ota_initialized) {
+        err = ota_manager_start();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "OTA Manager start failed; networking will continue: %s",
+                     esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "OTA Manager task started");
+        }
     }
-    ESP_LOGI(TAG, "OTA Manager task started");
 
     confirm_running_firmware_if_pending();
 
