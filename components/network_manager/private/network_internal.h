@@ -15,8 +15,10 @@
 #define NETWORK_MANAGER_QUEUE_LENGTH       16
 #define NETWORK_MANAGER_TASK_STACK_SIZE    6144
 #define NETWORK_MANAGER_TASK_PRIORITY      5
-#define NETWORK_MANAGER_NVS_NAMESPACE      "network_mgr"
-#define NETWORK_MANAGER_NVS_WIFI_KEY      "wifi_config"
+#define NETWORK_MANAGER_NVS_NAMESPACE          "network_mgr"
+#define NETWORK_MANAGER_NVS_WIFI_KEY           "wifi_profiles"
+#define NETWORK_MANAGER_NVS_LEGACY_WIFI_KEY    "wifi_config"
+#define NETWORK_MANAGER_MAX_SAVED_WIFI         20
 
 typedef enum {
     NETWORK_MESSAGE_REQUEST,
@@ -41,6 +43,11 @@ typedef struct {
     char ssid[33];
     char password[65];
 } network_saved_wifi_config_t;
+
+typedef struct {
+    uint8_t count;
+    network_saved_wifi_config_t profiles[NETWORK_MANAGER_MAX_SAVED_WIFI];
+} network_saved_wifi_profiles_t;
 
 typedef struct {
     network_request_type_t type;
@@ -78,10 +85,9 @@ typedef struct network_manager {
     bool netif_initialized;
     bool initialized;
     bool started;
-    bool config_valid;
 
-    char ssid[33];
-    char password[65];
+    network_saved_wifi_config_t saved_profiles[NETWORK_MANAGER_MAX_SAVED_WIFI];
+    uint8_t saved_profile_count;
     network_status_t status;
 
     bool reconnect_scan_pending;
