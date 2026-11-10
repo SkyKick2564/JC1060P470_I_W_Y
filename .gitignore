@@ -1,0 +1,20 @@
+
+# ESP-IDF build
+build/
+
+# ESP-IDF managed components
+managed_components/
+
+# Python
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# ESP-IDF generated files
+sdkconfig.old
+
+# Git
+.DS_Store
+Thumbs.db

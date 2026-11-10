@@ -1,0 +1,7 @@
+dependencies:
+  guition-jc/guition_boards:
+    version: "0.1.4"
+  lvgl/lvgl:
+    version: "9.5.*"
+  espressif/esp_lvgl_port:
+    version: "^2.3.0"
