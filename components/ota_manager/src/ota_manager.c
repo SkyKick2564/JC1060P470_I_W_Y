@@ -1,7 +1,5 @@
 #include "ota_manager.h"
 
-#include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -112,7 +110,7 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "esp_ota_write failed: %s", esp_err_to_name(err));
             esp_ota_abort(ota_handle);
-                    return ota_send_error(req, HTTPD_500,
+            return ota_send_error(req, HTTPD_500,
                                   "Could not write firmware image");
         }
 
@@ -120,7 +118,6 @@ static esp_err_t ota_update_handler(httpd_req_t *req)
     }
 
     err = esp_ota_end(ota_handle);
-    ota_in_progress = false;
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Firmware validation failed: %s", esp_err_to_name(err));
         return ota_send_error(req, HTTPD_400,
