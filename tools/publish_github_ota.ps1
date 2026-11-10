@@ -61,8 +61,18 @@ Write-Host "Size    : $FirmwareSize bytes"
 Write-Host "SHA-256 : $FirmwareSha256"
 Write-Host ""
 
-& gh release view $Tag --repo $Repository *> $null
-if ($LASTEXITCODE -eq 0) {
+$PreviousErrorActionPreference = $ErrorActionPreference
+try {
+    # A missing release is expected on first publish. Prevent native gh.exe
+    # stderr from becoming a terminating PowerShell error.
+    $ErrorActionPreference = "Continue"
+    & gh release view $Tag --repo $Repository *> $null
+    $ReleaseViewExitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $PreviousErrorActionPreference
+}
+
+if ($ReleaseViewExitCode -eq 0) {
     Write-Host "Release $Tag exists; uploading/replacing firmware asset..."
     & gh release upload $Tag $FirmwarePath --clobber --repo $Repository
     if ($LASTEXITCODE -ne 0) {
