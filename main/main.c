@@ -71,8 +71,8 @@ void app_main(void)
 
     // err = network_manager_set_wifi_config(
     //     network,
-    //     "Pol.Div2",
-    //     "1122334455"
+    //     "iPhone Pom",
+    //     "Pom123456"
     // );
 
     // if (err != ESP_OK) {
