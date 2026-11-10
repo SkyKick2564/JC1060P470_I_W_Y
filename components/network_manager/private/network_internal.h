@@ -31,6 +31,8 @@ typedef enum {
     NETWORK_REQUEST_STOP,
     NETWORK_REQUEST_SET_CONFIG,
     NETWORK_REQUEST_CLEAR_CONFIG,
+    NETWORK_REQUEST_START_SCAN,
+    NETWORK_REQUEST_STOP_SCAN,
     NETWORK_REQUEST_DEINIT,
     NETWORK_REQUEST_EXIT
 } network_request_type_t;
@@ -84,6 +86,12 @@ typedef struct network_manager {
 
     bool scan_pending;
     TickType_t scan_due;
+
+    bool ap_scan_enabled;
+    TickType_t ap_scan_due;
+    wifi_ap_record_t scan_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
+    uint16_t scan_count;
+    uint16_t scan_total_found;
 
     esp_event_handler_instance_t wifi_event_instance;
     esp_event_handler_instance_t ip_event_instance;
