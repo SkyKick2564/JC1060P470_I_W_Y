@@ -163,7 +163,8 @@ static bool ota_parse_manifest(const char *json, ota_manifest_t *manifest)
 
 static esp_err_t ota_http_open_get(const char *url,
                                    esp_http_client_handle_t *out_client,
-                                   int64_t *out_content_length)
+                                   int64_t *out_content_length,
+                                   bool *out_server_reachable)
 {
     esp_http_client_config_t config = {
         .url = url,
@@ -173,13 +174,20 @@ static esp_err_t ota_http_open_get(const char *url,
         .keep_alive_enable = false
     };
 
+    if (out_server_reachable != NULL) {
+        *out_server_reachable = false;
+    }
+
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         return ESP_ERR_NO_MEM;
     }
 
-    esp_err_t err = esp_http_client_set_header(
-        client, "X-OTA-Token", s_auth_token);
+    esp_err_t err = ESP_OK;
+    if (s_auth_token[0] != '\0') {
+        err = esp_http_client_set_header(
+            client, "X-OTA-Token", s_auth_token);
+    }
     if (err == ESP_OK) {
         err = esp_http_client_open(client, 0);
     }
@@ -190,6 +198,9 @@ static esp_err_t ota_http_open_get(const char *url,
 
     int64_t content_length = esp_http_client_fetch_headers(client);
     int status = esp_http_client_get_status_code(client);
+    if (out_server_reachable != NULL && status > 0) {
+        *out_server_reachable = true;
+    }
     if (status != 200 || content_length < 0) {
         ESP_LOGE(TAG, "HTTP GET failed: status=%d length=%lld",
                  status, (long long)content_length);
@@ -203,12 +214,13 @@ static esp_err_t ota_http_open_get(const char *url,
     return ESP_OK;
 }
 
-static esp_err_t ota_fetch_manifest(ota_manifest_t *manifest)
+static esp_err_t ota_fetch_manifest(ota_manifest_t *manifest,
+                                    bool *out_server_reachable)
 {
     esp_http_client_handle_t client = NULL;
     int64_t content_length = 0;
     esp_err_t err = ota_http_open_get(
-        s_manifest_url, &client, &content_length);
+        s_manifest_url, &client, &content_length, out_server_reachable);
     if (err != ESP_OK) {
         return err;
     }
@@ -295,7 +307,7 @@ static esp_err_t ota_download_and_install(const ota_manifest_t *manifest)
     esp_http_client_handle_t client = NULL;
     int64_t content_length = 0;
     esp_err_t err = ota_http_open_get(
-        manifest->firmware_url, &client, &content_length);
+        manifest->firmware_url, &client, &content_length, NULL);
     if (err != ESP_OK) {
         return err;
     }
@@ -413,12 +425,16 @@ cleanup_http:
     return err;
 }
 
-static void ota_check_for_update(void)
+static void ota_check_for_update(bool *out_server_reachable)
 {
     ota_manifest_t manifest = {0};
     const esp_app_desc_t *running_app = esp_app_get_description();
 
-    esp_err_t err = ota_fetch_manifest(&manifest);
+    if (out_server_reachable != NULL) {
+        *out_server_reachable = false;
+    }
+
+    esp_err_t err = ota_fetch_manifest(&manifest, out_server_reachable);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Could not read firmware manifest: %s",
                  esp_err_to_name(err));
@@ -480,6 +496,7 @@ static void ota_manager_task(void *arg)
     (void)arg;
     const TickType_t check_interval =
         pdMS_TO_TICKS(s_check_interval_sec * 1000U);
+    bool endpoint_was_reachable = false;
 
     ESP_LOGI(TAG, "OTA task started; manifest: %s",
              s_manifest_url);
@@ -489,9 +506,21 @@ static void ota_manager_task(void *arg)
         esp_err_t err = network_manager_get_status(s_network, &status);
 
         if (err == ESP_OK && status.has_ip) {
-            ota_check_for_update();
+            bool endpoint_reachable = false;
+            ota_check_for_update(&endpoint_reachable);
+
+            if (endpoint_reachable && !endpoint_was_reachable) {
+                ESP_LOGI(TAG, "Internet available (OTA server responded)");
+            } else if (!endpoint_reachable && endpoint_was_reachable) {
+                ESP_LOGW(TAG, "Internet unavailable (OTA server unreachable)");
+            }
+            endpoint_was_reachable = endpoint_reachable;
             vTaskDelay(check_interval);
         } else {
+            if (endpoint_was_reachable) {
+                ESP_LOGW(TAG, "Internet unavailable (network IP lost)");
+                endpoint_was_reachable = false;
+            }
             vTaskDelay(pdMS_TO_TICKS(OTA_NO_NETWORK_RETRY_MS));
         }
     }
@@ -502,7 +531,7 @@ esp_err_t ota_manager_init(
     const ota_manager_config_t *config)
 {
     if (network == NULL || config == NULL ||
-        config->manifest_url == NULL || config->auth_token == NULL) {
+        config->manifest_url == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     if (s_network != NULL) {
@@ -510,14 +539,16 @@ esp_err_t ota_manager_init(
     }
 
     size_t url_length = strlen(config->manifest_url);
-    size_t token_length = strlen(config->auth_token);
+    size_t token_length = config->auth_token != NULL
+        ? strlen(config->auth_token) : 0;
     if (url_length == 0 || url_length > OTA_MANIFEST_URL_MAX_LEN) {
         ESP_LOGE(TAG, "Manifest URL must contain 1-%u characters",
                  OTA_MANIFEST_URL_MAX_LEN);
         return ESP_ERR_INVALID_ARG;
     }
-    if (token_length < 16 || token_length > OTA_TOKEN_MAX_LEN) {
-        ESP_LOGE(TAG, "OTA token must contain 16-127 characters");
+    if (token_length > 0 &&
+        (token_length < 16 || token_length > OTA_TOKEN_MAX_LEN)) {
+        ESP_LOGE(TAG, "OTA token must be empty or contain 16-127 characters");
         return ESP_ERR_INVALID_ARG;
     }
     if (config->check_interval_sec < 10 ||
@@ -527,7 +558,11 @@ esp_err_t ota_manager_init(
     }
 
     memcpy(s_manifest_url, config->manifest_url, url_length + 1);
-    memcpy(s_auth_token, config->auth_token, token_length + 1);
+    if (token_length > 0) {
+        memcpy(s_auth_token, config->auth_token, token_length + 1);
+    } else {
+        s_auth_token[0] = '\0';
+    }
     s_check_interval_sec = config->check_interval_sec;
     s_network = network;
 
