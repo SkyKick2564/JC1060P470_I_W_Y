@@ -37,15 +37,25 @@ static char s_manifest_url[OTA_MANIFEST_URL_MAX_LEN + 1];
 static char s_auth_token[OTA_TOKEN_MAX_LEN + 1];
 static uint32_t s_check_interval_sec;
 static ota_before_update_cb_t s_before_update;
+static ota_update_available_cb_t s_update_available;
 static void *s_user_ctx;
+static ota_mode_t s_mode;
 
 typedef struct {
     char project[48];
     char version[32];
+    char description[256];
+    char release_date[32];
     char firmware_url[512];
     char sha256[OTA_SHA256_HEX_LEN + 1];
     size_t size;
 } ota_manifest_t;
+
+static portMUX_TYPE s_update_lock = portMUX_INITIALIZER_UNLOCKED;
+static ota_manifest_t s_pending_manifest;
+static bool s_update_pending;
+static bool s_update_confirmed;
+static bool s_update_in_progress;
 
 static bool ota_parse_version(const char *version, uint32_t parts[4])
 {
@@ -127,6 +137,27 @@ static bool ota_copy_json_string(cJSON *object, const char *key,
     return true;
 }
 
+static bool ota_copy_optional_json_string(cJSON *object, const char *key,
+                                          char *destination, size_t capacity)
+{
+    cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
+    if (item == NULL || cJSON_IsNull(item)) {
+        destination[0] = '\\0';
+        return true;
+    }
+    if (!cJSON_IsString(item) || item->valuestring == NULL) {
+        return false;
+    }
+
+    size_t length = strlen(item->valuestring);
+    if (length >= capacity) {
+        return false;
+    }
+
+    memcpy(destination, item->valuestring, length + 1);
+    return true;
+}
+
 static bool ota_parse_manifest(const char *json, ota_manifest_t *manifest)
 {
     cJSON *root = cJSON_Parse(json);
@@ -145,6 +176,12 @@ static bool ota_parse_manifest(const char *json, ota_manifest_t *manifest)
                              sizeof(manifest->firmware_url)) &&
         ota_copy_json_string(root, "sha256", manifest->sha256,
                              sizeof(manifest->sha256)) &&
+        ota_copy_optional_json_string(root, "description",
+                                      manifest->description,
+                                      sizeof(manifest->description)) &&
+        ota_copy_optional_json_string(root, "release_date",
+                                      manifest->release_date,
+                                      sizeof(manifest->release_date)) &&
         cJSON_IsNumber(size_item) &&
         size_item->valuedouble > 0 &&
         size_item->valuedouble <= (double)SIZE_MAX &&
@@ -542,6 +579,40 @@ cleanup_buffer:
     return err;
 }
 
+static void ota_clear_pending_update(void)
+{
+    portENTER_CRITICAL(&s_update_lock);
+    memset(&s_pending_manifest, 0, sizeof(s_pending_manifest));
+    s_update_pending = false;
+    s_update_confirmed = false;
+    s_update_in_progress = false;
+    portEXIT_CRITICAL(&s_update_lock);
+}
+
+static bool ota_take_confirmed_update(ota_manifest_t *manifest)
+{
+    bool confirmed = false;
+
+    portENTER_CRITICAL(&s_update_lock);
+    if (s_update_pending && s_update_confirmed && !s_update_in_progress) {
+        *manifest = s_pending_manifest;
+        s_update_confirmed = false;
+        s_update_in_progress = true;
+        confirmed = true;
+    }
+    portEXIT_CRITICAL(&s_update_lock);
+
+    return confirmed;
+}
+
+static void ota_mark_manual_update_failed(void)
+{
+    portENTER_CRITICAL(&s_update_lock);
+    s_update_in_progress = false;
+    s_update_confirmed = false;
+    portEXIT_CRITICAL(&s_update_lock);
+}
+
 static void ota_check_for_update(bool *out_server_reachable)
 {
     ota_manifest_t manifest = {0};
@@ -567,14 +638,45 @@ static void ota_check_for_update(bool *out_server_reachable)
              running_app->version, manifest.version);
 
     if (!ota_version_is_newer(manifest.version, running_app->version)) {
+        ota_clear_pending_update();
         ESP_LOGI(TAG, "Firmware is up to date");
         return;
     }
 
-    ESP_LOGW(TAG, "New firmware found; downloading %s", manifest.version);
-    err = ota_download_and_install(&manifest);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "OTA update failed: %s", esp_err_to_name(err));
+    if (s_mode == OTA_MODE_AUTO) {
+        ESP_LOGW(TAG, "New firmware found; downloading %s", manifest.version);
+        err = ota_download_and_install(&manifest);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "OTA update failed: %s", esp_err_to_name(err));
+        }
+        return;
+    }
+
+    bool notify_application = false;
+    portENTER_CRITICAL(&s_update_lock);
+    if (!s_update_pending ||
+        strcmp(s_pending_manifest.version, manifest.version) != 0) {
+        s_pending_manifest = manifest;
+        s_update_pending = true;
+        s_update_confirmed = false;
+        s_update_in_progress = false;
+        notify_application = true;
+    }
+    portEXIT_CRITICAL(&s_update_lock);
+
+    if (notify_application) {
+        ESP_LOGW(TAG, "New firmware available; waiting for application confirmation: %s",
+                 manifest.version);
+
+        if (s_update_available != NULL) {
+            const ota_firmware_info_t info = {
+                .version = manifest.version,
+                .description = manifest.description,
+                .release_date = manifest.release_date,
+                .size = manifest.size,
+            };
+            s_update_available(&info, s_user_ctx);
+        }
     }
 }
 
@@ -624,7 +726,24 @@ static void ota_manager_task(void *arg)
 
         if (err == ESP_OK && status.has_ip) {
             bool endpoint_reachable = false;
-            ota_check_for_update(&endpoint_reachable);
+
+            if (s_mode == OTA_MODE_MANUAL) {
+                ota_manifest_t confirmed_manifest = {0};
+                if (ota_take_confirmed_update(&confirmed_manifest)) {
+                    ESP_LOGW(TAG, "Application confirmed firmware %s; starting OTA",
+                             confirmed_manifest.version);
+                    err = ota_download_and_install(&confirmed_manifest);
+                    if (err != ESP_OK) {
+                        ESP_LOGE(TAG, "Confirmed OTA update failed: %s",
+                                 esp_err_to_name(err));
+                        ota_mark_manual_update_failed();
+                    }
+                } else {
+                    ota_check_for_update(&endpoint_reachable);
+                }
+            } else {
+                ota_check_for_update(&endpoint_reachable);
+            }
 
             if (endpoint_reachable && !endpoint_was_reachable) {
                 ESP_LOGI(TAG, "OTA manifest endpoint reachable");
@@ -632,13 +751,14 @@ static void ota_manager_task(void *arg)
                 ESP_LOGW(TAG, "OTA manifest endpoint unreachable");
             }
             endpoint_was_reachable = endpoint_reachable;
-            vTaskDelay(check_interval);
+            (void)ulTaskNotifyTake(pdTRUE, check_interval);
         } else {
             if (endpoint_was_reachable) {
                 ESP_LOGW(TAG, "Internet unavailable (network IP lost)");
                 endpoint_was_reachable = false;
             }
-            vTaskDelay(pdMS_TO_TICKS(OTA_NO_NETWORK_RETRY_MS));
+            (void)ulTaskNotifyTake(
+                pdTRUE, pdMS_TO_TICKS(OTA_NO_NETWORK_RETRY_MS));
         }
     }
 }
@@ -668,6 +788,11 @@ esp_err_t ota_manager_init(
         ESP_LOGE(TAG, "OTA token must be empty or contain 16-127 characters");
         return ESP_ERR_INVALID_ARG;
     }
+    if (config->mode != OTA_MODE_AUTO &&
+        config->mode != OTA_MODE_MANUAL) {
+        ESP_LOGE(TAG, "Invalid OTA mode");
+        return ESP_ERR_INVALID_ARG;
+    }
     if (config->check_interval_sec < 10 ||
         config->check_interval_sec > 3600) {
         ESP_LOGE(TAG, "OTA check interval must be between 10 and 3600 seconds");
@@ -681,11 +806,14 @@ esp_err_t ota_manager_init(
         s_auth_token[0] = '\0';
     }
     s_check_interval_sec = config->check_interval_sec;
+    s_mode = config->mode;
+    s_update_available = config->update_available;
     s_before_update = config->before_update;
     s_user_ctx = config->user_ctx;
     s_network = network;
 
-    ESP_LOGI(TAG, "OTA Manager initialized (interval=%lu sec)",
+    ESP_LOGI(TAG, "OTA Manager initialized (mode=%s interval=%lu sec)",
+             s_mode == OTA_MODE_AUTO ? "AUTO" : "MANUAL",
              (unsigned long)s_check_interval_sec);
     return ESP_OK;
 }
@@ -714,6 +842,35 @@ esp_err_t ota_manager_start(void)
             &s_task) != pdPASS) {
         s_task = NULL;
         return ESP_ERR_NO_MEM;
+    }
+
+    return ESP_OK;
+}
+
+
+esp_err_t ota_manager_confirm_update(void)
+{
+    bool notify_task = false;
+    TaskHandle_t task = NULL;
+
+    portENTER_CRITICAL(&s_update_lock);
+    if (s_mode == OTA_MODE_MANUAL &&
+        s_update_pending &&
+        !s_update_confirmed &&
+        !s_update_in_progress) {
+        s_update_confirmed = true;
+        notify_task = true;
+        task = s_task;
+    }
+    portEXIT_CRITICAL(&s_update_lock);
+
+    if (notify_task) {
+        ESP_LOGI(TAG, "Application confirmed pending firmware update");
+        if (task != NULL) {
+            xTaskNotifyGive(task);
+        }
+    } else {
+        ESP_LOGI(TAG, "No firmware update is waiting for confirmation");
     }
 
     return ESP_OK;
