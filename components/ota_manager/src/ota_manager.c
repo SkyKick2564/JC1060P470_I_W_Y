@@ -14,6 +14,7 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "psa/crypto.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -263,8 +264,20 @@ static esp_err_t ota_fetch_manifest(ota_manifest_t *manifest,
 {
     esp_http_client_handle_t client = NULL;
     int64_t content_length = 0;
+    char manifest_url[OTA_MANIFEST_URL_MAX_LEN + 40];
+    int url_length = snprintf(
+        manifest_url, sizeof(manifest_url), "%s%cota_cache_bust=%lld",
+        s_manifest_url,
+        strchr(s_manifest_url, '?') != NULL ? '&' : '?',
+        (long long)esp_timer_get_time());
+
+    if (url_length < 0 || (size_t)url_length >= sizeof(manifest_url)) {
+        ESP_LOGE(TAG, "Could not build cache-busted manifest URL");
+        return ESP_ERR_INVALID_SIZE;
+    }
+
     esp_err_t err = ota_http_open_get(
-        s_manifest_url, &client, &content_length, out_server_reachable);
+        manifest_url, &client, &content_length, out_server_reachable);
     if (err != ESP_OK) {
         return err;
     }
