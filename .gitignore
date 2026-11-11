@@ -13,6 +13,7 @@ __pycache__/
 .vscode/
 
 # ESP-IDF generated files
+.version-build.pending
 sdkconfig.old
 
 # Git
