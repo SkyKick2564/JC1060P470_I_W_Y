@@ -21,23 +21,40 @@ These are application settings, not menuconfig options. The OTA Manager
 component remains independent of the application's chosen URL, token, and
 polling interval.
 
-## 2. Set the firmware version
+## 2. Firmware version is incremented automatically
 
-Edit the project-root `version.txt` before building. The same version is
-embedded in the application descriptor and read by the PC server.
+When using **ESP-IDF: Build your Project** in VS Code, the pre-build hook
+increments the last numeric version field in the project-root `version.txt`.
 
-For example, change `1.0.0` to `1.0.1` for the next firmware build.
+For example:
+
+- `1.0.3.8` becomes `1.0.3.9`
+- `1.0.3.9` becomes `1.0.3.10`
+
+CMake is configured to re-read `version.txt`, so the new version is embedded
+in the firmware built by that command. Do not edit `version.txt` manually
+for normal builds.
+
+The version is finalized only after the build task succeeds. If a build fails
+or is interrupted, the next VS Code Build attempt restores the previous
+version and retries the same next version. While a build is pending, the LAN
+OTA server and GitHub publish script refuse to serve or publish the image.
+
+This automatic version workflow is attached to the ESP-IDF VS Code extension
+Build command. A direct `idf.py build` in a terminal does not run the VS Code
+pre-build and post-build hooks.
 
 ## 3. Build and flash the initial firmware
 
+Use **ESP-IDF: Build your Project** in VS Code. For the initial USB flash:
+
 ```powershell
-idf.py build
 idf.py -p COM7 flash monitor
 ```
 
 ## 4. Start the firmware server on the PC
 
-After building, run this from the project root:
+After a successful build, run this from the project root:
 
 ```powershell
 python tools/ota_server.py
@@ -56,14 +73,15 @@ and do not expose port 8080 to the internet.
 
 ## Update workflow
 
-1. Stop the PC server with Ctrl+C.
-2. Increase `version.txt`.
-3. Build with `idf.py build`.
-4. Start `python tools/ota_server.py` again.
+1. Stop the PC server with Ctrl+C if it is running.
+2. Run **ESP-IDF: Build your Project** in VS Code. The version increments automatically.
+3. Wait for the build to finish successfully.
+4. Restart `python tools/ota_server.py` for LAN OTA, or run
+   `tools/publish_github_ota.ps1` to publish GitHub OTA.
 5. The board detects the higher version on its next check and downloads it.
 
 Do not change the version file while the server is running. Restart the server
-after every build so it serves the new image and its matching manifest.
+after every successful build so it serves the new image and its matching manifest.
 
 ## Rollback protection
 
