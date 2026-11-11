@@ -659,15 +659,25 @@ static void ota_check_for_update(bool *out_server_reachable)
 
     bool notify_application = false;
     portENTER_CRITICAL(&s_update_lock);
-    if (!s_update_pending ||
-        strcmp(s_pending_manifest.version, manifest.version) != 0) {
+    notify_application =
+        !s_update_pending ||
+        strcmp(s_pending_manifest.version, manifest.version) != 0;
+    portEXIT_CRITICAL(&s_update_lock);
+
+    if (notify_application) {
+        /*
+         * The OTA task is the only writer of s_pending_manifest.
+         * Keep this relatively large structure copy outside the critical
+         * section; the application API only accesses the state flags.
+         */
         s_pending_manifest = manifest;
+
+        portENTER_CRITICAL(&s_update_lock);
         s_update_pending = true;
         s_update_confirmed = false;
         s_update_in_progress = false;
-        notify_application = true;
+        portEXIT_CRITICAL(&s_update_lock);
     }
-    portEXIT_CRITICAL(&s_update_lock);
 
     if (notify_application) {
         ESP_LOGW(TAG, "New firmware available; waiting for application confirmation: %s",
