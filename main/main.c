@@ -57,6 +57,12 @@ static void on_wifi_scan_updated(
     ESP_LOGI(TAG, "========================================");
 }
 
+static esp_err_t app_before_update(void *user_ctx)
+{
+    // เตรียม Application ก่อน OTA
+
+    return ESP_OK;
+}
 
 void app_main(void)
 {

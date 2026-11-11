@@ -3,6 +3,8 @@
 
 #include "ota_manager.h"
 
+static esp_err_t app_before_update(void *user_ctx);
+
 /*
  * Public GitHub-hosted OTA manifest.
  * The manifest is maintained in the repository; firmware binaries are
@@ -18,6 +20,8 @@ static const ota_manager_config_t APP_OTA_CONFIG = {
     .manifest_url = "http://192.168.0.106:8080/manifest.json",
     .auth_token = "MyCustomOTAKey2026",
     .check_interval_sec = 15,
+    .before_update = app_before_update,
+    .user_ctx = NULL,
 };
 
 #endif /* APP_CONFIG_H */
