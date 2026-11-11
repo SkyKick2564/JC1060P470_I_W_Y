@@ -7,9 +7,6 @@
 #include "ota_manager.h"
 #include "app_config.h"
 
-/* Change to OTA_MODE_MANUAL to require an explicit App confirmation. */
-#define APP_OTA_MODE OTA_MODE_AUTO
-
 static const char *TAG = "app";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 
@@ -96,11 +93,7 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Network Manager initialized");
 
-    ota_manager_config_t ota_config = APP_OTA_CONFIG;
-    ota_config.mode = APP_OTA_MODE;
-    ota_config.update_available = app_update_available;
-
-    err = ota_manager_init(network, &ota_config);
+    err = ota_manager_init(network, &APP_OTA_CONFIG);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
                  esp_err_to_name(err));
