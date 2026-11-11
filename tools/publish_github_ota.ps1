@@ -31,6 +31,9 @@ if (-not (Test-Path $FirmwarePath -PathType Leaf)) {
 if (-not (Test-Path $VersionPath -PathType Leaf)) {
     throw "Version file not found: $VersionPath"
 }
+if (Test-Path (Join-Path $ProjectRoot ".version-build.pending") -PathType Leaf) {
+    throw "The latest build is pending or failed. Run ESP-IDF: Build your Project successfully before publishing."
+}
 
 $Branch = (& git -C $ProjectRoot branch --show-current).Trim()
 if ($LASTEXITCODE -ne 0 -or $Branch -ne $ExpectedBranch) {
