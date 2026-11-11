@@ -83,7 +83,6 @@ void app_main(void)
 {
     network_manager_handle_t network = NULL;
     esp_err_t err;
-    bool ota_initialized = false;
 
     err = network_manager_init(&network);
     if (err != ESP_OK) {
@@ -98,8 +97,14 @@ void app_main(void)
         ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
                  esp_err_to_name(err));
     } else {
-        ota_initialized = true;
         ESP_LOGI(TAG, "OTA Manager initialized");
+        err = ota_manager_start();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "OTA Manager start failed: %s",
+                    esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "OTA Manager started");
+        }
     }
 
     // err = network_manager_set_wifi_config(
@@ -140,63 +145,4 @@ void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "Wi-Fi scanning enabled");
-
-    /*
-     * Start OTA last. OTA Manager performs pending-image confirmation
-     * internally, after the application's critical startup steps succeeded.
-     */
-    if (ota_initialized) {
-        err = ota_manager_start();
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "OTA Manager start failed; networking will continue: %s",
-                     esp_err_to_name(err));
-        } else {
-            ESP_LOGI(TAG, "OTA Manager started");
-        }
-    }
-
-    while (1) {
-        static bool last_update_available = false;
-        static bool update_confirm_sent = false;
-
-        ota_manager_status_t status = {0};
-        esp_err_t err = ota_manager_get_status(&status);
-
-        if (err == ESP_OK) {
-            if (status.update_available != last_update_available) {
-                ESP_LOGI(TAG, "OTA Update Available: %s",
-                        status.update_available ? "YES" : "NO");
-
-                if (status.update_available) {
-                    ESP_LOGI(TAG, "New Firmware Version: %s",
-                            status.available_firmware.version);
-                }
-
-                last_update_available = status.update_available;
-            }
-
-            if (status.update_available && !update_confirm_sent) {
-                ESP_LOGW(TAG, "OTA: Sending update confirmation");
-
-                err = ota_manager_confirm_update();
-
-                if (err == ESP_OK) {
-                    update_confirm_sent = true;
-                    ESP_LOGI(TAG, "OTA: Confirmation request sent");
-                } else {
-                    ESP_LOGE(TAG, "OTA: Confirmation failed: %s",
-                            esp_err_to_name(err));
-                }
-            }
-
-            if (!status.update_available) {
-                update_confirm_sent = false;
-            }
-        } else {
-            ESP_LOGE(TAG, "Failed to get OTA status: %s",
-                    esp_err_to_name(err));
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
 }
