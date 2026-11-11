@@ -14,6 +14,7 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
+#include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "psa/crypto.h"
 #include "freertos/FreeRTOS.h"
@@ -35,6 +36,8 @@ static TaskHandle_t s_task;
 static char s_manifest_url[OTA_MANIFEST_URL_MAX_LEN + 1];
 static char s_auth_token[OTA_TOKEN_MAX_LEN + 1];
 static uint32_t s_check_interval_sec;
+static ota_before_update_cb_t s_before_update;
+static void *s_user_ctx;
 
 typedef struct {
     char project[48];
@@ -361,12 +364,24 @@ static esp_err_t ota_download_and_install(const ota_manifest_t *manifest)
         return ESP_ERR_INVALID_SIZE;
     }
 
+    /*
+     * Keep the complete image in a dedicated PSRAM allocation. No OTA Flash
+     * operation is started until download and SHA-256 verification succeed.
+     */
+    uint8_t *firmware_buffer = heap_caps_malloc(
+        manifest->size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (firmware_buffer == NULL) {
+        ESP_LOGE(TAG, "Could not allocate %u bytes in PSRAM for OTA",
+                 (unsigned)manifest->size);
+        return ESP_ERR_NO_MEM;
+    }
+
     esp_http_client_handle_t client = NULL;
     int64_t content_length = 0;
     esp_err_t err = ota_http_open_get(
         manifest->firmware_url, &client, &content_length, NULL);
     if (err != ESP_OK) {
-        return err;
+        goto cleanup_buffer;
     }
 
     if (content_length <= 0 ||
@@ -377,56 +392,44 @@ static esp_err_t ota_download_and_install(const ota_manifest_t *manifest)
         goto cleanup_http;
     }
 
-    esp_ota_handle_t ota_handle = 0;
-    err = esp_ota_begin(update_partition, manifest->size, &ota_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
-        goto cleanup_http;
-    }
-
     psa_hash_operation_t sha = PSA_HASH_OPERATION_INIT;
     psa_status_t psa_status = psa_crypto_init();
     if (psa_status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "PSA crypto initialization failed: %d",
                  (int)psa_status);
         err = ESP_FAIL;
-        goto abort_ota;
+        goto cleanup_http;
     }
 
     psa_status = psa_hash_setup(&sha, PSA_ALG_SHA_256);
     if (psa_status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "PSA SHA-256 setup failed: %d", (int)psa_status);
         err = ESP_FAIL;
-        goto abort_ota;
+        goto cleanup_http;
     }
 
-    uint8_t buffer[OTA_DOWNLOAD_CHUNK_SIZE];
     size_t downloaded = 0;
-
     while (downloaded < manifest->size) {
         size_t remaining = manifest->size - downloaded;
-        size_t requested = remaining < sizeof(buffer)
-            ? remaining : sizeof(buffer);
+        size_t requested = remaining < OTA_DOWNLOAD_CHUNK_SIZE
+            ? remaining : OTA_DOWNLOAD_CHUNK_SIZE;
         int received = esp_http_client_read(
-            client, (char *)buffer, (int)requested);
+            client, (char *)firmware_buffer + downloaded, (int)requested);
 
         if (received <= 0) {
             ESP_LOGE(TAG, "Firmware download interrupted: %d", received);
+            psa_hash_abort(&sha);
             err = ESP_FAIL;
-            goto abort_ota;
+            goto cleanup_http;
         }
 
-        err = esp_ota_write(ota_handle, buffer, (size_t)received);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "esp_ota_write failed: %s", esp_err_to_name(err));
-            goto abort_ota;
-        }
-
-        psa_status = psa_hash_update(&sha, buffer, (size_t)received);
+        psa_status = psa_hash_update(
+            &sha, firmware_buffer + downloaded, (size_t)received);
         if (psa_status != PSA_SUCCESS) {
             ESP_LOGE(TAG, "PSA SHA-256 update failed: %d", (int)psa_status);
+            psa_hash_abort(&sha);
             err = ESP_FAIL;
-            goto abort_ota;
+            goto cleanup_http;
         }
 
         downloaded += (size_t)received;
@@ -441,44 +444,101 @@ static esp_err_t ota_download_and_install(const ota_manifest_t *manifest)
     if (psa_status != PSA_SUCCESS || digest_length != sizeof(digest)) {
         ESP_LOGE(TAG, "PSA SHA-256 finish failed: %d", (int)psa_status);
         err = ESP_FAIL;
-        goto abort_ota;
+        goto cleanup_http;
+    }
+
+    if (downloaded != manifest->size) {
+        ESP_LOGE(TAG, "Downloaded size mismatch: expected=%u actual=%u",
+                 (unsigned)manifest->size, (unsigned)downloaded);
+        err = ESP_ERR_INVALID_SIZE;
+        goto cleanup_http;
     }
 
     if (!ota_sha256_matches(digest, manifest->sha256)) {
         ESP_LOGE(TAG, "Firmware SHA-256 does not match manifest");
-        esp_ota_abort(ota_handle);
         err = ESP_ERR_INVALID_CRC;
         goto cleanup_http;
+    }
+
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    client = NULL;
+
+    ESP_LOGI(TAG, "Firmware downloaded and SHA-256 verified");
+
+    /*
+     * Let the application prepare its resources only after the complete
+     * image is verified, and before the first OTA Flash operation.
+     */
+    if (s_before_update != NULL) {
+        err = s_before_update(s_user_ctx);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Application rejected OTA before Flash: %s",
+                     esp_err_to_name(err));
+            goto cleanup_buffer;
+        }
+    }
+
+    esp_ota_handle_t ota_handle = 0;
+    err = esp_ota_begin(update_partition, manifest->size, &ota_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
+        goto cleanup_buffer;
+    }
+
+    /*
+     * Copy each PSRAM chunk into an internal task-stack buffer before
+     * esp_ota_write(), so the Flash driver does not need to read its source
+     * from PSRAM while Flash cache is unavailable.
+     */
+    uint8_t write_buffer[OTA_DOWNLOAD_CHUNK_SIZE];
+    size_t written = 0;
+
+    while (written < manifest->size) {
+        size_t remaining = manifest->size - written;
+        size_t chunk_size = remaining < sizeof(write_buffer)
+            ? remaining : sizeof(write_buffer);
+
+        memcpy(write_buffer, firmware_buffer + written, chunk_size);
+        err = esp_ota_write(ota_handle, write_buffer, chunk_size);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "esp_ota_write failed at %u bytes: %s",
+                     (unsigned)written, esp_err_to_name(err));
+            esp_ota_abort(ota_handle);
+            goto cleanup_buffer;
+        }
+
+        written += chunk_size;
     }
 
     err = esp_ota_end(ota_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Firmware image validation failed: %s",
                  esp_err_to_name(err));
-        goto cleanup_http;
+        goto cleanup_buffer;
     }
 
     err = esp_ota_set_boot_partition(update_partition);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Could not select new boot partition: %s",
                  esp_err_to_name(err));
-        goto cleanup_http;
+        goto cleanup_buffer;
     }
 
     ESP_LOGW(TAG, "Firmware %s validated; rebooting into %s",
              manifest->version, update_partition->label);
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
+    heap_caps_free(firmware_buffer);
     vTaskDelay(pdMS_TO_TICKS(700));
     esp_restart();
     return ESP_OK;
 
-abort_ota:
-    psa_hash_abort(&sha);
-    esp_ota_abort(ota_handle);
 cleanup_http:
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
+    if (client != NULL) {
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+    }
+cleanup_buffer:
+    heap_caps_free(firmware_buffer);
     return err;
 }
 
@@ -621,6 +681,8 @@ esp_err_t ota_manager_init(
         s_auth_token[0] = '\0';
     }
     s_check_interval_sec = config->check_interval_sec;
+    s_before_update = config->before_update;
+    s_user_ctx = config->user_ctx;
     s_network = network;
 
     ESP_LOGI(TAG, "OTA Manager initialized (interval=%lu sec)",
