@@ -684,12 +684,14 @@ static void ota_check_for_update(bool *out_server_reachable)
                  manifest.version);
 
         if (s_update_available != NULL) {
-            const ota_firmware_info_t info = {
-                .version = manifest.version,
-                .description = manifest.description,
-                .release_date = manifest.release_date,
+            ota_firmware_info_t info = {
                 .size = manifest.size,
             };
+            memcpy(info.version, manifest.version, sizeof(info.version));
+            memcpy(info.description, manifest.description,
+                   sizeof(info.description));
+            memcpy(info.release_date, manifest.release_date,
+                   sizeof(info.release_date));
             s_update_available(&info, s_user_ctx);
         }
     }
@@ -867,6 +869,43 @@ esp_err_t ota_manager_start(void)
     return ESP_OK;
 }
 
+
+esp_err_t ota_manager_get_status(ota_manager_status_t *status)
+{
+    if (status == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(status, 0, sizeof(*status));
+
+    const esp_app_desc_t *running_app = esp_app_get_description();
+    if (running_app == NULL) {
+        return ESP_FAIL;
+    }
+
+    snprintf(status->current_version,
+             sizeof(status->current_version),
+             "%s",
+             running_app->version);
+
+    portENTER_CRITICAL(&s_update_lock);
+    if (s_update_pending) {
+        status->update_available = true;
+        memcpy(status->available_firmware.version,
+               s_pending_manifest.version,
+               sizeof(status->available_firmware.version));
+        memcpy(status->available_firmware.description,
+               s_pending_manifest.description,
+               sizeof(status->available_firmware.description));
+        memcpy(status->available_firmware.release_date,
+               s_pending_manifest.release_date,
+               sizeof(status->available_firmware.release_date));
+        status->available_firmware.size = s_pending_manifest.size;
+    }
+    portEXIT_CRITICAL(&s_update_lock);
+
+    return ESP_OK;
+}
 
 esp_err_t ota_manager_confirm_update(void)
 {
