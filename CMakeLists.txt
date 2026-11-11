@@ -5,6 +5,8 @@
 cmake_minimum_required(VERSION 3.16)
 
 set(APP_VERSION_FILE "${CMAKE_CURRENT_LIST_DIR}/version.txt")
+# Re-run CMake when the build hook updates the firmware version.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${APP_VERSION_FILE}")
 file(STRINGS "${APP_VERSION_FILE}" APP_VERSION LIMIT_COUNT 1)
 if(NOT APP_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?$")
     message(FATAL_ERROR "version.txt must contain a numeric version such as 1.0.0 or 1.0.0.1")
