@@ -122,6 +122,13 @@ def main() -> int:
     if not version_file.is_file():
         parser.error(f"Version file not found: {version_file}")
 
+    pending_version = version_file.parent / ".version-build.pending"
+    if pending_version.exists():
+        parser.error(
+            "A firmware build is pending or did not finish successfully. "
+            "Run ESP-IDF: Build your Project again before starting the OTA server."
+        )
+
     firmware_size = firmware_path.stat().st_size
     if firmware_size == 0:
         parser.error("Firmware file is empty")
