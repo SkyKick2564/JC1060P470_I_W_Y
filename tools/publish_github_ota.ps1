@@ -74,7 +74,7 @@ if ($LocalCommit -ne $RemoteCommit) {
 }
 
 $Version = (Get-Content $VersionPath -Raw).Trim()
-if ($Version -notmatch '^\d+(\.\d+){1,3}
+if ($Version -notmatch '^\d+(\.\d+){1,3}$') {
     throw "Invalid version in version.txt: '$Version'. Use 2-4 numeric parts, e.g. 1.0.2"
 }
 
