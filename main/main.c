@@ -77,6 +77,13 @@ static void app_update_available(
     ESP_LOGI(TAG, "  Release date: %s",
              info->release_date[0] != '\0' ? info->release_date : "(none)");
     ESP_LOGI(TAG, "  Size: %u bytes", (unsigned)info->size);
+
+    esp_err_t err = ota_manager_confirm_update();
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Confirm OTA failed: %s",
+                esp_err_to_name(err));
+    }
 }
 
 void app_main(void)
