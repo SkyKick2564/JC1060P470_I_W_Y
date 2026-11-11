@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MIT
+if ESP_BOARD_JC1060P470_I_W_Y && IDF_TARGET_ESP32P4
+
+menu "Guition JC1060P470 display"
+
+config GUITION_JC1060_LCD_V2_AVAILABLE
+    bool
+    default y
+
+choice GUITION_JC1060_LCD_TYPE
+    prompt "LCD variant"
+    default GUITION_JC1060_LCD_V2
+
+config GUITION_JC1060_LCD_V1
+    bool "LCD V1 (existing JD9165 screen)"
+
+config GUITION_JC1060_LCD_V2
+    bool "LCD V2 (JD9165, HBP 136)"
+    depends on GUITION_JC1060_LCD_V2_AVAILABLE
+
+endchoice
+
+endmenu
+
+endif
