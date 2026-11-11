@@ -77,13 +77,6 @@ static void app_update_available(
     ESP_LOGI(TAG, "  Release date: %s",
              info->release_date[0] != '\0' ? info->release_date : "(none)");
     ESP_LOGI(TAG, "  Size: %u bytes", (unsigned)info->size);
-
-    esp_err_t err = ota_manager_confirm_update();
-
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Confirm OTA failed: %s",
-                esp_err_to_name(err));
-    }
 }
 
 void app_main(void)
@@ -160,5 +153,50 @@ void app_main(void)
         } else {
             ESP_LOGI(TAG, "OTA Manager started");
         }
+    }
+
+    while (1) {
+        static bool last_update_available = false;
+        static bool update_confirm_sent = false;
+
+        ota_manager_status_t status = {0};
+        esp_err_t err = ota_manager_get_status(&status);
+
+        if (err == ESP_OK) {
+            if (status.update_available != last_update_available) {
+                ESP_LOGI(TAG, "OTA Update Available: %s",
+                        status.update_available ? "YES" : "NO");
+
+                if (status.update_available) {
+                    ESP_LOGI(TAG, "New Firmware Version: %s",
+                            status.available_firmware.version);
+                }
+
+                last_update_available = status.update_available;
+            }
+
+            if (status.update_available && !update_confirm_sent) {
+                ESP_LOGW(TAG, "OTA: Sending update confirmation");
+
+                err = ota_manager_confirm_update();
+
+                if (err == ESP_OK) {
+                    update_confirm_sent = true;
+                    ESP_LOGI(TAG, "OTA: Confirmation request sent");
+                } else {
+                    ESP_LOGE(TAG, "OTA: Confirmation failed: %s",
+                            esp_err_to_name(err));
+                }
+            }
+
+            if (!status.update_available) {
+                update_confirm_sent = false;
+            }
+        } else {
+            ESP_LOGE(TAG, "Failed to get OTA status: %s",
+                    esp_err_to_name(err));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
