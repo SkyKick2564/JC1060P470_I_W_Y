@@ -567,9 +567,9 @@ static void ota_manager_task(void *arg)
             ota_check_for_update(&endpoint_reachable);
 
             if (endpoint_reachable && !endpoint_was_reachable) {
-                ESP_LOGI(TAG, "Internet available (GitHub OTA manifest responded)");
+                ESP_LOGI(TAG, "OTA manifest endpoint reachable");
             } else if (!endpoint_reachable && endpoint_was_reachable) {
-                ESP_LOGW(TAG, "Internet unavailable (GitHub OTA endpoint unreachable)");
+                ESP_LOGW(TAG, "OTA manifest endpoint unreachable");
             }
             endpoint_was_reachable = endpoint_reachable;
             vTaskDelay(check_interval);
