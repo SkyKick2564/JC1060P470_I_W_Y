@@ -1,7 +1,7 @@
 
 {
-    "idf.preBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"tools/bump_version.ps1\"",
-    "idf.postBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"tools/complete_version.ps1\"",
+    "idf.preBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/bump_version.ps1",
+    "idf.postBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/complete_version.ps1",
 
     "idf.currentSetup": "C:\\esp\\v6.1\\esp-idf",
     "idf.extensionActivationMode": "always",
