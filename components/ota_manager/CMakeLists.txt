@@ -14,6 +14,7 @@ idf_component_register(
 
         mbedtls
         esp_system
+        heap
         esp_timer
         freertos
         log
