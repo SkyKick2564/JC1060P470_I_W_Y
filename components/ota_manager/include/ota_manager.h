@@ -1,6 +1,7 @@
 #ifndef OTA_MANAGER_H
 #define OTA_MANAGER_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "esp_err.h"
