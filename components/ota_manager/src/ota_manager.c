@@ -670,12 +670,21 @@ static void ota_check_for_update(bool *out_server_reachable)
          * Keep this relatively large structure copy outside the critical
          * section; the application API only accesses the state flags.
          */
+        /*
+         * Hide the old snapshot while replacing the manifest. This prevents
+         * the status API or confirmation API from observing a partially
+         * copied structure when a different version becomes pending.
+         */
+        portENTER_CRITICAL(&s_update_lock);
+        s_update_pending = false;
+        s_update_confirmed = false;
+        s_update_in_progress = false;
+        portEXIT_CRITICAL(&s_update_lock);
+
         s_pending_manifest = manifest;
 
         portENTER_CRITICAL(&s_update_lock);
         s_update_pending = true;
-        s_update_confirmed = false;
-        s_update_in_progress = false;
         portEXIT_CRITICAL(&s_update_lock);
     }
 
