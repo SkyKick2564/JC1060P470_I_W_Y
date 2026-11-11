@@ -1,7 +1,7 @@
 {
     "project":  "JC1060P470_I_W_Y",
-    "version":  "1.0.3.6",
-    "firmware_url":  "https://github.com/SkyKick2564/JC1060P470_I_W_Y/releases/download/v1.0.3.6/JC1060P470_I_W_Y.bin",
+    "version":  "1.0.3.7",
+    "firmware_url":  "https://github.com/SkyKick2564/JC1060P470_I_W_Y/releases/download/v1.0.3.7/JC1060P470_I_W_Y.bin",
     "size":  1255216,
-    "sha256":  "1d4d650232aa76825083360e83d09bc7452ba045f6964a008b1649d63622a528"
+    "sha256":  "760d2e5f200507a45be304bebf49bbec64bba5e2b3da359cac101e9884f97927"
 }
