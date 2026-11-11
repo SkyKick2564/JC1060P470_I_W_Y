@@ -20,7 +20,7 @@
             "args": [
                 "-NoExit",
                 "-Command",
-                "& 'C:\\Espressif\\tools\\Microsoft.v6.1.PowerShell_profile.ps1'"
+                "& 'C:\\Espressif\\tools\\Microsoft.v6.1.PowerShell_profile.ps1'; $env:Path = 'C:\\Program Files\\GitHub CLI;' + $env:Path"
             ]
         }
     },
