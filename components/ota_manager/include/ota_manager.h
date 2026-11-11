@@ -20,6 +20,10 @@ typedef struct {
 } ota_firmware_info_t;
 
 typedef esp_err_t (*ota_before_update_cb_t)(void *user_ctx);
+/*
+ * Called from the OTA task. The info strings are valid only for the duration
+ * of this callback; copy them if the application needs to retain them.
+ */
 typedef void (*ota_update_available_cb_t)(
     const ota_firmware_info_t *info,
     void *user_ctx
