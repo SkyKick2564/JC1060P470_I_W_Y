@@ -1,4 +1,11 @@
 {
     "idf.preBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"tools/bump_version.ps1\"",
-    "idf.postBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"tools/complete_version.ps1\""
+    "idf.postBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"tools/complete_version.ps1\"",
+    "clangd.path": "C:\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
+    "clangd.arguments": [
+      "--background-index",
+      "--query-driver=**",
+      "--compile-commands-dir=c:\\ESP32P4\\JC1060P470_I_W_Y\\build"
+    ],
+    "idf.flashType": "JTAG"
 }
