@@ -7,9 +7,9 @@ $ExpectedBranch = "network-manager-freertos-task"
 $ProjectName = "JC1060P470_I_W_Y"
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$FirmwarePath = Join-Path $ProjectRoot "build\$ProjectName.bin"
+$FirmwarePath = Join-Path $ProjectRoot "build\\$ProjectName.bin"
 $VersionPath = Join-Path $ProjectRoot "version.txt"
-$ManifestPath = Join-Path $ProjectRoot "ota\manifest.json"
+$ManifestPath = Join-Path $ProjectRoot "ota\\manifest.json"
 
 function Invoke-Git {
     param([string[]]$GitArgs)
@@ -40,8 +40,41 @@ if ($LASTEXITCODE -ne 0 -or $Branch -ne $ExpectedBranch) {
     throw "Run this script on branch '$ExpectedBranch'. Current branch: '$Branch'"
 }
 
+# The firmware must correspond to committed source and version.txt.
+$WorkingTreeStatus = @(& git -C $ProjectRoot status --porcelain --untracked-files=all)
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not inspect the Git working tree."
+}
+if ($WorkingTreeStatus.Count -gt 0) {
+    Write-Host "The working tree contains uncommitted or untracked files:" -ForegroundColor Yellow
+    $WorkingTreeStatus | ForEach-Object { Write-Host "  $_" }
+    throw "Commit or discard these changes, then run the publish script again."
+}
+
+& git -C $ProjectRoot ls-files --error-unmatch -- version.txt *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw "version.txt is not tracked by Git. Add and commit it before publishing."
+}
+
+# Fetch first, then require the local branch to match the remote exactly.
+Invoke-Git -GitArgs @("fetch", "origin", $Branch)
+$RemoteBranch = "refs/remotes/origin/$Branch"
+& git -C $ProjectRoot rev-parse --verify $RemoteBranch *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw "Remote branch origin/$Branch was not found."
+}
+
+$LocalCommit = (& git -C $ProjectRoot rev-parse HEAD).Trim()
+$RemoteCommit = (& git -C $ProjectRoot rev-parse $RemoteBranch).Trim()
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not compare the local and remote commits."
+}
+if ($LocalCommit -ne $RemoteCommit) {
+    throw "Local branch '$Branch' is not synchronized with origin/$Branch. Push or pull the required commits, rebuild if the source changed, then publish again."
+}
+
 $Version = (Get-Content $VersionPath -Raw).Trim()
-if ($Version -notmatch '^\d+(\.\d+){1,3}$') {
+if ($Version -notmatch '^\\d+(\\.\\d+){1,3}$') {
     throw "Invalid version in version.txt: '$Version'. Use 2-4 numeric parts, e.g. 1.0.2"
 }
 
@@ -62,6 +95,7 @@ Write-Host "Version : $Version"
 Write-Host "Binary  : $FirmwarePath"
 Write-Host "Size    : $FirmwareSize bytes"
 Write-Host "SHA-256 : $FirmwareSha256"
+Write-Host "Git     : clean and synchronized with origin/$Branch"
 Write-Host ""
 
 $PreviousErrorActionPreference = $ErrorActionPreference
