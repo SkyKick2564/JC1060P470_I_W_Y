@@ -1,6 +1,7 @@
 #ifndef OTA_MANAGER_H
 #define OTA_MANAGER_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -12,12 +13,26 @@ typedef enum {
     OTA_MODE_MANUAL      /* Notify the application and wait for confirmation. */
 } ota_mode_t;
 
+#define OTA_FIRMWARE_VERSION_MAX_LEN       32
+#define OTA_FIRMWARE_DESCRIPTION_MAX_LEN  256
+#define OTA_FIRMWARE_RELEASE_DATE_MAX_LEN 32
+
 typedef struct {
-    const char *version;
-    const char *description;
-    const char *release_date;
+    char version[OTA_FIRMWARE_VERSION_MAX_LEN];
+    char description[OTA_FIRMWARE_DESCRIPTION_MAX_LEN];
+    char release_date[OTA_FIRMWARE_RELEASE_DATE_MAX_LEN];
     size_t size;
 } ota_firmware_info_t;
+
+/*
+ * Snapshot of the OTA state for application/UI use.
+ * available_firmware is valid only when update_available is true.
+ */
+typedef struct {
+    char current_version[OTA_FIRMWARE_VERSION_MAX_LEN];
+    bool update_available;
+    ota_firmware_info_t available_firmware;
+} ota_manager_status_t;
 
 typedef esp_err_t (*ota_before_update_cb_t)(void *user_ctx);
 /*
@@ -61,5 +76,11 @@ esp_err_t ota_manager_start(void);
  * Returns ESP_OK without action if no update is waiting for confirmation.
  */
 esp_err_t ota_manager_confirm_update(void);
+
+/*
+ * Read a snapshot of the current firmware and pending OTA state.
+ * The caller owns the returned data; no callback is required to read it.
+ */
+esp_err_t ota_manager_get_status(ota_manager_status_t *status);
 
 #endif /* OTA_MANAGER_H */
