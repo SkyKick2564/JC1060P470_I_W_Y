@@ -73,9 +73,9 @@ static void app_update_available(
     ESP_LOGW(TAG, "OTA: Update available");
     ESP_LOGI(TAG, "  Version: %s", info->version);
     ESP_LOGI(TAG, "  Description: %s",
-             info->description[0] != '\\0' ? info->description : "(none)");
+             info->description[0] != '\0' ? info->description : "(none)");
     ESP_LOGI(TAG, "  Release date: %s",
-             info->release_date[0] != '\\0' ? info->release_date : "(none)");
+             info->release_date[0] != '\0' ? info->release_date : "(none)");
     ESP_LOGI(TAG, "  Size: %u bytes", (unsigned)info->size);
 }
 
