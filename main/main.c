@@ -64,6 +64,21 @@ static esp_err_t app_before_update(void *user_ctx)
     return ESP_OK;
 }
 
+static void app_update_available(
+    const ota_firmware_info_t *info,
+    void *user_ctx)
+{
+    (void)user_ctx;
+
+    ESP_LOGW(TAG, "OTA: Update available");
+    ESP_LOGI(TAG, "  Version: %s", info->version);
+    ESP_LOGI(TAG, "  Description: %s",
+             info->description[0] != '\\0' ? info->description : "(none)");
+    ESP_LOGI(TAG, "  Release date: %s",
+             info->release_date[0] != '\\0' ? info->release_date : "(none)");
+    ESP_LOGI(TAG, "  Size: %u bytes", (unsigned)info->size);
+}
+
 void app_main(void)
 {
     network_manager_handle_t network = NULL;
