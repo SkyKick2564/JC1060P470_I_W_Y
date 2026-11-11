@@ -60,7 +60,7 @@ static void on_wifi_scan_updated(
 static esp_err_t app_before_update(void *user_ctx)
 {
     // เตรียม Application ก่อน OTA
-
+    ESP_LOGW(TAG, "OTA: Application pre-flash callback");
     return ESP_OK;
 }
 
