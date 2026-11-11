@@ -142,7 +142,7 @@ static bool ota_copy_optional_json_string(cJSON *object, const char *key,
 {
     cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
     if (item == NULL || cJSON_IsNull(item)) {
-        destination[0] = '\\0';
+        destination[0] = '\0';
         return true;
     }
     if (!cJSON_IsString(item) || item->valuestring == NULL) {
@@ -582,7 +582,6 @@ cleanup_buffer:
 static void ota_clear_pending_update(void)
 {
     portENTER_CRITICAL(&s_update_lock);
-    memset(&s_pending_manifest, 0, sizeof(s_pending_manifest));
     s_update_pending = false;
     s_update_confirmed = false;
     s_update_in_progress = false;
@@ -595,13 +594,19 @@ static bool ota_take_confirmed_update(ota_manifest_t *manifest)
 
     portENTER_CRITICAL(&s_update_lock);
     if (s_update_pending && s_update_confirmed && !s_update_in_progress) {
-        *manifest = s_pending_manifest;
         s_update_confirmed = false;
         s_update_in_progress = true;
         confirmed = true;
     }
     portEXIT_CRITICAL(&s_update_lock);
 
+    /*
+     * Only the OTA task writes s_pending_manifest, so copy it after leaving
+     * the critical section; the application-facing API only changes flags.
+     */
+    if (confirmed) {
+        *manifest = s_pending_manifest;
+    }
     return confirmed;
 }
 
@@ -726,6 +731,7 @@ static void ota_manager_task(void *arg)
 
         if (err == ESP_OK && status.has_ip) {
             bool endpoint_reachable = false;
+            bool manifest_checked = false;
 
             if (s_mode == OTA_MODE_MANUAL) {
                 ota_manifest_t confirmed_manifest = {0};
@@ -740,17 +746,21 @@ static void ota_manager_task(void *arg)
                     }
                 } else {
                     ota_check_for_update(&endpoint_reachable);
+                    manifest_checked = true;
                 }
             } else {
                 ota_check_for_update(&endpoint_reachable);
+                manifest_checked = true;
             }
 
-            if (endpoint_reachable && !endpoint_was_reachable) {
-                ESP_LOGI(TAG, "OTA manifest endpoint reachable");
-            } else if (!endpoint_reachable && endpoint_was_reachable) {
-                ESP_LOGW(TAG, "OTA manifest endpoint unreachable");
+            if (manifest_checked) {
+                if (endpoint_reachable && !endpoint_was_reachable) {
+                    ESP_LOGI(TAG, "OTA manifest endpoint reachable");
+                } else if (!endpoint_reachable && endpoint_was_reachable) {
+                    ESP_LOGW(TAG, "OTA manifest endpoint unreachable");
+                }
+                endpoint_was_reachable = endpoint_reachable;
             }
-            endpoint_was_reachable = endpoint_reachable;
             (void)ulTaskNotifyTake(pdTRUE, check_interval);
         } else {
             if (endpoint_was_reachable) {
