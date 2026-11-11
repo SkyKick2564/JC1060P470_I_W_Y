@@ -6,11 +6,16 @@
 #include "esp_err.h"
 #include "network_manager.h"
 
+typedef esp_err_t (*ota_before_update_cb_t)(void *user_ctx);
+
 typedef struct {
     const char *manifest_url;
     /* Optional: NULL or empty for public OTA endpoints. */
     const char *auth_token;
     uint32_t check_interval_sec;
+    /* Optional: called after download and SHA-256 verification, before Flash. */
+    ota_before_update_cb_t before_update;
+    void *user_ctx;
 } ota_manager_config_t;
 
 /*
