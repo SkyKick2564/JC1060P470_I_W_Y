@@ -95,6 +95,22 @@ devices:
       - name: i2c_master
         i2c_addr: [0xBA, 0x28]
 
+  - name: camera
+    type: camera
+    sub_type: "csi"
+    config:
+      csi_config:
+        reset_io: -1
+        pwdn_io: -1
+        dont_init_ldo: true
+        xclk_config:
+          xclk_pin: -1
+          xclk_freq_hz: 20000000
+    peripherals:
+      - i2c_name: i2c_master
+        frequency: 100000
+      - ldo_name: ldo_mipi
+
   - name: lcd_brightness
     type: ledc_ctrl
     version: default
