@@ -18,6 +18,7 @@ idf_component_register(
     PRIV_REQUIRES
         esp_hosted
         esp_netif
+        esp_http_client
         esp_wifi
         freertos
         nvs_flash
