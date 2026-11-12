@@ -12,7 +12,7 @@ static const char *TAG = "app";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 
 /*
- * Called when Network Manager completes a Wi-Fi scan.
+ * Called when Network Manager Internet connectivity changes.
  */
 static void on_network_internet_changed(
     void *arg,
