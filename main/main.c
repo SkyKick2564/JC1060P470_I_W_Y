@@ -60,8 +60,16 @@ static void on_wifi_scan_updated(
 
 static esp_err_t app_before_update(void *user_ctx)
 {
+    esp_err_t err;
     // เตรียม Application ก่อน OTA
     ESP_LOGW(TAG, "OTA: Application pre-flash callback");
+    err = esp_board_manager_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Board Manager deinit failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+    ESP_LOGI(TAG, "Board Manager deinitialized");
     return ESP_OK;
 }
 
