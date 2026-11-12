@@ -14,6 +14,30 @@ static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 /*
  * Called when Network Manager completes a Wi-Fi scan.
  */
+static void on_network_internet_changed(
+    void *arg,
+    esp_event_base_t event_base,
+    int32_t event_id,
+    void *event_data)
+{
+    network_manager_handle_t network = (network_manager_handle_t)arg;
+    network_status_t status = {0};
+    (void)event_base;
+    (void)event_data;
+
+    if (network_manager_get_status(network, &status) != ESP_OK) {
+        return;
+    }
+
+    if (event_id == NETWORK_EVENT_INTERNET_CONNECTED) {
+        ESP_LOGI(TAG, "Internet is available");
+    } else if (event_id == NETWORK_EVENT_INTERNET_DISCONNECTED) {
+        ESP_LOGW(TAG, "Internet is unavailable (Wi-Fi: %s, IP: %s)",
+                 status.wifi_connected ? "connected" : "disconnected",
+                 status.has_ip ? status.ip_address : "none");
+    }
+}
+
 static void on_wifi_scan_updated(
     void *arg,
     esp_event_base_t event_base,
@@ -144,6 +168,30 @@ void app_main(void)
     );
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi scan event registration failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+
+    err = esp_event_handler_register(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_INTERNET_CONNECTED,
+        on_network_internet_changed,
+        network
+    );
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Internet-connected event registration failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+
+    err = esp_event_handler_register(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_INTERNET_DISCONNECTED,
+        on_network_internet_changed,
+        network
+    );
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Internet-disconnected event registration failed: %s",
                  esp_err_to_name(err));
         return;
     }
