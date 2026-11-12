@@ -8,11 +8,16 @@
 
 #include "eh_host_core.h"
 #include "esp_log.h"
+#include "esp_http_client.h"
 #include "nvs_flash.h"
 
 #define NETWORK_MANAGER_HOSTED_TIMEOUT_MS 10000
 #define NETWORK_MANAGER_RECONNECT_SCAN_INTERVAL_MS 2000
 #define NETWORK_MANAGER_AP_SCAN_INTERVAL_MS 5000
+#define NETWORK_MANAGER_INTERNET_CHECK_INTERVAL_MS 10000
+#define NETWORK_MANAGER_INTERNET_CHECK_TIMEOUT_MS 3000
+#define NETWORK_MANAGER_INTERNET_CHECK_URL \
+    "http://connectivitycheck.gstatic.com/generate_204"
 
 static const char *TAG = "network_manager";
 
@@ -70,6 +75,88 @@ static void network_manager_schedule_ap_scan(network_manager_t *manager)
 
     ESP_LOGI(TAG, "Next AP list scan in %u ms",
              NETWORK_MANAGER_AP_SCAN_INTERVAL_MS);
+}
+
+static void network_manager_schedule_internet_check(
+    network_manager_t *manager,
+    bool immediate)
+{
+    bool has_ip;
+
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    has_ip = manager->status.has_ip;
+    xSemaphoreGive(manager->status_mutex);
+
+    if (!manager->started || !has_ip) {
+        manager->internet_check_pending = false;
+        return;
+    }
+
+    manager->internet_check_due = xTaskGetTickCount() +
+        (immediate ? 0 : pdMS_TO_TICKS(
+            NETWORK_MANAGER_INTERNET_CHECK_INTERVAL_MS));
+    manager->internet_check_pending = true;
+}
+
+static void network_manager_check_internet(network_manager_t *manager)
+{
+    esp_http_client_config_t config = {
+        .url = NETWORK_MANAGER_INTERNET_CHECK_URL,
+        .timeout_ms = NETWORK_MANAGER_INTERNET_CHECK_TIMEOUT_MS,
+        .disable_auto_redirect = true,
+        .keep_alive_enable = false
+    };
+    esp_http_client_handle_t client;
+    esp_err_t err;
+    int http_status = 0;
+    bool previous_connected;
+    bool first_check;
+    bool connected = false;
+
+    manager->internet_check_pending = false;
+
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    if (!manager->started || !manager->status.has_ip) {
+        xSemaphoreGive(manager->status_mutex);
+        return;
+    }
+    previous_connected = manager->status.internet_connected;
+    first_check = !manager->status.internet_check_done;
+    xSemaphoreGive(manager->status_mutex);
+
+    client = esp_http_client_init(&config);
+    if (client == NULL) {
+        err = ESP_ERR_NO_MEM;
+    } else {
+        err = esp_http_client_perform(client);
+        if (err == ESP_OK) {
+            http_status = esp_http_client_get_status_code(client);
+            connected = (http_status == 204);
+        }
+        esp_http_client_cleanup(client);
+    }
+
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    manager->status.internet_connected = connected;
+    manager->status.internet_check_done = true;
+    xSemaphoreGive(manager->status_mutex);
+
+    if (connected) {
+        ESP_LOGI(TAG, "Internet connectivity verified");
+    } else {
+        ESP_LOGW(TAG, "Internet connectivity check failed: %s (HTTP status: %d)",
+                 esp_err_to_name(err), http_status);
+    }
+
+    if (first_check || previous_connected != connected) {
+        network_manager_post_event(
+            connected
+                ? NETWORK_EVENT_INTERNET_CONNECTED
+                : NETWORK_EVENT_INTERNET_DISCONNECTED
+        );
+    }
+
+    network_manager_schedule_internet_check(manager, false);
 }
 
 static esp_err_t network_manager_apply_wifi_config(
@@ -337,6 +424,8 @@ static void network_manager_process_wifi_connected(
     manager->status.ssid[ssid_len] = '\0';
     manager->status.wifi_connected = true;
     manager->status.has_ip = false;
+    manager->status.internet_connected = false;
+    manager->status.internet_check_done = false;
     manager->status.ip_address[0] = '\0';
     manager->status.gateway[0] = '\0';
     manager->status.state = NETWORK_STATE_WIFI_CONNECTED;
@@ -356,12 +445,18 @@ static void network_manager_process_wifi_disconnected(
     uint8_t reason)
 {
     bool had_ip;
+    bool had_internet;
+
+    manager->internet_check_pending = false;
 
     xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
 
     had_ip = manager->status.has_ip;
+    had_internet = manager->status.internet_connected;
     manager->status.wifi_connected = false;
     manager->status.has_ip = false;
+    manager->status.internet_connected = false;
+    manager->status.internet_check_done = false;
     manager->status.ssid[0] = '\0';
     manager->status.ip_address[0] = '\0';
     manager->status.gateway[0] = '\0';
@@ -375,6 +470,9 @@ static void network_manager_process_wifi_disconnected(
 
     ESP_LOGW(TAG, "Wi-Fi disconnected, reason: %u", reason);
 
+    if (had_internet) {
+        network_manager_post_event(NETWORK_EVENT_INTERNET_DISCONNECTED);
+    }
     if (had_ip) {
         network_manager_post_event(NETWORK_EVENT_LOST_IP);
     }
@@ -412,6 +510,8 @@ static void network_manager_process_got_ip(
 
     manager->status.wifi_connected = true;
     manager->status.has_ip = true;
+    manager->status.internet_connected = false;
+    manager->status.internet_check_done = false;
     manager->status.state = NETWORK_STATE_IP_READY;
 
     esp_ip4addr_ntoa(
@@ -439,6 +539,7 @@ static void network_manager_process_got_ip(
         manager->ap_scan_pending = false;
     }
     network_manager_post_event(NETWORK_EVENT_GOT_IP);
+    network_manager_schedule_internet_check(manager, true);
 }
 
 static void network_manager_process_event(
@@ -515,7 +616,7 @@ static esp_err_t network_manager_process_request(
         ESP_LOGI(TAG, "Network Manager started");
         return ESP_OK;
 
-    case NETWORK_REQUEST_STOP:
+    case NETWORK_REQUEST_STOP: {
         if (!manager->initialized || !manager->started) {
             return ESP_ERR_INVALID_STATE;
         }
@@ -529,24 +630,38 @@ static esp_err_t network_manager_process_request(
         manager->ap_scan_enabled = false;
         manager->ap_scan_pending = false;
 
+        bool had_internet;
+        xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+        had_internet = manager->status.internet_connected;
+        xSemaphoreGive(manager->status_mutex);
+
         err = wifi_manager_stop();
         if (err != ESP_OK) {
             manager->started = true;
+            network_manager_schedule_internet_check(manager, false);
             return err;
         }
+
+        manager->internet_check_pending = false;
 
         xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
         manager->status.wifi_connected = false;
         manager->status.has_ip = false;
+        manager->status.internet_connected = false;
+        manager->status.internet_check_done = false;
         manager->status.ssid[0] = '\0';
         manager->status.ip_address[0] = '\0';
         manager->status.gateway[0] = '\0';
         manager->status.state = NETWORK_STATE_STOPPED;
         xSemaphoreGive(manager->status_mutex);
 
+        if (had_internet) {
+            network_manager_post_event(NETWORK_EVENT_INTERNET_DISCONNECTED);
+        }
         network_manager_post_event(NETWORK_EVENT_STOPPED);
         ESP_LOGI(TAG, "Network Manager stopped");
         break;
+    }
 
     case NETWORK_REQUEST_SET_CONFIG: {
         if (!manager->initialized) {
@@ -934,6 +1049,16 @@ static void network_manager_task(void *arg)
             }
         }
 
+        if (manager->internet_check_pending) {
+            TickType_t remaining =
+                (int32_t)(manager->internet_check_due - now) > 0
+                    ? manager->internet_check_due - now
+                    : 0;
+            if (remaining < wait_ticks) {
+                wait_ticks = remaining;
+            }
+        }
+
         if (xQueueReceive(manager->queue, &message, wait_ticks) == pdTRUE) {
             if (message.type == NETWORK_MESSAGE_REQUEST &&
                 message.request != NULL) {
@@ -955,6 +1080,11 @@ static void network_manager_task(void *arg)
             } else {
                 network_manager_process_event(manager, &message);
             }
+        }
+
+        if (manager->internet_check_pending &&
+            (int32_t)(xTaskGetTickCount() - manager->internet_check_due) >= 0) {
+            network_manager_check_internet(manager);
         }
 
         network_manager_scan_and_reconnect(manager);
