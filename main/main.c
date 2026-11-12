@@ -6,6 +6,7 @@
 #include "network_manager.h"
 #include "ota_manager.h"
 #include "app_config.h"
+#include "esp_board_manager.h"
 
 static const char *TAG = "app";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
@@ -83,6 +84,15 @@ void app_main(void)
 {
     network_manager_handle_t network = NULL;
     esp_err_t err;
+
+    // 1. Initialize Board Hardware
+    err = esp_board_manager_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Board Manager init failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "Board Manager initialized");
 
     err = network_manager_init(&network);
     if (err != ESP_OK) {
