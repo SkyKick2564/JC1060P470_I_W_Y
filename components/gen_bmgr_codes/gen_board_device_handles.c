@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include "esp_board_device.h"
 #include "dev_audio_codec.h"
+#include "dev_camera.h"
 #include "dev_display_lcd.h"
 #include "dev_fs_fat.h"
 #include "dev_lcd_touch.h"
@@ -56,6 +57,15 @@ esp_board_device_handle_t g_esp_board_device_handles[] = {
     },
     {
         .next = &g_esp_board_device_handles[5],
+        .name = "camera",
+        .chip = NULL,
+        .type = "camera",
+        .device_handle = NULL,
+        .init = dev_camera_init,
+        .deinit = dev_camera_deinit
+    },
+    {
+        .next = &g_esp_board_device_handles[6],
         .name = "lcd_brightness",
         .chip = NULL,
         .type = "ledc_ctrl",

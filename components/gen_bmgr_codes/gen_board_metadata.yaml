@@ -35,6 +35,13 @@ devices:
     dependencies:
       espressif/esp_lcd_touch_gt911: '*'
 
+  camera:
+    type: camera
+    sub_type: csi
+    peripherals:
+    - i2c_master
+    - ldo_mipi
+
   lcd_brightness:
     type: ledc_ctrl
     peripherals:
