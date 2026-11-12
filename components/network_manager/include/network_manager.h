@@ -41,6 +41,13 @@ typedef struct {
     bool wifi_connected;
     bool has_ip;
 
+    /*
+     * internet_check_done is false until the first external connectivity
+     * probe completes. internet_connected is meaningful after that probe.
+     */
+    bool internet_connected;
+    bool internet_check_done;
+
     char ssid[33];
     char ip_address[16];
     char gateway[16];
