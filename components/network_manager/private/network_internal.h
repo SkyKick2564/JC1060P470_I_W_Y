@@ -99,6 +99,9 @@ typedef struct network_manager {
     bool ap_scan_enabled;
     bool ap_scan_pending;
     TickType_t ap_scan_due;
+
+    bool internet_check_pending;
+    TickType_t internet_check_due;
     wifi_ap_record_t scan_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
     uint16_t scan_count;
     uint16_t scan_total_found;
