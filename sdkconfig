@@ -1360,8 +1360,11 @@ CONFIG_ESP_BOARD_PERIPH_UART_SUPPORT=y
 CONFIG_ESP_BOARD_DEV_AUDIO_CODEC_SUPPORT=y
 # default:
 # CONFIG_ESP_BOARD_DEV_BUTTON_SUPPORT is not set
+CONFIG_ESP_BOARD_DEV_CAMERA_SUPPORT=y
+CONFIG_ESP_BOARD_DEV_CAMERA_SUB_CSI_SUPPORT=y
 # default:
-# CONFIG_ESP_BOARD_DEV_CAMERA_SUPPORT is not set
+# CONFIG_ESP_BOARD_DEV_CAMERA_SUB_DVP_SUPPORT is not set
+# CONFIG_ESP_BOARD_DEV_CAMERA_SUB_SPI_SUPPORT is not set
 # default:
 # CONFIG_ESP_BOARD_DEV_CUSTOM_SUPPORT is not set
 CONFIG_ESP_BOARD_DEV_DISPLAY_LCD_SUPPORT=y
@@ -4349,6 +4352,163 @@ CONFIG_CU_DIAGNOSTICS_COLOR_ALWAYS=y
 # end of CMake Utilities
 
 #
+# Espressif Camera Sensors Configurations
+#
+
+#
+# Camera Sensor Configuration
+#
+
+#
+# Select and Set Camera Sensor
+#
+# default:
+# CONFIG_CAMERA_BF20A6 is not set
+# default:
+# CONFIG_CAMERA_BF3031 is not set
+# default:
+# CONFIG_CAMERA_BF3045 is not set
+# default:
+# CONFIG_CAMERA_BF3901 is not set
+# default:
+# CONFIG_CAMERA_BF3925 is not set
+# default:
+# CONFIG_CAMERA_BF3A03 is not set
+# default:
+# CONFIG_CAMERA_GC0308 is not set
+# default:
+# CONFIG_CAMERA_GC032A is not set
+# default:
+# CONFIG_CAMERA_GC2053 is not set
+# default:
+# CONFIG_CAMERA_GC2145 is not set
+# default:
+# CONFIG_CAMERA_GC2607 is not set
+# default:
+# CONFIG_CAMERA_GC4053 is not set
+# default:
+# CONFIG_CAMERA_JXH63P is not set
+# default:
+# CONFIG_CAMERA_LT6911 is not set
+# default:
+# CONFIG_CAMERA_MIRA220 is not set
+# default:
+# CONFIG_CAMERA_MIT245 is not set
+# default:
+# CONFIG_CAMERA_MT9D111 is not set
+# default:
+# CONFIG_CAMERA_OS02N10 is not set
+# default:
+# CONFIG_CAMERA_OS04C10 is not set
+# default:
+# CONFIG_CAMERA_OV2640 is not set
+# default:
+# CONFIG_CAMERA_OV2710 is not set
+# default:
+# CONFIG_CAMERA_OV3640 is not set
+# default:
+# CONFIG_CAMERA_OV3660 is not set
+# default:
+# CONFIG_CAMERA_OV5640 is not set
+# default:
+# CONFIG_CAMERA_OV5645 is not set
+# default:
+# CONFIG_CAMERA_OV5647 is not set
+# default:
+# CONFIG_CAMERA_OV9281 is not set
+# default:
+# CONFIG_CAMERA_SC030IOT is not set
+# default:
+# CONFIG_CAMERA_SC035HGS is not set
+# default:
+# CONFIG_CAMERA_SC101IOT is not set
+# default:
+# CONFIG_CAMERA_SC121AT is not set
+# default:
+# CONFIG_CAMERA_SC132GS is not set
+# default:
+# CONFIG_CAMERA_SC1346 is not set
+# default:
+# CONFIG_CAMERA_SC202CS is not set
+# default:
+# CONFIG_CAMERA_SC2331 is not set
+# default:
+# CONFIG_CAMERA_SC2336 is not set
+# default:
+# CONFIG_CAMERA_SC2337P is not set
+# default:
+# CONFIG_CAMERA_SP0A39 is not set
+# default:
+# CONFIG_CAMERA_STI2250 is not set
+# default:
+# CONFIG_CAMERA_TC358743 is not set
+# default:
+# CONFIG_CAMERA_ARDUCAM_IMX500 is not set
+# default:
+# CONFIG_CAMERA_PIVARIETY is not set
+# end of Select and Set Camera Sensor
+# end of Camera Sensor Configuration
+
+#
+# Camera XCLK Generator Configuration
+#
+# default:
+# CONFIG_CAMERA_XCLK_USE_LEDC is not set
+# default:
+CONFIG_CAMERA_XCLK_USE_ESP_CLOCK_ROUTER=y
+# end of Camera XCLK Generator Configuration
+
+#
+# Camera Motor Control Configuration
+#
+# default:
+# CONFIG_CAM_MOTOR_DW9714 is not set
+# end of Camera Motor Control Configuration
+
+# default:
+CONFIG_CAM_CTRL_SPI_ENABLE=y
+# default:
+CONFIG_CAM_CTLR_SPI_ISR_CACHE_SAFE=y
+# default:
+# CONFIG_CAM_CTLR_SPI_DISABLE_BACKUP_BUFFER is not set
+# default:
+# CONFIG_CAM_CTLR_SPI_DISABLE_AUTO_DECODE is not set
+# default:
+CONFIG_CAM_CTLR_SPI_DECODE_TASK_STACK_SIZE=4096
+# default:
+CONFIG_CAM_CTLR_SPI_DECODE_TASK_PRIORITY=10
+# default:
+# CONFIG_CAM_CTLR_SPI_ENABLE_PARLIO is not set
+# default:
+CONFIG_CAMERA_SENSOR_MOTOR_DETECT_METHOD_DYNAMIC_LINK=y
+# default:
+# CONFIG_CAMERA_SENSOR_MOTOR_DETECT_METHOD_STATIC_STORE is not set
+
+#
+# Camera IRCUT Control Configuration
+#
+# default:
+# CONFIG_CAM_IRCUT_AP1511B is not set
+# end of Camera IRCUT Control Configuration
+
+#
+# Camera Ambient Light Sensor Control Configuration
+#
+# default:
+# CONFIG_CAM_ALS_PT1411 is not set
+# end of Camera Ambient Light Sensor Control Configuration
+
+#
+# Camera LED Control Configuration
+#
+# default:
+# CONFIG_CAM_LED_IR2835 is not set
+# default:
+# CONFIG_CAM_LED_TCJ60 is not set
+# end of Camera LED Control Configuration
+# end of Espressif Camera Sensors Configurations
+
+#
 # Audio Codec Device Configuration
 #
 CONFIG_CODEC_ES8311_SUPPORT=y
@@ -4804,6 +4964,41 @@ CONFIG_ESP_HOSTED_HOST_USB_CHERRYUSB_MANIFEST=0
 CONFIG_ESP_HOSTED_CP_TINYUSB_MANIFEST=0
 
 #
+# Espressif Image Process Algorithm Configuration
+#
+# default:
+CONFIG_ESP_IPA_CONFIG_PARAM_VERSION=1
+# default:
+CONFIG_ESP_IPA_IAN_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_ADN_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_AWB_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_ACC_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_AGC_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_AEN_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_AF_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_ATC_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_DPC_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_IR_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_WL_ALGORITHM=y
+# default:
+CONFIG_ESP_IPA_EXT_CONFIG=y
+# default:
+CONFIG_ESP_IPA_DETECT_METHOD_DYNAMIC_LINK=y
+# default:
+# CONFIG_ESP_IPA_DETECT_METHOD_STATIC_STORE is not set
+# end of Espressif Image Process Algorithm Configuration
+
+#
 # ESP LCD TOUCH
 #
 # default:
@@ -4818,6 +5013,75 @@ CONFIG_ESP_LCD_TOUCH_MAX_BUTTONS=1
 # default:
 # CONFIG_LVGL_PORT_ENABLE_PPA is not set
 # end of ESP LVGL PORT
+
+#
+# Espressif SCCB Configurations
+#
+# default:
+CONFIG_ESP_SCCB_TRANS_TIMEOUT_DEFAULT=500
+# end of Espressif SCCB Configurations
+
+#
+# Espressif Video Configuration
+#
+# default:
+CONFIG_ESP_VIDEO_ENABLE_ISP=y
+# default:
+CONFIG_ESP_VIDEO_ENABLE_DATA_PREPROCESSING=y
+# default:
+CONFIG_ESP_VIDEO_CHECK_PARAMETERS=y
+# default:
+CONFIG_ESP_VIDEO_STREAM_STOP_DRAIN_FRAMES=1
+# default:
+CONFIG_ESP_VIDEO_ENABLE_MIPI_CSI_VIDEO_DEVICE=y
+# default:
+CONFIG_ESP_VIDEO_DISABLE_MIPI_CSI_DRIVER_BACKUP_BUFFER=y
+# default:
+CONFIG_ESP_VIDEO_ENABLE_DVP_VIDEO_DEVICE=y
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_SPI_VIDEO_DEVICE is not set
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_USB_UVC_VIDEO_DEVICE is not set
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_HW_H264_VIDEO_DEVICE is not set
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_HW_JPEG_ENC_VIDEO_DEVICE is not set
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_HW_JPEG_DEC_VIDEO_DEVICE is not set
+# default:
+CONFIG_ESP_VIDEO_ENABLE_ISP_VIDEO_DEVICE=y
+# default:
+CONFIG_ESP_VIDEO_ISP_DEVICE_HIST_SAMPLING_RGB=y
+# default:
+# CONFIG_ESP_VIDEO_ISP_DEVICE_HIST_SAMPLING_YUV_Y is not set
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_ISP_PIPELINE_CONTROLLER is not set
+# default:
+CONFIG_ESP_VIDEO_DISABLE_ISP_ERROR_INTERRUPT=y
+# default:
+# CONFIG_ESP_VIDEO_USE_CUSTOMIZED_ESP_H264_VERSION is not set
+
+#
+# Video Data Preprocessing
+#
+# default:
+CONFIG_ESP_VIDEO_ENABLE_SWAP_SHORT=y
+# default:
+CONFIG_ESP_VIDEO_ENABLE_SWAP_SHORT_RISCV=y
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_SWAP_SHORT_PIE is not set
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_SWAP_SHORT_BITSCRAMBLER is not set
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_SWAP_SHORT_PERF_LOG is not set
+# default:
+CONFIG_ESP_VIDEO_ENABLE_SWAP_BYTE=y
+# default:
+CONFIG_ESP_VIDEO_ENABLE_SWAP_BYTE_RISCV=y
+# default:
+# CONFIG_ESP_VIDEO_ENABLE_SWAP_BYTE_BITSCRAMBLER is not set
+# end of Video Data Preprocessing
+# end of Espressif Video Configuration
 
 #
 # USB-OTG
@@ -4887,6 +5151,19 @@ CONFIG_UAC_NUM_PACKETS_PER_URB=3
 # default:
 CONFIG_UAC_RINGBUF_SAFE_DELETE_WAITING_MS=50
 # end of USB Host UAC
+
+#
+# USB HOST UVC
+#
+# default:
+# CONFIG_UVC_PRINTF_CONFIGURATION_DESCRIPTOR is not set
+# default:
+CONFIG_UVC_INTERVAL_ARRAY_SIZE=3
+# default:
+CONFIG_UVC_CHECK_PAYLOAD_HEADER_EOH=y
+# default:
+CONFIG_UVC_CHECK_PAYLOAD_HEADER_ERR=y
+# end of USB HOST UVC
 
 #
 # LVGL configuration
@@ -5611,6 +5888,15 @@ CONFIG_LV_USE_DEMO_WIDGETS=y
 # CONFIG_LV_USE_DEMO_HIGH_RES is not set
 # end of Demos
 # end of LVGL configuration
+
+#
+# ESP H264 Configuration
+#
+# default:
+CONFIG_ESP_H264_DECODER_IRAM=y
+# default:
+# CONFIG_ESP_H264_DUAL_TASK is not set
+# end of ESP H264 Configuration
 # end of Component config
 
 # default:
@@ -5789,4 +6075,5 @@ CONFIG_SPI_FLASH_WRITING_DANGEROUS_REGIONS_ABORTS=y
 CONFIG_SUPPRESS_SELECT_DEBUG_OUTPUT=y
 # CONFIG_SUPPORT_TERMIOS is not set
 CONFIG_SEMIHOSTFS_MAX_MOUNT_POINTS=1
+# CONFIG_ESP_VIDEO_ENABLE_HW_JPEG_VIDEO_DEVICE is not set
 # End of deprecated options
