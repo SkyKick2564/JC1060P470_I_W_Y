@@ -1,4 +1,3 @@
-﻿
 idf_component_register(
     SRCS
         "src/network_manager.c"
@@ -14,9 +13,12 @@ idf_component_register(
     REQUIRES
         esp_event
         esp_common
+        esp_wifi
 
     PRIV_REQUIRES
         esp_hosted
         esp_netif
         esp_wifi
+        freertos
+        nvs_flash
 )

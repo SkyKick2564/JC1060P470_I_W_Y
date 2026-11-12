@@ -1,0 +1,37 @@
+
+{
+    "idf.preBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/bump_version.ps1",
+    "idf.postBuildTask": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/complete_version.ps1",
+
+    "idf.currentSetup": "C:\\esp\\v6.1\\esp-idf",
+    "idf.extensionActivationMode": "always",
+    "idf.customExtraVars": {
+        "IDF_TARGET": "esp32p4"
+    },
+    "idf.openOcdConfigs": [
+        "board/esp32p4-builtin.cfg"
+    ],
+    "idf.port": "COM7",
+    "idf.flashType": "JTAG",
+
+    "terminal.integrated.profiles.windows": {
+        "ESP-IDF 6.1 PowerShell": {
+            "source": "PowerShell",
+            "args": [
+                "-NoExit",
+                "-Command",
+                "& 'C:\\Espressif\\tools\\Microsoft.v6.1.PowerShell_profile.ps1'; $env:Path = 'C:\\Program Files\\GitHub CLI;' + $env:Path"
+            ]
+        }
+    },
+    "terminal.integrated.defaultProfile.windows": "ESP-IDF 6.1 PowerShell",
+
+    "clangd.path": "C:\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
+    "clangd.arguments": [
+        "--background-index",
+        "--query-driver=**",
+        "--compile-commands-dir=c:\\ESP32P4\\JC1060P470_I_W_Y\\build"
+    ],
+
+    "C_Cpp.intelliSenseEngine": "default"
+}

@@ -1,0 +1,44 @@
+dependencies:
+  espressif/esp_board_manager:
+    public: true
+    version: ==0.7.3~1
+  espressif/esp_lcd_touch:
+    public: true
+    version: ==1.2.1
+  idf: '>=6.1.0,<6.2.0'
+description: Guition board definitions and touch adapters for ESP Board Manager
+files:
+  exclude:
+  - '**/docs/**/*'
+  - '**/tools/**/*'
+  - '**/.vscode/**/*'
+  - '**/build-*/**/*'
+  - '**/gen_bmgr_codes/**/*'
+  - '**/*.log'
+  - '**/build/**/*'
+  - '**/build_*/**/*'
+  - '**/managed_components/**/*'
+  - '**/dist/**/*'
+  - '**/__pycache__/**/*'
+  - '**/*.pyc'
+  - '**/*.tgz'
+  - '**/sdkconfig'
+  - '**/sdkconfig.old'
+  - '**/dependencies.lock'
+license: MIT
+repository: git://github.com/Guition-JC/Guition.git
+repository_info:
+  commit_sha: 3dd044478e934a574df4e44d9cf5fde19171d0f8
+  path: components/board/guition_boards
+tags:
+- boards
+- guition
+- esp_board_manager
+targets:
+- esp32
+- esp32c3
+- esp32s3
+- esp32p4
+- esp32s31
+url: https://github.com/Guition-JC/Guition
+version: 0.1.4

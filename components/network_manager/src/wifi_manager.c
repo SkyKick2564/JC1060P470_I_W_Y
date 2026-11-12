@@ -1,4 +1,3 @@
-
 #include "wifi_manager.h"
 
 #include <string.h>
@@ -33,8 +32,17 @@ esp_err_t wifi_manager_init(void)
         return err;
     }
 
-    s_wifi_initialized = true;
+    /*
+     * Keep Wi-Fi credentials in RAM. Network Manager owns persistent storage
+     * and writes saved profiles only from its set_config() request.
+     */
+    err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    if (err != ESP_OK) {
+        esp_wifi_deinit();
+        return err;
+    }
 
+    s_wifi_initialized = true;
     return ESP_OK;
 }
 
@@ -42,28 +50,36 @@ esp_err_t wifi_manager_set_config(
     const char *ssid,
     const char *password)
 {
-    if (!s_wifi_initialized ||
-        ssid == NULL ||
-        password == NULL) {
+    if (!s_wifi_initialized || ssid == NULL || password == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-
-    // 2. ตั้งค่า Protocol ที่ต้องการตรงนี้ (เช่น ไม่เอา Wi-Fi 6 / 11ax เอาแค่ b/g/n)
-ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N));
 
     size_t ssid_len = strlen(ssid);
     size_t password_len = strlen(password);
 
-    if (ssid_len == 0 || ssid_len > 32 ||
-        password_len > 64) {
+    if (ssid_len == 0 || ssid_len > 32 || password_len > 64) {
         return ESP_ERR_INVALID_ARG;
+    }
+
+    /*
+     * Keep the current project's compatibility setting: 802.11 b/g/n/ax.
+     * Return the error instead of aborting the whole application.
+     */
+    esp_err_t err = esp_wifi_set_protocol(
+        WIFI_IF_STA,
+        WIFI_PROTOCOL_11B |
+        WIFI_PROTOCOL_11G |
+        WIFI_PROTOCOL_11N |
+        WIFI_PROTOCOL_11AX
+    );
+    if (err != ESP_OK) {
+        return err;
     }
 
     wifi_config_t config = {0};
 
     config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
     config.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
-
     config.sta.channel = 0;
     config.sta.bssid_set = false;
 
@@ -73,14 +89,13 @@ ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROT
     config.sta.rm_enabled = false;
     config.sta.btm_enabled = false;
     config.sta.mbo_enabled = false;
-
     config.sta.ft_enabled = false;
+
+    config.sta.threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK;
 
     memcpy(config.sta.ssid, ssid, ssid_len);
     memcpy(config.sta.password, password, password_len);
 
-    config.sta.threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK;
-    
     return esp_wifi_set_config(WIFI_IF_STA, &config);
 }
 
@@ -91,7 +106,6 @@ esp_err_t wifi_manager_start(void)
     }
 
     esp_err_t err = esp_wifi_start();
-
     if (err == ESP_OK) {
         s_wifi_started = true;
     }
@@ -124,7 +138,6 @@ esp_err_t wifi_manager_stop(void)
     }
 
     esp_err_t err = esp_wifi_stop();
-
     if (err == ESP_OK) {
         s_wifi_started = false;
     }
@@ -143,9 +156,11 @@ esp_err_t wifi_manager_deinit(void)
     }
 
     esp_err_t err = esp_wifi_deinit();
-
     if (err == ESP_OK) {
         s_wifi_initialized = false;
+        memset(s_scan_records, 0, sizeof(s_scan_records));
+        s_scan_count = 0;
+        s_scan_total_found = 0;
     }
 
     return err;
@@ -157,24 +172,20 @@ esp_err_t wifi_manager_scan(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    // ล้างผลลัพธ์เดิมก่อนเริ่ม Scan
     memset(s_scan_records, 0, sizeof(s_scan_records));
     s_scan_count = 0;
     s_scan_total_found = 0;
 
     wifi_scan_config_t scan_config = {0};
-
     scan_config.channel = 0;
     scan_config.show_hidden = false;
     scan_config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
 
-    // Blocking scan: รอจนกว่า Scan จะเสร็จ
     esp_err_t err = esp_wifi_scan_start(&scan_config, true);
     if (err != ESP_OK) {
         return err;
     }
 
-    // อ่านจำนวน AP ที่พบ
     err = esp_wifi_scan_get_ap_num(&s_scan_total_found);
     if (err != ESP_OK) {
         s_scan_total_found = 0;
@@ -185,19 +196,12 @@ esp_err_t wifi_manager_scan(void)
         return ESP_OK;
     }
 
-    // จำกัดจำนวนที่เก็บไว้ใน RAM
     uint16_t count = s_scan_total_found;
-
     if (count > WIFI_MANAGER_MAX_SCAN_RESULTS) {
         count = WIFI_MANAGER_MAX_SCAN_RESULTS;
     }
 
-    // รับรายการ AP จาก C6 ผ่าน ESP-Hosted
-    err = esp_wifi_scan_get_ap_records(
-        &count,
-        s_scan_records
-    );
-
+    err = esp_wifi_scan_get_ap_records(&count, s_scan_records);
     if (err != ESP_OK) {
         memset(s_scan_records, 0, sizeof(s_scan_records));
         s_scan_total_found = 0;
@@ -205,7 +209,6 @@ esp_err_t wifi_manager_scan(void)
     }
 
     s_scan_count = count;
-
     return ESP_OK;
 }
 
