@@ -40,8 +40,11 @@ peripherals:
     role: io
     config:
       pin: 11
-      mode: GPIO_MODE_OUTPUT
-      pull_up: true
+      # ES8311 configures this pin as its PA output. Keep the peripheral input-only
+      # so it does not reserve GPIO11 before the codec configures it.
+      mode: GPIO_MODE_INPUT
+      pull_up: false
+      pull_down: true
       default_level: 0
 
   - name: ldo_mipi
