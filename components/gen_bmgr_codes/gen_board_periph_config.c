@@ -125,9 +125,9 @@ const static periph_i2s_config_t esp_bmgr_i2s_audio_in_cfg = {
 const static periph_gpio_config_t esp_bmgr_gpio_pa_control_cfg = {
     .gpio_config = {
         .pin_bit_mask = BIT64(11),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .intr_type = GPIO_INTR_DISABLE,
     },
     .default_level = 0,
