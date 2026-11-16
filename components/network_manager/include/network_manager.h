@@ -31,7 +31,8 @@ typedef enum {
     NETWORK_EVENT_INTERNET_CONNECTED,
     NETWORK_EVENT_INTERNET_DISCONNECTED,
     NETWORK_EVENT_CONFIG_CHANGED,
-    NETWORK_EVENT_SCAN_UPDATED
+    NETWORK_EVENT_SCAN_UPDATED,
+    NETWORK_EVENT_RSSI_UPDATED
 } network_event_id_t;
 
 /* Current Network Status */
@@ -40,6 +41,8 @@ typedef struct {
 
     bool wifi_connected;
     bool has_ip;
+    bool rssi_valid;
+    int8_t rssi;
 
     /*
      * internet_check_done is false until the first external connectivity
