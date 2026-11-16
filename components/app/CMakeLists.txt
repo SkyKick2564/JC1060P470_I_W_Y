@@ -1,5 +1,7 @@
 idf_component_register(
     SRCS
+        "src/app.c"
+        "src/actions.c"
         "src/ui/ui.c"
         "src/ui/screens.c"
         "src/ui/styles.c"
