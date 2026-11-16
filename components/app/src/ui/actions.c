@@ -17,6 +17,13 @@ void action_set_radial_background(lv_event_t * e)
         return;
     }
 
+    /* This action is also triggered by SCREEN_LOADED; avoid applying twice. */
+    static lv_obj_t *applied_screen = NULL;
+    if (applied_screen == objects.main) {
+        return;
+    }
+    applied_screen = objects.main;
+
     lv_obj_set_style_bg_image_src(
         objects.main, NULL, LV_PART_MAIN
     );
