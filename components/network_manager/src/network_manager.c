@@ -98,6 +98,35 @@ static void network_manager_schedule_internet_check(
     manager->internet_check_pending = true;
 }
 
+static void network_manager_update_rssi(network_manager_t *manager)
+{
+    bool wifi_connected;
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    wifi_connected = manager->started && manager->status.wifi_connected;
+    xSemaphoreGive(manager->status_mutex);
+
+    if (!wifi_connected) {
+        return;
+    }
+
+    wifi_ap_record_t ap_info = {0};
+    esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+    if (err != ESP_OK) {
+        return;
+    }
+
+    bool changed;
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    changed = !manager->status.rssi_valid || manager->status.rssi != ap_info.rssi;
+    manager->status.rssi = ap_info.rssi;
+    manager->status.rssi_valid = true;
+    xSemaphoreGive(manager->status_mutex);
+
+    if (changed) {
+        network_manager_post_event(NETWORK_EVENT_RSSI_UPDATED);
+    }
+}
+
 static void network_manager_check_internet(network_manager_t *manager)
 {
     esp_http_client_config_t config = {
@@ -424,6 +453,8 @@ static void network_manager_process_wifi_connected(
     manager->status.ssid[ssid_len] = '\0';
     manager->status.wifi_connected = true;
     manager->status.has_ip = false;
+    manager->status.rssi_valid = false;
+    manager->status.rssi = 0;
     manager->status.internet_connected = false;
     manager->status.internet_check_done = false;
     manager->status.ip_address[0] = '\0';
@@ -435,6 +466,7 @@ static void network_manager_process_wifi_connected(
     /* A successful Wi-Fi association ends the connection attempt. */
     manager->wifi_connecting = false;
     manager->reconnect_scan_pending = false;
+    manager->rssi_update_due = xTaskGetTickCount();
 
     ESP_LOGI(TAG, "Wi-Fi connected: %s", ssid);
     network_manager_post_event(NETWORK_EVENT_WIFI_CONNECTED);
@@ -455,6 +487,8 @@ static void network_manager_process_wifi_disconnected(
     had_internet = manager->status.internet_connected;
     manager->status.wifi_connected = false;
     manager->status.has_ip = false;
+    manager->status.rssi_valid = false;
+    manager->status.rssi = 0;
     manager->status.internet_connected = false;
     manager->status.internet_check_done = false;
     manager->status.ssid[0] = '\0';
@@ -647,6 +681,8 @@ static esp_err_t network_manager_process_request(
         xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
         manager->status.wifi_connected = false;
         manager->status.has_ip = false;
+        manager->status.rssi_valid = false;
+        manager->status.rssi = 0;
         manager->status.internet_connected = false;
         manager->status.internet_check_done = false;
         manager->status.ssid[0] = '\0';
@@ -1049,6 +1085,16 @@ static void network_manager_task(void *arg)
             }
         }
 
+        if (manager->started && manager->status.wifi_connected) {
+            TickType_t remaining =
+                (int32_t)(manager->rssi_update_due - now) > 0
+                    ? manager->rssi_update_due - now
+                    : 0;
+            if (remaining < wait_ticks) {
+                wait_ticks = remaining;
+            }
+        }
+
         if (manager->internet_check_pending) {
             TickType_t remaining =
                 (int32_t)(manager->internet_check_due - now) > 0
@@ -1080,6 +1126,13 @@ static void network_manager_task(void *arg)
             } else {
                 network_manager_process_event(manager, &message);
             }
+        }
+
+        TickType_t task_now = xTaskGetTickCount();
+        if (manager->started && manager->status.wifi_connected &&
+            (int32_t)(task_now - manager->rssi_update_due) >= 0) {
+            network_manager_update_rssi(manager);
+            manager->rssi_update_due = xTaskGetTickCount() + pdMS_TO_TICKS(1000);
         }
 
         if (manager->internet_check_pending &&
