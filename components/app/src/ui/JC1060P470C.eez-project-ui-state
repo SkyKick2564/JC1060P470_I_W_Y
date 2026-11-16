@@ -1,9 +1,11 @@
 {
   "navigation": {
-    "selectedUserPageObject": "[..\\..\\..\\..\\..\\..\\ESP32_Projects\\ESP32P4_JC1060P470C\\components\\ui\\JC1060P470C.eez-project]:/userPages/0",
-    "selectedStyleObject": "[..\\..\\..\\..\\..\\..\\ESP32_Projects\\ESP32P4_JC1060P470C\\components\\ui\\JC1060P470C.eez-project]:/lvglStyles/styles/2",
-    "selectedThemeObject": "[..\\..\\..\\..\\..\\..\\ESP32_Projects\\ESP32P4_JC1060P470C\\components\\ui\\JC1060P470C.eez-project]:/themes/-1",
-    "subnavigationSelectedItems": {}
+    "selectedUserPageObject": "[JC1060P470C.eez-project]:/userPages/0",
+    "selectedActionObject": "[JC1060P470C.eez-project]:/actions/0",
+    "selectedStyleObject": "[JC1060P470C.eez-project]:/lvglStyles/styles/0",
+    "subnavigationSelectedItems": {
+      "variables-tab/sub-navigation/selected-item": "Global"
+    }
   },
   "layoutModel": {
     "rootEditor": {
@@ -24,7 +26,7 @@
           {
             "type": "border",
             "selected": 0,
-            "size": 176.5,
+            "size": 116.5,
             "location": "right",
             "children": [
               {
@@ -71,8 +73,8 @@
           },
           {
             "type": "border",
-            "selected": 0,
-            "size": 82.5,
+            "selected": 1,
+            "size": 101.5,
             "location": "bottom",
             "children": [
               {
@@ -190,20 +192,32 @@
             {
               "type": "tabset",
               "id": "EDITORS",
-              "weight": 57.59753593429158,
+              "weight": 60.951219512195124,
               "enableDeleteWhenEmpty": false,
               "enableClose": false,
               "children": [
                 {
                   "type": "tab",
-                  "id": "#35f7d898-8202-4e12-95c5-a58af1d92ed3",
+                  "id": "#a5ced77f-26ed-4520-a011-31bb23c768e9",
                   "name": "Main",
                   "component": "editor",
                   "config": {
-                    "objectPath": "[..\\..\\..\\..\\..\\..\\ESP32_Projects\\ESP32P4_JC1060P470C\\components\\ui\\JC1060P470C.eez-project]:/userPages/0",
+                    "objectPath": "[JC1060P470C.eez-project]:/userPages/0",
                     "permanent": false
                   },
                   "icon": "svg:page"
+                },
+                {
+                  "type": "tab",
+                  "id": "#371f5c94-128f-4969-bbe2-d99f3846ef86",
+                  "name": "Settings",
+                  "component": "editor",
+                  "config": {
+                    "objectPath": "[JC1060P470C.eez-project]:/settings",
+                    "subObjectPath": "[JC1060P470C.eez-project]:/settings",
+                    "permanent": false
+                  },
+                  "icon": "material:settings"
                 }
               ],
               "active": true
@@ -211,7 +225,7 @@
             {
               "type": "row",
               "id": "#ce6a45c4-eee1-4a8e-9a27-2663fc38011e",
-              "weight": 27.40246406570842,
+              "weight": 24.048780487804876,
               "children": [
                 {
                   "type": "tabset",
@@ -556,7 +570,8 @@
                       "enableClose": false,
                       "icon": "svg:log"
                     }
-                  ]
+                  ],
+                  "active": true
                 },
                 {
                   "type": "tabset",
@@ -604,7 +619,7 @@
                 {
                   "type": "tabset",
                   "id": "#166af33e-ab75-4976-9b61-16c172d114e2",
-                  "weight": 75,
+                  "weight": 51.81159420289855,
                   "enableDrop": false,
                   "enableDrag": false,
                   "enableClose": false,
@@ -617,12 +632,13 @@
                       "component": "bitmaps",
                       "enableClose": false
                     }
-                  ]
+                  ],
+                  "active": true
                 },
                 {
                   "type": "tabset",
                   "id": "#62a72f56-0da0-4e1a-9c05-3d363024c9d5",
-                  "weight": 25,
+                  "weight": 48.18840579710145,
                   "enableDrop": false,
                   "enableDrag": false,
                   "enableClose": false,
@@ -1064,10 +1080,10 @@
       },
       "transform": {
         "translate": {
-          "x": -279.4886363636364,
-          "y": -61.588704206241516
+          "x": -262.6341666666667,
+          "y": -214.35234848484845
         },
-        "scale": 0.25
+        "scale": 0.67
       },
       "timeline": {
         "isEditorActive": false,
@@ -1150,15 +1166,9 @@
       "0": {
         "$selected": true
       },
-      "1": {
-        "$selected": true
-      },
-      "2": {
-        "$selected": true
-      },
-      "3": {
-        "$selected": true
-      }
+      "1": {},
+      "2": {},
+      "3": {}
     },
     "[..\\..\\..\\..\\..\\..\\ESP32_Projects\\ESP32P4_JC1060P470C\\components\\ui\\JC1060P470C.eez-project]:/lvglStyles/styles[tree-state]": {},
     "[..\\..\\..\\..\\..\\..\\ESP32_Projects\\ESP32P4_JC1060P470C\\components\\ui\\JC1060P470C.eez-project]:/userPages/0[flow-state]": {
@@ -1189,6 +1199,7 @@
   "searchMatchWholeWord": false,
   "replaceEnabled": false,
   "replaceText": "",
+  "pageRuntimeFrontFace": true,
   "breakpoints": {},
   "watchExpressions": [],
   "showComponentDescriptions": true,
@@ -1197,11 +1208,12 @@
   "lvglPart": "MAIN",
   "lvglState": "DEFAULT",
   "lvglExpandedPropertiesGroup": [
-    "TEXT"
+    "BACKGROUND",
+    "MISCELLANEOUS"
   ],
   "showInactiveFlowsInDebugger": true,
   "globalFlowZoom": true,
-  "flowZoom": 0.5,
+  "flowZoom": 0.67,
   "implementationLanguage": "C",
-  "openDialogDefaultPath": "C:\\ESP32_Projects\\ESP32P4_JC1060P470C\\components\\ui"
+  "openDialogDefaultPath": "C:\\Users\\skyki\\OneDrive\\Desktop\\images.png"
 }
