@@ -14,9 +14,11 @@ idf_component_register(
         "src/ui/fonts/ui_font_noto_sans_thai_40.c"
 
     INCLUDE_DIRS
+        "include"
         "src/ui"
 
     REQUIRES
         lvgl
         esp_lvgl_port
+        esp_board_manager
 )

@@ -7,8 +7,9 @@
 #include "ota_manager.h"
 #include "app_config.h"
 #include "esp_board_manager.h"
+#include "app.h"
 
-static const char *TAG = "app";
+static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 
 /*
@@ -125,6 +126,16 @@ void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "Board Manager initialized");
+
+    /* Initialize application and UI */
+    err = app_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Application initialization failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+
+    ESP_LOGI(TAG, "Application started");
 
     err = network_manager_init(&network);
     if (err != ESP_OK) {
