@@ -12,7 +12,7 @@ idf_component_register(
         "src/ui/fonts/ui_font_noto_sans_thai_26.c"
         "src/ui/fonts/ui_font_noto_sans_thai_32.c"
         "src/ui/fonts/ui_font_noto_sans_thai_40.c"
-
+        "src/ui/images/ui_image_bg.c"
     INCLUDE_DIRS
         "include"
         "src/ui"
