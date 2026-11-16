@@ -17,10 +17,16 @@ enum ScreensEnum {
 
 typedef struct _objects_t {
     lv_obj_t *main;
-    lv_obj_t *txt_clock;
+    lv_obj_t *top_container;
+    lv_obj_t *battery_container;
+    lv_obj_t *battery_level;
+    lv_obj_t *battery_outline;
+    lv_obj_t *battery_terminal;
+    lv_obj_t *wifi_container;
     lv_obj_t *wifi_arc_1;
     lv_obj_t *wifi_arc_2;
     lv_obj_t *wifi_arc_3;
+    lv_obj_t *txt_clock;
 } objects_t;
 
 extern objects_t objects;
