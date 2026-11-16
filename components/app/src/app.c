@@ -108,15 +108,15 @@ esp_err_t app_init(void)
         },
     };
 
-    lv_display_t *display =
-        lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
+    // lv_display_t *display =
+    //     lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
 
-    if (display == NULL) {
-        ESP_LOGE(TAG, "Failed to add LVGL DSI display");
-        return ESP_FAIL;
-    }
+    // if (display == NULL) {
+    //     ESP_LOGE(TAG, "Failed to add LVGL DSI display");
+    //     return ESP_FAIL;
+    // }
 
-    ESP_LOGI(TAG, "LVGL display initialized successfully");
+    // ESP_LOGI(TAG, "LVGL display initialized successfully");
 
     // /* Initialize EEZ UI */
     // ui_init();
