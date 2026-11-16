@@ -26,7 +26,7 @@
           {
             "type": "border",
             "selected": 0,
-            "size": 116.5,
+            "size": 161.5,
             "location": "right",
             "children": [
               {
@@ -1080,10 +1080,10 @@
       },
       "transform": {
         "translate": {
-          "x": -262.6341666666667,
-          "y": -214.35234848484845
+          "x": -154.07502261420177,
+          "y": -124.6158412483039
         },
-        "scale": 0.67
+        "scale": 0.5
       },
       "timeline": {
         "isEditorActive": false,
@@ -1163,9 +1163,7 @@
       }
     },
     "[JC1060P470C.eez-project]:/lvglStyles/styles[tree-state]": {
-      "0": {
-        "$selected": true
-      },
+      "0": {},
       "1": {},
       "2": {},
       "3": {}
@@ -1213,7 +1211,7 @@
   ],
   "showInactiveFlowsInDebugger": true,
   "globalFlowZoom": true,
-  "flowZoom": 0.67,
+  "flowZoom": 0.5,
   "implementationLanguage": "C",
   "openDialogDefaultPath": "C:\\Users\\skyki\\OneDrive\\Desktop\\images.png"
 }
