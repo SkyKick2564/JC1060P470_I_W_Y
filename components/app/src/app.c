@@ -108,18 +108,47 @@ esp_err_t app_init(void)
         },
     };
 
-    // lv_display_t *display =
-    //     lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
+    /*
+     * Lock LVGL before adding the display.
+     * This prevents the LVGL task from rendering
+     * the first frame before the background is set.
+     */
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "Failed to lock LVGL");
+        return ESP_FAIL;
+    }
 
-    // if (display == NULL) {
-    //     ESP_LOGE(TAG, "Failed to add LVGL DSI display");
-    //     return ESP_FAIL;
-    // }
+    lv_display_t *display =
+        lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
 
-    // ESP_LOGI(TAG, "LVGL display initialized successfully");
+    if (display == NULL) {
+        ESP_LOGE(TAG, "Failed to add LVGL DSI display");
+        lvgl_port_unlock();
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "LVGL display initialized successfully");
+
+    /* Set initial screen background before first refresh */
+    lv_obj_t *screen = lv_display_get_screen_active(display);
+
+    lv_obj_set_style_bg_color(
+        screen,
+        lv_color_hex(0x000000),
+        LV_PART_MAIN
+    );
+
+    lv_obj_set_style_bg_opa(
+        screen,
+        LV_OPA_COVER,
+        LV_PART_MAIN
+    );
 
     // /* Initialize EEZ UI */
-    // ui_init();
+    ui_init();
+
+    /* Allow LVGL task to start rendering */
+    lvgl_port_unlock();
 
     ESP_LOGI(TAG, "Application initialized");
 
