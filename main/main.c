@@ -157,7 +157,10 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Network Manager initialized");
 
-    err = ota_manager_init(network, &APP_OTA_CONFIG);
+    ota_manager_config_t ota_config = APP_OTA_CONFIG;
+    ota_config.user_ctx = network;
+
+    err = ota_manager_init(network, &ota_config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
                  esp_err_to_name(err));
