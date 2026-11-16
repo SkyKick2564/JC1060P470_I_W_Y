@@ -86,8 +86,20 @@ static void on_wifi_scan_updated(
 static esp_err_t app_before_update(void *user_ctx)
 {
     esp_err_t err;
-    // เตรียม Application ก่อน OTA
+    network_manager_handle_t network =
+        (network_manager_handle_t)user_ctx;
+
     ESP_LOGW(TAG, "OTA: Application pre-flash callback");
+
+    err = network_manager_stop(network);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Network Manager stop failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Network Manager stopped");
+
     err = esp_board_manager_deinit();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Board Manager deinit failed: %s",
