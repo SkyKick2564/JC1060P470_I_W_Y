@@ -27,9 +27,11 @@ void create_screen_main() {
     objects.main = obj;
     lv_obj_set_pos(obj, 0, 0);
     lv_obj_set_size(obj, 1024, 600);
-    lv_obj_set_style_bg_color(obj, lv_color_hex(0x0f1127), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_image_src(obj, &img_bg, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_event_cb(obj, action_set_radial_background, LV_EVENT_SCREEN_LOADED, (void *)0);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0x777777), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_image_recolor(obj, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_color(obj, lv_color_hex(0x202020), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_HOR, LV_PART_MAIN | LV_STATE_DEFAULT);
     {
         lv_obj_t *parent_obj = obj;
         {

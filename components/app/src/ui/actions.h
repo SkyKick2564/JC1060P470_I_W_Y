@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 
+extern void action_set_radial_background(lv_event_t * e);
+
 #ifdef __cplusplus
 }
 #endif
