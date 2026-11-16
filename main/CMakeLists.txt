@@ -5,6 +5,7 @@ idf_component_register(
         "."
 
     REQUIRES
+        app
         network_manager
         ota_manager
         esp_board_manager
