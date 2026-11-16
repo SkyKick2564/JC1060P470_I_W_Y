@@ -73,10 +73,22 @@ void create_screen_main() {
             lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             add_style_card_dark(obj);
+            {
+                lv_obj_t *parent_obj = obj;
+                {
+                    // txt_clock
+                    lv_obj_t *obj = lv_label_create(parent_obj);
+                    objects.txt_clock = obj;
+                    lv_obj_set_pos(obj, 35, 22);
+                    lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                    lv_obj_set_style_text_font(obj, &ui_font_noto_sans_thai_22, LV_PART_MAIN | LV_STATE_DEFAULT);
+                    lv_label_set_text_static(obj, "10:35");
+                }
+            }
         }
         {
             lv_obj_t *obj = lv_obj_create(parent_obj);
-            lv_obj_set_pos(obj, 898, 0);
+            lv_obj_set_pos(obj, 858, 0);
             lv_obj_set_size(obj, 54, 58);
             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -150,6 +162,7 @@ void create_screen_main() {
 void delete_screen_main() {
     lv_obj_delete(objects.main);
     objects.main = 0;
+    objects.txt_clock = 0;
     objects.wifi_arc_1 = 0;
     objects.wifi_arc_2 = 0;
     objects.wifi_arc_3 = 0;
