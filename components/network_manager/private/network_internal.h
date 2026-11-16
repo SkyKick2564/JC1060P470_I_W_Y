@@ -85,7 +85,6 @@ typedef struct network_manager {
     bool initialized;
     bool started;
     bool wifi_connecting;
-    TickType_t rssi_update_due;
     bool wifi_config_switch_pending;
     network_saved_wifi_config_t pending_wifi_config;
     char preferred_wifi_ssid[33];
