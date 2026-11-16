@@ -12,87 +12,6 @@
 
 static const char *TAG = "APP";
 
-#define WIFI_ICON_ARC_COUNT 3
-#define WIFI_ICON_SIZE 32
-#define WIFI_ICON_RIGHT 16
-#define WIFI_ICON_TOP 10
-
-static lv_obj_t *s_wifi_arcs[WIFI_ICON_ARC_COUNT];
-static lv_obj_t *s_wifi_dot;
-
-static void app_create_wifi_icon(void)
-{
-    if (objects.main == NULL || s_wifi_dot != NULL) {
-        return;
-    }
-
-    const lv_coord_t sizes[WIFI_ICON_ARC_COUNT] = {32, 24, 16};
-    const lv_coord_t widths[WIFI_ICON_ARC_COUNT] = {3, 3, 2};
-    const lv_coord_t x = 1024 - WIFI_ICON_RIGHT - WIFI_ICON_SIZE;
-
-    for (int i = 0; i < WIFI_ICON_ARC_COUNT; ++i) {
-        lv_obj_t *arc = lv_arc_create(objects.main);
-        s_wifi_arcs[i] = arc;
-        lv_obj_set_size(arc, sizes[i], sizes[i]);
-        lv_obj_set_pos(arc,
-            x + (WIFI_ICON_SIZE - sizes[i]) / 2,
-            WIFI_ICON_TOP + (WIFI_ICON_SIZE - sizes[i]));
-        lv_arc_set_rotation(arc, 0);
-        lv_arc_set_bg_angles(arc, 225, 315);
-        lv_arc_set_value(arc, 0);
-        lv_obj_set_style_pad_all(arc, 0, LV_PART_MAIN);
-        lv_obj_set_style_border_width(arc, 0, LV_PART_KNOB);
-        lv_obj_set_style_shadow_width(arc, 0, LV_PART_KNOB);
-        lv_obj_set_style_arc_width(arc, widths[i], LV_PART_MAIN);
-        lv_obj_set_style_arc_color(arc, lv_color_hex(0x777777), LV_PART_MAIN);
-        lv_obj_set_style_arc_opa(arc, LV_OPA_20, LV_PART_MAIN);
-        lv_obj_set_style_arc_opa(arc, LV_OPA_TRANSP, LV_PART_INDICATOR);
-        lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(arc, LV_OPA_TRANSP, LV_PART_KNOB);
-        lv_obj_set_style_border_width(arc, 0, LV_PART_MAIN);
-        lv_obj_clear_flag(arc, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    }
-
-    s_wifi_dot = lv_obj_create(objects.main);
-    lv_obj_remove_style_all(s_wifi_dot);
-    lv_obj_set_size(s_wifi_dot, 5, 5);
-    lv_obj_set_pos(s_wifi_dot, x + 13, WIFI_ICON_TOP + 27);
-    lv_obj_set_style_radius(s_wifi_dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(s_wifi_dot, lv_color_hex(0x777777), 0);
-    lv_obj_set_style_bg_opa(s_wifi_dot, LV_OPA_40, 0);
-    lv_obj_clear_flag(s_wifi_dot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-}
-
-void app_set_wifi_status(bool connected, bool rssi_valid, int8_t rssi)
-{
-    if (s_wifi_dot == NULL || !lvgl_port_lock(1000)) {
-        return;
-    }
-
-    int signal_level = 0;
-    if (connected) {
-        if (!rssi_valid) signal_level = 3;
-        else if (rssi >= -55) signal_level = 4;
-        else if (rssi >= -67) signal_level = 3;
-        else if (rssi >= -75) signal_level = 2;
-        else if (rssi >= -85) signal_level = 1;
-    }
-
-    int visible_arcs = signal_level > 0 ? signal_level - 1 : 0;
-    lv_color_t color = connected ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x777777);
-
-    for (int i = 0; i < WIFI_ICON_ARC_COUNT; ++i) {
-        lv_obj_set_style_arc_color(s_wifi_arcs[i], color, LV_PART_MAIN);
-        lv_obj_set_style_arc_opa(s_wifi_arcs[i],
-            connected && i < visible_arcs ? LV_OPA_COVER : LV_OPA_20,
-            LV_PART_MAIN);
-    }
-
-    lv_obj_set_style_bg_color(s_wifi_dot, color, 0);
-    lv_obj_set_style_bg_opa(s_wifi_dot, connected ? LV_OPA_COVER : LV_OPA_40, 0);
-    lvgl_port_unlock();
-}
-
 esp_err_t app_init(void)
 {
     esp_err_t err;
@@ -227,7 +146,6 @@ esp_err_t app_init(void)
 
     // /* Initialize EEZ UI */
     ui_init();
-    app_create_wifi_icon();
 
     /* Allow LVGL task to start rendering */
     lvgl_port_unlock();
