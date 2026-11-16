@@ -40,6 +40,9 @@ static void app_create_wifi_icon(void)
         lv_arc_set_rotation(arc, 0);
         lv_arc_set_bg_angles(arc, 225, 315);
         lv_arc_set_value(arc, 0);
+        lv_obj_set_style_pad_all(arc, 0, LV_PART_MAIN);
+        lv_obj_set_style_border_width(arc, 0, LV_PART_KNOB);
+        lv_obj_set_style_shadow_width(arc, 0, LV_PART_KNOB);
         lv_obj_set_style_arc_width(arc, widths[i], LV_PART_MAIN);
         lv_obj_set_style_arc_color(arc, lv_color_hex(0x777777), LV_PART_MAIN);
         lv_obj_set_style_arc_opa(arc, LV_OPA_20, LV_PART_MAIN);
