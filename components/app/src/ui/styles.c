@@ -11,7 +11,7 @@
 
 void init_style_card_dark_MAIN_DEFAULT(lv_style_t *style) {
     lv_style_set_bg_color(style, lv_color_hex(0x353535));
-    lv_style_set_bg_opa(style, 255);
+    lv_style_set_bg_opa(style, 100);
     lv_style_set_bg_grad_color(style, lv_color_hex(0x191919));
     lv_style_set_border_color(style, lv_color_hex(0x414141));
     lv_style_set_border_opa(style, 255);

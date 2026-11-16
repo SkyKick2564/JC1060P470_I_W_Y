@@ -167,8 +167,8 @@
             {
               "objID": "2d889105-7ea2-468a-ecf6-dcac265ea5fb",
               "type": "LVGLContainerWidget",
-              "left": 322,
-              "top": 224,
+              "left": 35,
+              "top": 86,
               "width": 381,
               "height": 153,
               "customInputs": [],
@@ -355,7 +355,9 @@
                     "definition": {
                       "MAIN": {
                         "DEFAULT": {
-                          "text_font": "NotoSansThai_22"
+                          "text_font": "NotoSansThai_22",
+                          "text_color": "#000000",
+                          "text_opa": 255
                         }
                       }
                     }
@@ -742,7 +744,7 @@
             "MAIN": {
               "DEFAULT": {
                 "bg_color": "#353535",
-                "bg_opa": 255,
+                "bg_opa": 100,
                 "bg_grad_color": "#191919",
                 "border_color": "#414141",
                 "border_opa": 255,
