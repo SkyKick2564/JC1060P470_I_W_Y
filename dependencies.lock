@@ -332,7 +332,7 @@ dependencies:
     - esp32s31
     version: 2.6.0
   espressif/usb:
-    component_hash: 99eee72ea224d9117d4c342442717a1f20bf8112e2ab5d7d7038b827874f4c92
+    component_hash: 5bcbf1bde509faef0750bbae5595b38e91cbbbd9aa0e3d308be64f9279b78aa0
     dependencies:
     - name: idf
       require: private
@@ -347,7 +347,7 @@ dependencies:
     - esp32p4
     - esp32h4
     - linux
-    version: 1.6.0
+    version: 1.6.1
   espressif/usb_host_uac:
     component_hash: 02f7e669b4dae033347e4523acaed4b8c402290a887878d396811c4bee47cc46
     dependencies:
@@ -443,6 +443,6 @@ direct_dependencies:
 - espressif/esp_lvgl_port
 - guition-jc/guition_boards
 - lvgl/lvgl
-manifest_hash: eb3c3fb79234776985bac2fa4c4cd342fe6b1a0fc633cef72c536b6d192ef959
+manifest_hash: df48f87e18af79a97f2620f1f4ce75b192d69560299daf8989e21f1ca2dc1115
 target: esp32p4
 version: 3.0.0

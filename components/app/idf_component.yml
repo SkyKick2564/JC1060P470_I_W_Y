@@ -1,0 +1,5 @@
+dependencies:
+  lvgl/lvgl:
+    version: "9.5.*"
+  espressif/esp_lvgl_port:
+    version: "^2.3.0"
