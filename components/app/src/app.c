@@ -118,8 +118,8 @@ esp_err_t app_init(void)
 
     ESP_LOGI(TAG, "LVGL display initialized successfully");
 
-    /* Initialize EEZ UI */
-    ui_init();
+    // /* Initialize EEZ UI */
+    // ui_init();
 
     ESP_LOGI(TAG, "Application initialized");
 
