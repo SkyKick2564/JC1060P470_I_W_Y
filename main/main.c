@@ -12,23 +12,6 @@
 static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 
-static void on_network_wifi_status_changed(
-    void *arg,
-    esp_event_base_t event_base,
-    int32_t event_id,
-    void *event_data)
-{
-    network_manager_handle_t network = (network_manager_handle_t)arg;
-    network_status_t status = {0};
-    (void)event_base;
-    (void)event_id;
-    (void)event_data;
-
-    if (network_manager_get_status(network, &status) == ESP_OK) {
-        app_set_wifi_status(status.wifi_connected, status.rssi_valid, status.rssi);
-    }
-}
-
 /*
  * Called when Network Manager Internet connectivity changes.
  */
@@ -202,26 +185,6 @@ void app_main(void)
     //     return;
     // }
 
-    const network_event_id_t wifi_status_events[] = {
-        NETWORK_EVENT_STARTED,
-        NETWORK_EVENT_STOPPED,
-        NETWORK_EVENT_WIFI_CONNECTED,
-        NETWORK_EVENT_WIFI_DISCONNECTED,
-        NETWORK_EVENT_RSSI_UPDATED
-    };
-    for (size_t i = 0; i < sizeof(wifi_status_events) / sizeof(wifi_status_events[0]); ++i) {
-        err = esp_event_handler_register(
-            NETWORK_MANAGER_EVENT,
-            wifi_status_events[i],
-            on_network_wifi_status_changed,
-            network
-        );
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Wi-Fi status event registration failed: %s", esp_err_to_name(err));
-            return;
-        }
-    }
-
     err = esp_event_handler_register(
         NETWORK_MANAGER_EVENT,
         NETWORK_EVENT_SCAN_UPDATED,
@@ -265,13 +228,6 @@ void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "Network Manager started");
-
-    network_status_t initial_network_status = {0};
-    if (network_manager_get_status(network, &initial_network_status) == ESP_OK) {
-        app_set_wifi_status(initial_network_status.wifi_connected,
-                            initial_network_status.rssi_valid,
-                            initial_network_status.rssi);
-    }
 
     /* Existing Wi-Fi scan test harness; complete app startup before OTA starts. */
     err = network_manager_start_scan(network);
