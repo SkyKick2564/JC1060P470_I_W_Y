@@ -42,7 +42,7 @@ struct app_touch_multi_context {
 static app_touch_multi_context_t *s_touch_context = NULL;
 
 static void app_touch_read(lv_indev_t *indev, lv_indev_data_t *data);
-static void IRAM_ATTR app_touch_interrupt_callback(esp_lcd_touch_handle_t tp);
+static void app_touch_interrupt_callback(esp_lcd_touch_handle_t tp);
 static void app_touch_refresh(app_touch_multi_context_t *context);
 static void app_touch_release_all(app_touch_multi_context_t *context);
 static int app_touch_find_track(const app_touch_multi_context_t *context, uint8_t track_id);
