@@ -356,7 +356,7 @@
                         "conditionalStyles": [],
                         "childStyles": []
                       },
-                      "locked": false,
+                      "locked": true,
                       "hiddenInEditor": false,
                       "timeline": [],
                       "eventHandlers": [],
@@ -412,7 +412,7 @@
                         "conditionalStyles": [],
                         "childStyles": []
                       },
-                      "locked": false,
+                      "locked": true,
                       "hiddenInEditor": false,
                       "timeline": [],
                       "eventHandlers": [],
@@ -466,7 +466,7 @@
                         "conditionalStyles": [],
                         "childStyles": []
                       },
-                      "locked": false,
+                      "locked": true,
                       "hiddenInEditor": false,
                       "timeline": [],
                       "eventHandlers": [],
@@ -508,9 +508,9 @@
                     {
                       "objID": "45f9a46d-1d5e-4389-d750-32fe0ff0cee1",
                       "type": "LVGLLabelWidget",
-                      "left": 2,
+                      "left": 3,
                       "top": 1,
-                      "width": 30,
+                      "width": 20,
                       "height": 22,
                       "customInputs": [],
                       "customOutputs": [],
@@ -520,9 +520,11 @@
                         "conditionalStyles": [],
                         "childStyles": []
                       },
+                      "locked": true,
                       "hiddenInEditor": false,
                       "timeline": [],
                       "eventHandlers": [],
+                      "identifier": "perBatt_txt",
                       "leftUnit": "px",
                       "topUnit": "px",
                       "widthUnit": "content",
@@ -552,7 +554,7 @@
                       },
                       "group": "",
                       "groupIndex": 0,
-                      "text": "100",
+                      "text": "99",
                       "textType": "literal",
                       "longMode": "WRAP",
                       "recolor": false,
@@ -587,10 +589,10 @@
                 {
                   "objID": "ec213071-985f-4769-ee27-83bbf0aeab59",
                   "type": "LVGLImageWidget",
-                  "left": 952,
-                  "top": 14,
-                  "width": 15,
-                  "height": 21,
+                  "left": 962,
+                  "top": 12,
+                  "width": 19,
+                  "height": 27,
                   "customInputs": [],
                   "customOutputs": [],
                   "style": {
@@ -599,6 +601,7 @@
                     "conditionalStyles": [],
                     "childStyles": []
                   },
+                  "locked": true,
                   "timeline": [],
                   "eventHandlers": [],
                   "leftUnit": "px",
@@ -699,7 +702,7 @@
                         "definition": {
                           "INDICATOR": {
                             "DEFAULT": {
-                              "arc_color": "#000000",
+                              "arc_color": "#FFFFFF",
                               "arc_width": 3,
                               "arc_opa": 255
                             }
@@ -787,7 +790,7 @@
                         "definition": {
                           "INDICATOR": {
                             "DEFAULT": {
-                              "arc_color": "#000000",
+                              "arc_color": "#FFFFFF",
                               "arc_width": 3,
                               "arc_opa": 255
                             }
@@ -875,7 +878,7 @@
                         "definition": {
                           "INDICATOR": {
                             "DEFAULT": {
-                              "arc_color": "#000000",
+                              "arc_color": "#FFFFFF",
                               "arc_width": 3,
                               "arc_opa": 255
                             }
@@ -953,6 +956,7 @@
                     "conditionalStyles": [],
                     "childStyles": []
                   },
+                  "locked": true,
                   "timeline": [],
                   "eventHandlers": [],
                   "identifier": "txt_clock",
@@ -977,7 +981,7 @@
                       "MAIN": {
                         "DEFAULT": {
                           "text_font": "NotoSansThai_22",
-                          "text_color": "#000000",
+                          "text_color": "#FFFFFF",
                           "text_opa": 255
                         }
                       }

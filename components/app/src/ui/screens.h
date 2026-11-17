@@ -22,7 +22,7 @@ typedef struct _objects_t {
     lv_obj_t *battery_outline;
     lv_obj_t *battery_level;
     lv_obj_t *battery_terminal;
-    lv_obj_t *obj0;
+    lv_obj_t *per_batt_txt;
     lv_obj_t *wifi_container;
     lv_obj_t *wifi_arc_1;
     lv_obj_t *wifi_arc_2;
