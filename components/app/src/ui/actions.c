@@ -1,93 +1,11 @@
 #include "actions.h"
 #include "screens.h"
 
-#ifdef EEZ_LVGL_SIMULATOR
-
-/*
- * Full Simulator:
- * ใช้วงกลมซ้อนกันเพื่อจำลอง Radial Gradient
- * เนื่องจาก LVGL Simulator ที่มากับ EEZ
- * ปิด Complex Gradients ไว้ในค่าเริ่มต้น
- */
-void action_set_radial_background(lv_event_t * e)
-{
-    (void)e;
-
-    if (objects.main == NULL) {
-        return;
-    }
-
-    /* This action is also triggered by SCREEN_LOADED; avoid applying twice. */
-    static lv_obj_t *applied_screen = NULL;
-    if (applied_screen == objects.main) {
-        return;
-    }
-    applied_screen = objects.main;
-
-    lv_obj_set_style_bg_image_src(
-        objects.main, NULL, LV_PART_MAIN
-    );
-
-    lv_obj_t *bg = lv_obj_create(objects.main);
-
-    lv_obj_remove_style_all(bg);
-    lv_obj_set_pos(bg, 0, 0);
-    lv_obj_set_size(bg, 1024, 600);
-    lv_obj_set_style_bg_opa(bg, LV_OPA_TRANSP, 0);
-    lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
-
-    /* ส่งพื้นหลังไปอยู่หลัง Widget อื่น */
-    lv_obj_move_to_index(bg, 0);
-
-    for (int i = 0; i < 48; i++) {
-
-        int radius = 650 - (625 * i / 47);
-        int gray = 0x20 + (0x57 * i / 47);
-        int diameter = radius * 2;
-
-        lv_obj_t *circle = lv_obj_create(bg);
-
-        lv_obj_remove_style_all(circle);
-
-        lv_obj_set_size(circle, diameter, diameter);
-
-        lv_obj_set_pos(
-            circle,
-            (1024 - diameter) / 2,
-            (600 - diameter) / 2
-        );
-
-        lv_obj_set_style_radius(
-            circle, LV_RADIUS_CIRCLE, 0
-        );
-
-        lv_obj_set_style_bg_color(
-            circle,
-            lv_color_make(gray, gray, gray),
-            0
-        );
-
-        lv_obj_set_style_bg_opa(
-            circle, LV_OPA_COVER, 0
-        );
-
-        lv_obj_set_style_border_width(
-            circle, 0, 0
-        );
-
-        lv_obj_clear_flag(
-            circle, LV_OBJ_FLAG_SCROLLABLE
-        );
-    }
-}
-
-#else
-
 /*
  * ESP32-P4:
  * ใช้ Radial Gradient จริงของ LVGL 9.5
  */
-void action_set_radial_background(lv_event_t * e)
+void action_set_radial_background(lv_event_t *e)
 {
     (void)e;
 
@@ -173,8 +91,13 @@ static void set_settings_button_color(lv_event_t *e, bool pressed)
     );
 }
 
+/*
+ * Drag state:
+ * อนุญาตให้ลากได้ครั้งละหนึ่ง Button เท่านั้น
+ */
 static struct {
     lv_obj_t *button;
+    lv_indev_t *indev;
     lv_point_t start_point;
     lv_coord_t start_x;
     lv_coord_t start_y;
@@ -183,6 +106,11 @@ static struct {
 
 void action_settings_long_pressed(lv_event_t *e)
 {
+    /* ถ้ามี Button อื่นกำลังถูกลากอยู่ ไม่อนุญาตให้เริ่ม Drag */
+    if (button_drag.active) {
+        return;
+    }
+
     lv_obj_t *button = lv_event_get_target(e);
     lv_obj_t *image = lv_obj_get_child(button, 1);
 
@@ -196,14 +124,18 @@ void action_settings_long_pressed(lv_event_t *e)
         return;
     }
 
-    /* เก็บตำแหน่งเริ่มต้นของ Button */
+    /* เก็บข้อมูล Button และ Input Device ที่เริ่มลาก */
     button_drag.button = button;
+    button_drag.indev = indev;
     button_drag.start_x = lv_obj_get_x(button);
     button_drag.start_y = lv_obj_get_y(button);
 
     lv_indev_get_point(indev, &button_drag.start_point);
 
     button_drag.active = true;
+
+    /* นำ Button ขึ้นมาอยู่ด้านหน้าสุด */
+    lv_obj_move_foreground(button);
 
     /* ขยาย Image 110% จากจุดกึ่งกลาง */
     lv_obj_set_style_transform_pivot_x(
@@ -227,6 +159,7 @@ void action_settings_pressing(lv_event_t *e)
 {
     lv_obj_t *button = lv_event_get_target(e);
 
+    /* อนุญาตให้เคลื่อนที่เฉพาะ Button ที่เป็นเจ้าของ Drag */
     if (!button_drag.active ||
         button_drag.button != button) {
         return;
@@ -234,7 +167,7 @@ void action_settings_pressing(lv_event_t *e)
 
     lv_indev_t *indev = lv_indev_active();
 
-    if (indev == NULL) {
+    if (indev == NULL || indev != button_drag.indev) {
         return;
     }
 
@@ -258,6 +191,13 @@ void action_settings_released(lv_event_t *e)
     set_settings_button_color(e, false);
 
     lv_obj_t *button = lv_event_get_target(e);
+
+    /* คืนสถานะ Drag เฉพาะ Button เจ้าของ Drag */
+    if (!button_drag.active ||
+        button_drag.button != button) {
+        return;
+    }
+
     lv_obj_t *image = lv_obj_get_child(button, 1);
 
     if (image != NULL) {
@@ -271,18 +211,14 @@ void action_settings_released(lv_event_t *e)
     }
 
     /* คืนตำแหน่ง Button */
-    if (button_drag.active &&
-        button_drag.button == button) {
+    lv_obj_set_pos(
+        button,
+        button_drag.start_x,
+        button_drag.start_y
+    );
 
-        lv_obj_set_pos(
-            button,
-            button_drag.start_x,
-            button_drag.start_y
-        );
-
-        button_drag.active = false;
-        button_drag.button = NULL;
-    }
+    /* ปลด Drag Lock */
+    button_drag.active = false;
+    button_drag.button = NULL;
+    button_drag.indev = NULL;
 }
-
-#endif
