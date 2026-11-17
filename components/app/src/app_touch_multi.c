@@ -229,15 +229,6 @@ static void app_touch_refresh(app_touch_multi_context_t *context)
         return;
     }
 
-    /*
-     * GT911 reports zero points when its frame contains more than five
-     * contacts. Keep the previous pointer states for this frame instead
-     * of releasing all active LVGL pointers.
-     */
-    if (touch_count == 0) {
-        return;
-    }
-
     if (touch_count > APP_TOUCH_MULTI_POINTERS) {
         touch_count = APP_TOUCH_MULTI_POINTERS;
     }
