@@ -85,7 +85,7 @@ devices:
         lcd_cmd_bits: 16
       touch_config:
         rst_gpio_num: -1
-        int_gpio_num: -1
+        int_gpio_num: 21
         x_max: 1024
         y_max: 600
         flags:
