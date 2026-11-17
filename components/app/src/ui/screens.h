@@ -30,10 +30,13 @@ typedef struct _objects_t {
     lv_obj_t *txt_clock;
     lv_obj_t *content_container___;
     lv_obj_t *home;
+    lv_obj_t *widget_container;
     lv_obj_t *card_network;
-    lv_obj_t *obj0;
+    lv_obj_t *app_grid_container;
+    lv_obj_t *setting_btn;
+    lv_obj_t *camera_btn;
     lv_obj_t *setting;
-    lv_obj_t *obj1;
+    lv_obj_t *obj0;
 } objects_t;
 
 extern objects_t objects;

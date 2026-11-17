@@ -16,6 +16,7 @@ idf_component_register(
         "src/ui/fonts/ui_font_noto_sans_thai_40.c"
         "src/ui/images/ui_image_lightning.c"
         "src/ui/images/ui_image_setting_icon.c"
+        "src/ui/images/ui_image_camera_icon.c"
     INCLUDE_DIRS
         "include"
         "src/ui"
