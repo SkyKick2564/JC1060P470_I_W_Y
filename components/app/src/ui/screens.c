@@ -394,6 +394,40 @@ void create_screen_main() {
                 }
             }
         }
+        {
+            // control_center_overlay
+            lv_obj_t *obj = lv_obj_create(parent_obj);
+            objects.control_center_overlay = obj;
+            lv_obj_set_pos(obj, 0, -600);
+            lv_obj_set_size(obj, 1024, 600);
+            lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_bottom(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            add_style_card_dark(obj);
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_opa(obj, 200, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        {
+            // control_center_touch_area
+            lv_obj_t *obj = lv_obj_create(parent_obj);
+            objects.control_center_touch_area = obj;
+            lv_obj_set_pos(obj, 924, 0);
+            lv_obj_set_size(obj, 100, 30);
+            lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_pad_bottom(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            add_style_card_dark(obj);
+            lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
     }
     
     tick_screen_main();
@@ -420,6 +454,8 @@ void delete_screen_main() {
     objects.setting_btn = 0;
     objects.setting = 0;
     objects.obj0 = 0;
+    objects.control_center_overlay = 0;
+    objects.control_center_touch_area = 0;
 }
 
 void tick_screen_main() {

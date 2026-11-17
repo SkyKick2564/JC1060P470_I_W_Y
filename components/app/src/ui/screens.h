@@ -35,6 +35,8 @@ typedef struct _objects_t {
     lv_obj_t *setting_btn;
     lv_obj_t *setting;
     lv_obj_t *obj0;
+    lv_obj_t *control_center_overlay;
+    lv_obj_t *control_center_touch_area;
 } objects_t;
 
 extern objects_t objects;

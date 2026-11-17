@@ -1600,6 +1600,105 @@
               },
               "group": "",
               "groupIndex": 0
+            },
+            {
+              "objID": "1d7a7d64-7af3-4784-c2d0-4de9823edb95",
+              "type": "LVGLContainerWidget",
+              "left": 0,
+              "top": -600,
+              "width": 1024,
+              "height": 600,
+              "customInputs": [],
+              "customOutputs": [],
+              "style": {
+                "objID": "e2226193-15bb-4198-89b4-9e48eb763087",
+                "useStyle": "default",
+                "conditionalStyles": [],
+                "childStyles": []
+              },
+              "timeline": [],
+              "eventHandlers": [],
+              "identifier": "control_center_overlay",
+              "leftUnit": "px",
+              "topUnit": "px",
+              "widthUnit": "px",
+              "heightUnit": "px",
+              "children": [],
+              "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+              "hiddenFlagType": "literal",
+              "clickableFlag": true,
+              "clickableFlagType": "literal",
+              "flagScrollbarMode": "",
+              "flagScrollDirection": "",
+              "scrollSnapX": "",
+              "scrollSnapY": "",
+              "checkedStateType": "literal",
+              "disabledStateType": "literal",
+              "states": "",
+              "localStyles": {
+                "objID": "d29dafa6-7a5b-4abf-de1f-d51be471e857",
+                "definition": {
+                  "MAIN": {
+                    "DEFAULT": {
+                      "bg_color": "#000000",
+                      "bg_opa": 200,
+                      "bg_grad_dir": "NONE"
+                    }
+                  }
+                }
+              },
+              "group": "",
+              "groupIndex": 0
+            },
+            {
+              "objID": "7c7fe26d-0381-4613-c2b7-cbe0c4880114",
+              "type": "LVGLContainerWidget",
+              "left": 924,
+              "top": 0,
+              "width": 100,
+              "height": 30,
+              "customInputs": [],
+              "customOutputs": [],
+              "style": {
+                "objID": "c5cb1d8d-af85-4153-995a-9d257ec022ce",
+                "useStyle": "default",
+                "conditionalStyles": [],
+                "childStyles": []
+              },
+              "timeline": [],
+              "eventHandlers": [],
+              "identifier": "control_center_touch_area",
+              "leftUnit": "px",
+              "topUnit": "px",
+              "widthUnit": "px",
+              "heightUnit": "px",
+              "children": [],
+              "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+              "hiddenFlagType": "literal",
+              "clickableFlag": true,
+              "clickableFlagType": "literal",
+              "flagScrollbarMode": "",
+              "flagScrollDirection": "",
+              "scrollSnapX": "",
+              "scrollSnapY": "",
+              "checkedStateType": "literal",
+              "disabledStateType": "literal",
+              "states": "",
+              "localStyles": {
+                "objID": "dac9691d-9545-471b-a6d4-6d10ca490452",
+                "definition": {
+                  "MAIN": {
+                    "DEFAULT": {
+                      "bg_opa": 0,
+                      "bg_grad_dir": "NONE",
+                      "bg_color": "#000000",
+                      "border_width": 0
+                    }
+                  }
+                }
+              },
+              "group": "",
+              "groupIndex": 0
             }
           ],
           "widgetFlags": "CLICKABLE|PRESS_LOCK|CLICK_FOCUSABLE|GESTURE_BUBBLE|SNAPPABLE|SCROLLABLE|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER",
