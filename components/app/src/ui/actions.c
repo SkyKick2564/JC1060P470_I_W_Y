@@ -222,3 +222,169 @@ void action_settings_released(lv_event_t *e)
     button_drag.button = NULL;
     button_drag.indev = NULL;
 }
+
+/*
+ * Control Center
+ * Drag overlay ตามนิ้ว และ Snap เปิด/ปิดเมื่อปล่อยนิ้ว
+ */
+
+#define CONTROL_CENTER_HIDDEN_Y   (-600)
+#define CONTROL_CENTER_OPEN_Y     (0)
+#define CONTROL_CENTER_ANIM_TIME  (220)
+
+static struct {
+    lv_obj_t *target;
+    lv_indev_t *indev;
+    lv_point_t start_point;
+    lv_coord_t start_y;
+    bool active;
+} control_center_drag;
+
+static void control_center_anim_exec(void *obj, int32_t y)
+{
+    lv_obj_set_y((lv_obj_t *)obj, (lv_coord_t)y);
+}
+
+static void control_center_animate(lv_coord_t target_y)
+{
+    if (objects.control_center_overlay == NULL) {
+        return;
+    }
+
+    lv_anim_delete(
+        objects.control_center_overlay,
+        control_center_anim_exec
+    );
+
+    lv_anim_t anim;
+    lv_anim_init(&anim);
+
+    lv_anim_set_var(
+        &anim,
+        objects.control_center_overlay
+    );
+
+    lv_anim_set_exec_cb(
+        &anim,
+        control_center_anim_exec
+    );
+
+    lv_anim_set_values(
+        &anim,
+        lv_obj_get_y(objects.control_center_overlay),
+        target_y
+    );
+
+    lv_anim_set_duration(
+        &anim,
+        CONTROL_CENTER_ANIM_TIME
+    );
+
+    lv_anim_set_path_cb(
+        &anim,
+        lv_anim_path_ease_out
+    );
+
+    lv_anim_start(&anim);
+}
+
+void action_control_center_pressed(lv_event_t *e)
+{
+    if (objects.control_center_overlay == NULL) {
+        return;
+    }
+
+    if (control_center_drag.active) {
+        return;
+    }
+
+    lv_indev_t *indev = lv_indev_active();
+
+    if (indev == NULL) {
+        return;
+    }
+
+    /* หยุด Animation เดิมก่อนเริ่มลาก */
+    lv_anim_delete(
+        objects.control_center_overlay,
+        control_center_anim_exec
+    );
+
+    control_center_drag.target = lv_event_get_target(e);
+    control_center_drag.indev = indev;
+    control_center_drag.start_y =
+        lv_obj_get_y(objects.control_center_overlay);
+
+    lv_indev_get_point(
+        indev,
+        &control_center_drag.start_point
+    );
+
+    control_center_drag.active = true;
+}
+
+void action_control_center_pressing(lv_event_t *e)
+{
+    lv_obj_t *target = lv_event_get_target(e);
+
+    if (!control_center_drag.active ||
+        control_center_drag.target != target) {
+        return;
+    }
+
+    lv_indev_t *indev = control_center_drag.indev;
+
+    if (indev == NULL) {
+        return;
+    }
+
+    lv_point_t point;
+
+    lv_indev_get_point(indev, &point);
+
+    lv_coord_t delta_y =
+        point.y - control_center_drag.start_point.y;
+
+    lv_coord_t new_y =
+        control_center_drag.start_y + delta_y;
+
+    /* จำกัดตำแหน่งให้อยู่ในช่วง -600 ถึง 0 */
+    if (new_y < CONTROL_CENTER_HIDDEN_Y) {
+        new_y = CONTROL_CENTER_HIDDEN_Y;
+    }
+
+    if (new_y > CONTROL_CENTER_OPEN_Y) {
+        new_y = CONTROL_CENTER_OPEN_Y;
+    }
+
+    /* เคลื่อนที่ตามนิ้วแบบ 1:1 */
+    lv_obj_set_y(
+        objects.control_center_overlay,
+        new_y
+    );
+}
+
+void action_control_center_released(lv_event_t *e)
+{
+    lv_obj_t *target = lv_event_get_target(e);
+
+    if (!control_center_drag.active ||
+        control_center_drag.target != target) {
+        return;
+    }
+
+    lv_coord_t current_y =
+        lv_obj_get_y(objects.control_center_overlay);
+
+    /* เกินครึ่งหน้าจอให้เปิด ไม่ถึงให้ปิด */
+    lv_coord_t destination =
+        (current_y > CONTROL_CENTER_HIDDEN_Y / 2)
+        ? CONTROL_CENTER_OPEN_Y
+        : CONTROL_CENTER_HIDDEN_Y;
+
+    control_center_drag.active = false;
+    control_center_drag.target = NULL;
+    control_center_drag.indev = NULL;
+
+    control_center_animate(destination);
+}
