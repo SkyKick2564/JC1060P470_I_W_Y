@@ -19,8 +19,8 @@ typedef struct _objects_t {
     lv_obj_t *main;
     lv_obj_t *top_container;
     lv_obj_t *battery_container;
-    lv_obj_t *battery_level;
     lv_obj_t *battery_outline;
+    lv_obj_t *battery_level;
     lv_obj_t *battery_terminal;
     lv_obj_t *obj0;
     lv_obj_t *wifi_container;

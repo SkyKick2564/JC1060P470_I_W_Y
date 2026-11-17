@@ -11,6 +11,7 @@
     "fonts/ui_font_noto_sans_thai_40.c",
     "images.c",
     "images.h",
+    "images/ui_image_lightning.c",
     "screens.c",
     "screens.h",
     "structs.h",

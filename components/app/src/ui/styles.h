@@ -26,6 +26,10 @@ void remove_style_text_value(lv_obj_t *obj);
 void add_style_text_subtitle(lv_obj_t *obj);
 void remove_style_text_subtitle(lv_obj_t *obj);
 
+// Style: levelStyle
+void add_style_level_style(lv_obj_t *obj);
+void remove_style_level_style(lv_obj_t *obj);
+
 #ifdef __cplusplus
 }
 #endif

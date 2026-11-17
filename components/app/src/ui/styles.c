@@ -111,6 +111,18 @@ void remove_style_text_subtitle(lv_obj_t *obj) {
 };
 
 //
+// Style: levelStyle
+//
+
+void add_style_level_style(lv_obj_t *obj) {
+    (void)obj;
+};
+
+void remove_style_level_style(lv_obj_t *obj) {
+    (void)obj;
+};
+
+//
 //
 //
 
@@ -121,6 +133,7 @@ void add_style(lv_obj_t *obj, int32_t styleIndex) {
         add_style_text_title,
         add_style_text_value,
         add_style_text_subtitle,
+        add_style_level_style,
     };
     add_style_funcs[styleIndex](obj);
 }
@@ -132,6 +145,7 @@ void remove_style(lv_obj_t *obj, int32_t styleIndex) {
         remove_style_text_title,
         remove_style_text_value,
         remove_style_text_subtitle,
+        remove_style_level_style,
     };
     remove_style_funcs[styleIndex](obj);
 }
