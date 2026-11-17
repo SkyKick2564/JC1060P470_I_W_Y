@@ -298,8 +298,8 @@ void create_screen_main() {
                         {
                             lv_obj_t *obj = lv_button_create(parent_obj);
                             objects.obj0 = obj;
-                            lv_obj_set_pos(obj, 159, 165);
-                            lv_obj_set_size(obj, 100, 100);
+                            lv_obj_set_pos(obj, 159, 134);
+                            lv_obj_set_size(obj, 130, 130);
                             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_opa(obj, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -309,14 +309,14 @@ void create_screen_main() {
                                 lv_obj_t *parent_obj = obj;
                                 {
                                     lv_obj_t *obj = lv_label_create(parent_obj);
-                                    lv_obj_set_pos(obj, 0, 31);
+                                    lv_obj_set_pos(obj, 0, 45);
                                     lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                                     lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                                     lv_label_set_text_static(obj, "Settings");
                                 }
                                 {
                                     lv_obj_t *obj = lv_image_create(parent_obj);
-                                    lv_obj_set_pos(obj, -2, -9);
+                                    lv_obj_set_pos(obj, 5, 0);
                                     lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                                     lv_image_set_src(obj, &img_setting_icon);
                                 }
