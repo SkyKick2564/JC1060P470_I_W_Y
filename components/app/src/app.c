@@ -1,4 +1,5 @@
 #include "app.h"
+#include "app_touch_multi.h"
 #include "esp_err.h"
 #include "esp_log.h"
 
@@ -14,7 +15,6 @@
 static const char *TAG = "APP";
 
 static lv_display_t *s_display = NULL;
-static lv_indev_t *s_touch_indev = NULL;
 
 esp_err_t app_lvgl_deinit(void)
 {
@@ -27,18 +27,13 @@ esp_err_t app_lvgl_deinit(void)
         return ESP_FAIL;
     }
 
-    /* Remove touch input before deinitializing GT911 */
-    if (s_touch_indev != NULL) {
-        err = lvgl_port_remove_touch(s_touch_indev);
-        if (err != ESP_OK) {
-            lvgl_port_unlock();
-            ESP_LOGE(TAG, "Failed to remove touch: %s",
-                     esp_err_to_name(err));
-            return err;
-        }
-
-        s_touch_indev = NULL;
-        ESP_LOGI(TAG, "Touch input removed");
+    /* Remove all five LVGL touch pointers before deinitializing GT911 */
+    err = app_touch_multi_remove();
+    if (err != ESP_OK) {
+        lvgl_port_unlock();
+        ESP_LOGE(TAG, "Failed to remove multi-touch: %s",
+                 esp_err_to_name(err));
+        return err;
     }
 
     /* Remove display from LVGL */
@@ -201,20 +196,16 @@ esp_err_t app_init(void)
         return err != ESP_OK ? err : ESP_ERR_INVALID_STATE;
     }
 
-    /* Register Touch with LVGL */
-    const lvgl_port_touch_cfg_t touch_cfg = {
-        .disp = s_display,
-        .handle = touch->touch_handle,
-    };
-
-    s_touch_indev = lvgl_port_add_touch(&touch_cfg);
-    if (s_touch_indev == NULL) {
-        ESP_LOGE(TAG, "Failed to add LVGL Touch");
+    /* Register GT911 as five independent LVGL pointer devices */
+    err = app_touch_multi_add(s_display, touch->touch_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to add five-point LVGL Touch: %s",
+                 esp_err_to_name(err));
         lvgl_port_unlock();
-        return ESP_FAIL;
+        return err;
     }
 
-    ESP_LOGI(TAG, "LVGL Touch initialized successfully");
+    ESP_LOGI(TAG, "Five-point LVGL Touch initialized successfully");
 
     /* Set initial screen background before first refresh */
     lv_obj_t *screen = lv_display_get_screen_active(s_display);
