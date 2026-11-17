@@ -4,6 +4,8 @@
 #include <stdlib.h>
 
 #include "esp_attr.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -11,6 +13,12 @@
 static const char *TAG = "APP_TOUCH_MULTI";
 
 typedef struct app_touch_multi_context app_touch_multi_context_t;
+
+typedef struct {
+    app_touch_multi_context_t *context;
+    void *original_user_data;
+    volatile bool unregistering;
+} app_touch_multi_isr_context_t;
 
 typedef struct {
     app_touch_multi_context_t *context;
@@ -28,6 +36,7 @@ struct app_touch_multi_context {
     lv_display_t *display;
     app_touch_multi_slot_t slots[APP_TOUCH_MULTI_POINTERS];
     volatile bool refresh_needed;
+    app_touch_multi_isr_context_t *isr_context;
 };
 
 static app_touch_multi_context_t *s_touch_context = NULL;
@@ -77,15 +86,29 @@ esp_err_t app_touch_multi_add(lv_display_t *disp, esp_lcd_touch_handle_t handle)
         lv_indev_set_driver_data(slot->indev, slot);
     }
 
+    context->isr_context = calloc(1, sizeof(*context->isr_context));
+    if (context->isr_context == NULL) {
+        for (uint8_t i = 0; i < APP_TOUCH_MULTI_POINTERS; i++) {
+            lv_indev_delete(context->slots[i].indev);
+        }
+        free(context);
+        return ESP_ERR_NO_MEM;
+    }
+
+    context->isr_context->context = context;
+    context->isr_context->original_user_data = handle->config.user_data;
+
     esp_err_t err = esp_lcd_touch_register_interrupt_callback_with_data(
         handle,
         app_touch_interrupt_callback,
-        context
+        context->isr_context
     );
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to register GT911 interrupt callback: %s",
                  esp_err_to_name(err));
+        handle->config.user_data = context->isr_context->original_user_data;
+        free(context->isr_context);
         for (uint8_t i = 0; i < APP_TOUCH_MULTI_POINTERS; i++) {
             lv_indev_delete(context->slots[i].indev);
         }
@@ -113,6 +136,14 @@ esp_err_t app_touch_multi_remove(void)
                  esp_err_to_name(err));
         return err;
     }
+
+    context->isr_context->unregistering = true;
+    __sync_synchronize();
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    context->handle->config.user_data = context->isr_context->original_user_data;
+    free(context->isr_context);
+    context->isr_context = NULL;
 
     for (uint8_t i = 0; i < APP_TOUCH_MULTI_POINTERS; i++) {
         if (context->slots[i].indev != NULL) {
@@ -164,13 +195,15 @@ static void app_touch_read(lv_indev_t *indev, lv_indev_data_t *data)
 
 static void IRAM_ATTR app_touch_interrupt_callback(esp_lcd_touch_handle_t tp)
 {
-    app_touch_multi_context_t *context =
-        (app_touch_multi_context_t *)tp->config.user_data;
+    app_touch_multi_isr_context_t *isr_context =
+        (app_touch_multi_isr_context_t *)tp->config.user_data;
 
-    if (context == NULL) {
+    if (isr_context == NULL || isr_context->unregistering ||
+            isr_context->context == NULL) {
         return;
     }
 
+    app_touch_multi_context_t *context = isr_context->context;
     context->refresh_needed = true;
     (void)lvgl_port_task_wake(LVGL_PORT_EVENT_TOUCH, NULL);
 }
