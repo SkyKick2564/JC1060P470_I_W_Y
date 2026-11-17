@@ -100,6 +100,14 @@ static esp_err_t app_before_update(void *user_ctx)
 
     ESP_LOGI(TAG, "Network Manager stopped");
 
+    /* Deinitialize LVGL before touching board peripherals */
+    err = app_lvgl_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL deinit failed: %s",
+                 esp_err_to_name(err));
+        return err;
+        }
+
     err = esp_board_manager_deinit();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Board Manager deinit failed: %s",
