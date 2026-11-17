@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/app.c"
+        "src/app_touch_multi.c"
         "src/actions.c"
         "src/ui/ui.c"
         "src/ui/screens.c"
@@ -23,4 +24,5 @@ idf_component_register(
         lvgl
         esp_lvgl_port
         esp_board_manager
+        esp_lcd_touch
 )
