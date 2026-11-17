@@ -140,4 +140,47 @@ void action_set_radial_background(lv_event_t * e)
     );
 }
 
+static void set_settings_button_color(lv_event_t *e, bool pressed)
+{
+    lv_obj_t *button = lv_event_get_target(e);
+
+    /* Child 0 = Label */
+    lv_obj_t *label = lv_obj_get_child(button, 0);
+
+    /* Child 1 = Image */
+    lv_obj_t *image = lv_obj_get_child(button, 1);
+
+    if (label == NULL || image == NULL) {
+        return;
+    }
+
+    lv_obj_set_style_text_color(
+        label,
+        pressed ? lv_color_hex(0x6e6e6e) : lv_color_hex(0xffffff),
+        LV_PART_MAIN
+    );
+
+    lv_obj_set_style_image_recolor(
+        image,
+        lv_color_black(),
+        LV_PART_MAIN
+    );
+
+    lv_obj_set_style_image_recolor_opa(
+        image,
+        pressed ? LV_OPA_50 : LV_OPA_TRANSP,
+        LV_PART_MAIN
+    );
+}
+
+void action_settings_pressed(lv_event_t *e)
+{
+    set_settings_button_color(e, true);
+}
+
+void action_settings_released(lv_event_t *e)
+{
+    set_settings_button_color(e, false);
+}
+
 #endif

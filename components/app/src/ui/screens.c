@@ -300,6 +300,8 @@ void create_screen_main() {
                             objects.obj0 = obj;
                             lv_obj_set_pos(obj, 159, 134);
                             lv_obj_set_size(obj, 130, 130);
+                            lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
+                            lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
                             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_opa(obj, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
