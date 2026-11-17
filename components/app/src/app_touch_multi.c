@@ -1,7 +1,9 @@
 #include "app_touch_multi.h"
 
+#include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
+
+#include "esp_attr.h"
 
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -13,6 +15,7 @@ typedef struct app_touch_multi_context app_touch_multi_context_t;
 typedef struct {
     app_touch_multi_context_t *context;
     lv_indev_t *indev;
+    uint8_t index;
     lv_point_t point;
     uint8_t track_id;
     bool track_assigned;
@@ -54,6 +57,7 @@ esp_err_t app_touch_multi_add(lv_display_t *disp, esp_lcd_touch_handle_t handle)
     for (uint8_t i = 0; i < APP_TOUCH_MULTI_POINTERS; i++) {
         app_touch_multi_slot_t *slot = &context->slots[i];
         slot->context = context;
+        slot->index = i;
         slot->state = LV_INDEV_STATE_RELEASED;
 
         slot->indev = lv_indev_create();
@@ -144,7 +148,7 @@ static void app_touch_read(lv_indev_t *indev, lv_indev_data_t *data)
      * Clear the flag before reading so a new interrupt during the read is
      * not lost.
      */
-    if (context->refresh_needed) {
+    if (slot->index == 0 && context->refresh_needed) {
         context->refresh_needed = false;
         app_touch_refresh(context);
     }
