@@ -31,8 +31,9 @@ typedef struct _objects_t {
     lv_obj_t *content_container___;
     lv_obj_t *home;
     lv_obj_t *card_network;
-    lv_obj_t *setting;
     lv_obj_t *obj0;
+    lv_obj_t *setting;
+    lv_obj_t *obj1;
 } objects_t;
 
 extern objects_t objects;
