@@ -9,6 +9,7 @@
 #include "esp_lvgl_port_disp.h"
 
 #include "dev_display_lcd.h"
+#include "dev_lcd_touch.h"
 
 static const char *TAG = "APP";
 
@@ -129,6 +130,36 @@ esp_err_t app_init(void)
 
     ESP_LOGI(TAG, "LVGL display initialized successfully");
 
+    /* Get Touch device handle from Board Manager */
+    dev_lcd_touch_handles_t *touch = NULL;
+    err = esp_board_manager_get_device_handle(
+        "lcd_touch",
+        (void **)&touch
+    );
+
+    if (err != ESP_OK || touch == NULL ||
+        touch->touch_handle == NULL) {
+        ESP_LOGE(TAG, "Failed to get Touch handle: %s",
+                esp_err_to_name(err));
+        lvgl_port_unlock();
+        return err != ESP_OK ? err : ESP_ERR_INVALID_STATE;
+    }
+
+    /* Register Touch with LVGL */
+    const lvgl_port_touch_cfg_t touch_cfg = {
+        .disp = display,
+        .handle = touch->touch_handle,
+    };
+
+    lv_indev_t *touch_indev = lvgl_port_add_touch(&touch_cfg);
+    if (touch_indev == NULL) {
+        ESP_LOGE(TAG, "Failed to add LVGL Touch");
+        lvgl_port_unlock();
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "LVGL Touch initialized successfully");
+    
     /* Set initial screen background before first refresh */
     lv_obj_t *screen = lv_display_get_screen_active(display);
 
