@@ -14,10 +14,10 @@
 #include "esp_board_manager.h"
 #include "audio_manager.h"
 #include "app.h"
+#include "internet_radio.h"
 
 static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
-static bool s_stream_test_started;
 
 static void on_audio_event(
     audio_manager_event_t event,
@@ -55,46 +55,6 @@ static void on_audio_event(
 
     default:
         break;
-    }
-}
-
-/*
- * Called when Network Manager Internet connectivity changes.
- */
-static void on_network_internet_changed(
-    void *arg,
-    esp_event_base_t event_base,
-    int32_t event_id,
-    void *event_data)
-{
-    network_manager_handle_t network = (network_manager_handle_t)arg;
-    network_status_t status = {0};
-    (void)event_base;
-    (void)event_data;
-
-    if (network_manager_get_status(network, &status) != ESP_OK) {
-        return;
-    }
-
-    if (event_id == NETWORK_EVENT_INTERNET_CONNECTED) {
-        ESP_LOGI(TAG, "Internet is available");
-
-        if (!s_stream_test_started) {
-            esp_err_t err = audio_manager_play_url(
-                "https://ice5.somafm.com/thetrip-128-mp3"
-            );
-            if (err == ESP_OK) {
-                s_stream_test_started = true;
-                ESP_LOGI(TAG, "Internet radio stream queued");
-            } else {
-                ESP_LOGE(TAG, "Queue Internet radio stream failed: %s",
-                         esp_err_to_name(err));
-            }
-        }
-    } else if (event_id == NETWORK_EVENT_INTERNET_DISCONNECTED) {
-        ESP_LOGW(TAG, "Internet is unavailable (Wi-Fi: %s, IP: %s)",
-                 status.wifi_connected ? "connected" : "disconnected",
-                 status.has_ip ? status.ip_address : "none");
     }
 }
 
@@ -162,24 +122,9 @@ static esp_err_t app_before_update(void *user_ctx)
         return err;
     }
 
-    err = esp_event_handler_unregister(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_INTERNET_CONNECTED,
-        on_network_internet_changed
-    );
+    err = internet_radio_deinit();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Internet-connected event unregister failed: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
-
-    err = esp_event_handler_unregister(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_INTERNET_DISCONNECTED,
-        on_network_internet_changed
-    );
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Internet-disconnected event unregister failed: %s",
+        ESP_LOGE(TAG, "Internet Radio deinit failed: %s",
                  esp_err_to_name(err));
         return err;
     }
@@ -462,29 +407,13 @@ void app_main(void)
         return;
     }
 
-    err = esp_event_handler_register(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_INTERNET_CONNECTED,
-        on_network_internet_changed,
-        network
-    );
+    err = internet_radio_init();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Internet-connected event registration failed: %s",
+        ESP_LOGE(TAG, "Internet Radio init failed: %s",
                  esp_err_to_name(err));
         return;
     }
-
-    err = esp_event_handler_register(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_INTERNET_DISCONNECTED,
-        on_network_internet_changed,
-        network
-    );
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Internet-disconnected event registration failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
+    ESP_LOGI(TAG, "Internet Radio initialized");
 
     err = network_manager_start(network);
     if (err != ESP_OK) {
