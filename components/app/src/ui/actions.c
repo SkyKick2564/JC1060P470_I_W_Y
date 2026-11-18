@@ -225,76 +225,93 @@ void action_settings_released(lv_event_t *e)
 
 /*
  * Control Center
- * Drag overlay ตามนิ้ว และ Snap เปิด/ปิดเมื่อปล่อยนิ้ว
+ * Direct drag + velocity-aware snap.
  */
 
-#define CONTROL_CENTER_HIDDEN_Y   (-600)
-#define CONTROL_CENTER_OPEN_Y     (0)
-#define CONTROL_CENTER_ANIM_TIME  (220)
+#define CONTROL_CENTER_HIDDEN_Y       (-600)
+#define CONTROL_CENTER_OPEN_Y         (0)
+#define CONTROL_CENTER_ANIM_TIME      (220)
+#define CONTROL_CENTER_FLICK_TIME     (160)
+#define CONTROL_CENTER_FLICK_SPEED    (650)
+#define CONTROL_CENTER_FLICK_MIN_MOVE (18)
 
 static struct {
     lv_obj_t *target;
     lv_indev_t *indev;
     lv_point_t start_point;
+    lv_point_t last_point;
     lv_coord_t start_y;
+    uint32_t last_tick;
+    int32_t velocity_y;
     bool active;
 } control_center_drag;
+
+static bool control_center_is_event_target(lv_obj_t *target)
+{
+    return target != NULL &&
+           (target == objects.control_center_overlay ||
+            target == objects.control_center_touch_area);
+}
 
 static void control_center_anim_exec(void *obj, int32_t y)
 {
     lv_obj_set_y((lv_obj_t *)obj, (lv_coord_t)y);
 }
 
-static void control_center_animate(lv_coord_t target_y)
+static void control_center_animate(lv_coord_t target_y, bool flick)
 {
-    if (objects.control_center_overlay == NULL) {
+    lv_obj_t *overlay = objects.control_center_overlay;
+
+    if (overlay == NULL) {
         return;
     }
 
-    lv_anim_delete(
-        objects.control_center_overlay,
-        control_center_anim_exec
-    );
+    lv_coord_t current_y = lv_obj_get_y(overlay);
+
+    lv_anim_delete(overlay, control_center_anim_exec);
+
+    if (current_y == target_y) {
+        return;
+    }
 
     lv_anim_t anim;
     lv_anim_init(&anim);
-
-    lv_anim_set_var(
-        &anim,
-        objects.control_center_overlay
-    );
-
-    lv_anim_set_exec_cb(
-        &anim,
-        control_center_anim_exec
-    );
-
-    lv_anim_set_values(
-        &anim,
-        lv_obj_get_y(objects.control_center_overlay),
-        target_y
-    );
-
+    lv_anim_set_var(&anim, overlay);
+    lv_anim_set_exec_cb(&anim, control_center_anim_exec);
+    lv_anim_set_values(&anim, current_y, target_y);
     lv_anim_set_duration(
         &anim,
-        CONTROL_CENTER_ANIM_TIME
+        flick ? CONTROL_CENTER_FLICK_TIME : CONTROL_CENTER_ANIM_TIME
     );
-
-    lv_anim_set_path_cb(
-        &anim,
-        lv_anim_path_ease_out
-    );
-
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
     lv_anim_start(&anim);
+}
+
+/*
+ * คำนวณความเร็วแนวตั้งจาก sample ล่าสุด
+ * ค่าเป็น pixel/second: บวก = ปัดลง, ลบ = ปัดขึ้น
+ */
+static void control_center_update_velocity(lv_point_t point, uint32_t now)
+{
+    uint32_t elapsed = now - control_center_drag.last_tick;
+
+    if (elapsed > 0) {
+        int32_t delta_y = point.y - control_center_drag.last_point.y;
+        control_center_drag.velocity_y =
+            (delta_y * 1000) / (int32_t)elapsed;
+    }
+
+    control_center_drag.last_point = point;
+    control_center_drag.last_tick = now;
 }
 
 void action_control_center_pressed(lv_event_t *e)
 {
-    if (objects.control_center_overlay == NULL) {
-        return;
-    }
+    lv_obj_t *target = lv_event_get_target(e);
 
-    if (control_center_drag.active) {
+    if (objects.control_center_overlay == NULL ||
+        !control_center_is_event_target(target) ||
+        control_center_drag.active) {
         return;
     }
 
@@ -304,45 +321,50 @@ void action_control_center_pressed(lv_event_t *e)
         return;
     }
 
-    /* หยุด Animation เดิมก่อนเริ่มลาก */
+    /* หยุด Animation เดิม เพื่อให้เริ่มลากต่อจากตำแหน่งปัจจุบันได้ */
     lv_anim_delete(
         objects.control_center_overlay,
         control_center_anim_exec
     );
 
-    control_center_drag.target = lv_event_get_target(e);
+    control_center_drag.target = target;
     control_center_drag.indev = indev;
     control_center_drag.start_y =
         lv_obj_get_y(objects.control_center_overlay);
 
-    lv_indev_get_point(
-        indev,
-        &control_center_drag.start_point
-    );
-
+    lv_indev_get_point(indev, &control_center_drag.start_point);
+    control_center_drag.last_point = control_center_drag.start_point;
+    control_center_drag.last_tick = lv_tick_get();
+    control_center_drag.velocity_y = 0;
     control_center_drag.active = true;
+
+    /*
+     * Overlay ต้องอยู่เหนือ touch_area ขณะเปิด
+     * เพื่อให้พื้นที่แผงรับการสัมผัสได้ทั่วทั้งจอ
+     */
+    lv_obj_move_foreground(objects.control_center_overlay);
 }
 
 void action_control_center_pressing(lv_event_t *e)
 {
-    if (!control_center_drag.active) {
+    if (!control_center_drag.active ||
+        !control_center_is_event_target(lv_event_get_target(e))) {
         return;
     }
 
-    lv_indev_t *indev = control_center_drag.indev;
+    lv_indev_t *indev = lv_indev_active();
 
-    if (indev == NULL) {
+    if (indev == NULL || indev != control_center_drag.indev) {
         return;
     }
 
     lv_point_t point;
     lv_indev_get_point(indev, &point);
-
-    lv_coord_t delta_y =
-        point.y - control_center_drag.start_point.y;
+    control_center_update_velocity(point, lv_tick_get());
 
     lv_coord_t new_y =
-        control_center_drag.start_y + delta_y;
+        control_center_drag.start_y +
+        point.y - control_center_drag.start_point.y;
 
     if (new_y < CONTROL_CENTER_HIDDEN_Y) {
         new_y = CONTROL_CENTER_HIDDEN_Y;
@@ -353,6 +375,7 @@ void action_control_center_pressing(lv_event_t *e)
 
     lv_obj_t *overlay = objects.control_center_overlay;
 
+    /* ไม่สั่ง layout ซ้ำเมื่อพิกัดไม่ได้เปลี่ยน */
     if (overlay != NULL && lv_obj_get_y(overlay) != new_y) {
         lv_obj_set_y(overlay, new_y);
     }
@@ -360,25 +383,60 @@ void action_control_center_pressing(lv_event_t *e)
 
 void action_control_center_released(lv_event_t *e)
 {
-    lv_obj_t *target = lv_event_get_target(e);
-
     if (!control_center_drag.active ||
-        control_center_drag.target != target) {
+        !control_center_is_event_target(lv_event_get_target(e))) {
         return;
     }
 
-    lv_coord_t current_y =
-        lv_obj_get_y(objects.control_center_overlay);
+    lv_obj_t *overlay = objects.control_center_overlay;
 
-    /* เกินครึ่งหน้าจอให้เปิด ไม่ถึงให้ปิด */
-    lv_coord_t destination =
-        (current_y > CONTROL_CENTER_HIDDEN_Y / 2)
-        ? CONTROL_CENTER_OPEN_Y
-        : CONTROL_CENTER_HIDDEN_Y;
+    if (overlay == NULL) {
+        control_center_drag.active = false;
+        control_center_drag.target = NULL;
+        control_center_drag.indev = NULL;
+        return;
+    }
+
+    /* เก็บตำแหน่งสุดท้าย เผื่อมีการเคลื่อนที่ระหว่าง PRESSING ครั้งล่าสุดกับ RELEASED */
+    lv_point_t point;
+    lv_indev_get_point(control_center_drag.indev, &point);
+    control_center_update_velocity(point, lv_tick_get());
+
+    lv_coord_t current_y = lv_obj_get_y(overlay);
+    int32_t total_move =
+        point.y - control_center_drag.start_point.y;
+    int32_t velocity_y = control_center_drag.velocity_y;
+
+    bool fast_down =
+        total_move >= CONTROL_CENTER_FLICK_MIN_MOVE &&
+        velocity_y >= CONTROL_CENTER_FLICK_SPEED;
+
+    bool fast_up =
+        total_move <= -CONTROL_CENTER_FLICK_MIN_MOVE &&
+        velocity_y <= -CONTROL_CENTER_FLICK_SPEED;
+
+    lv_coord_t destination;
+
+    if (fast_down) {
+        destination = CONTROL_CENTER_OPEN_Y;
+    }
+    else if (fast_up) {
+        destination = CONTROL_CENTER_HIDDEN_Y;
+    }
+    else {
+        /* ถ้าไม่ได้ปัดเร็ว ใช้ตำแหน่งกึ่งกลางเป็นเกณฑ์ */
+        destination =
+            (current_y > (CONTROL_CENTER_HIDDEN_Y / 2))
+            ? CONTROL_CENTER_OPEN_Y
+            : CONTROL_CENTER_HIDDEN_Y;
+    }
+
+    bool flick = fast_down || fast_up;
 
     control_center_drag.active = false;
     control_center_drag.target = NULL;
     control_center_drag.indev = NULL;
+    control_center_drag.velocity_y = 0;
 
-    control_center_animate(destination);
+    control_center_animate(destination, flick);
 }
