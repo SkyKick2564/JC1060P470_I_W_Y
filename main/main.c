@@ -17,6 +17,7 @@
 
 static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
+static bool s_stream_test_started;
 
 static void on_audio_event(
     audio_manager_event_t event,
@@ -77,6 +78,19 @@ static void on_network_internet_changed(
 
     if (event_id == NETWORK_EVENT_INTERNET_CONNECTED) {
         ESP_LOGI(TAG, "Internet is available");
+
+        if (!s_stream_test_started) {
+            esp_err_t err = audio_manager_play_url(
+                "https://ice5.somafm.com/thetrip-128-mp3"
+            );
+            if (err == ESP_OK) {
+                s_stream_test_started = true;
+                ESP_LOGI(TAG, "Internet radio stream queued");
+            } else {
+                ESP_LOGE(TAG, "Queue Internet radio stream failed: %s",
+                         esp_err_to_name(err));
+            }
+        }
     } else if (event_id == NETWORK_EVENT_INTERNET_DISCONNECTED) {
         ESP_LOGW(TAG, "Internet is unavailable (Wi-Fi: %s, IP: %s)",
                  status.wifi_connected ? "connected" : "disconnected",
@@ -389,15 +403,6 @@ void app_main(void)
                 esp_err_to_name(err));
         return;
     }
-
-    err = audio_manager_play_file("/sdcard/test.mp3");
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Play file failed: %s",
-                esp_err_to_name(err));
-        return;
-    }
-
-    ESP_LOGI(TAG, "MP3 playback queued");
 
     /* Initialize application and UI */
     err = app_init();
