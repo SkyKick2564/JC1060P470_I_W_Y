@@ -1768,7 +1768,7 @@
               "MAIN": {
                 "DEFAULT": {
                   "bg_img_recolor": "#000000",
-                  "bg_color": "#2A3052",
+                  "bg_color": "#171A21",
                   "bg_grad_dir": "NONE"
                 }
               }

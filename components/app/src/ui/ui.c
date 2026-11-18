@@ -19,6 +19,9 @@ void loadScreen(enum ScreensEnum screenId) {
     currentScreen = screenId - 1;
     lv_obj_t *screen = getLvglObjectFromIndex(currentScreen);
 
+    /* Apply the complete background before the screen becomes visible. */
+    action_set_radial_background(NULL);
+
     /* Load immediately; do not fade the screen in. */
     lv_scr_load(screen);
 }
