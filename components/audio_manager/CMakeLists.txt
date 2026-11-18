@@ -7,4 +7,5 @@ idf_component_register(
         esp_board_manager
         esp_codec_dev
         esp_audio_codec
+        freertos
 )
