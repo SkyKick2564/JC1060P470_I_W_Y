@@ -213,15 +213,7 @@
             "childStyles": []
           },
           "timeline": [],
-          "eventHandlers": [
-            {
-              "objID": "8466b36b-fbb6-46dd-90ad-1123da0943e3",
-              "eventName": "SCREEN_LOADED",
-              "handlerType": "action",
-              "action": "set_radial_background",
-              "userData": 0
-            }
-          ],
+          "eventHandlers": [],
           "leftUnit": "px",
           "topUnit": "px",
           "widthUnit": "px",
@@ -1785,9 +1777,8 @@
               "MAIN": {
                 "DEFAULT": {
                   "bg_img_recolor": "#000000",
-                  "bg_grad_color": "#202020",
-                  "bg_grad_dir": "VER",
-                  "bg_color": "#f5f5f5"
+                  "bg_color": "#2A3052",
+                  "bg_grad_dir": "NONE"
                 }
               }
             }
