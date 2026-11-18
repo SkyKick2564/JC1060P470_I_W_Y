@@ -342,7 +342,16 @@ static void audio_stream_test_task(void *arg)
     vTaskDelay(pdMS_TO_TICKS(500));
 
     ESP_LOGI(TAG, "HTTP audio test: requesting URL playback");
-    err = audio_manager_play_url(AUDIO_STREAM_TEST_URL);
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        err = audio_manager_play_url(AUDIO_STREAM_TEST_URL);
+        if (err == ESP_OK) {
+            break;
+        }
+        if (err != ESP_ERR_INVALID_STATE) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP audio test request failed: %s",
                  esp_err_to_name(err));
