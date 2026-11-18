@@ -41,10 +41,10 @@ typedef void (*audio_manager_event_callback_t)(
 );
 
 /**
- * @brief Initialize Audio Manager after Network Manager and Board Manager.
+ * @brief Initialize Audio Manager after esp_board_manager_init().
  *
- * Subscribes to Network Manager Internet state events and creates the
- * background playback task. Network Manager must be initialized first.
+ * Creates the background playback task and obtains the Board Manager
+ * "audio_dac" device. WAV and MP3 decoders are provided by esp_audio_codec.
  */
 esp_err_t audio_manager_init(void);
 
@@ -72,14 +72,6 @@ esp_err_t audio_manager_register_event_callback(
  */
 esp_err_t audio_manager_play_file(const char *path);
 
-/**
- * @brief Queue an HTTP(S) MP3 stream for playback and return immediately.
- *
- * The URL is copied by Audio Manager. Internet must currently be available
- * according to the Network Manager Internet state event.
- */
-esp_err_t audio_manager_play_url(const char *url);
-
 /** Pause the current playback. */
 esp_err_t audio_manager_pause(void);
 
@@ -98,7 +90,7 @@ esp_err_t audio_manager_get_volume(float *volume);
 /** Get the current playback state. */
 esp_err_t audio_manager_get_state(audio_manager_state_t *state);
 
-/** Copy the path or URL of the current or most recently queued source. */
+/** Copy the path of the current or most recently queued file. */
 esp_err_t audio_manager_get_current_file(char *path, size_t path_size);
 
 /** Check whether Audio Manager has been initialized. */

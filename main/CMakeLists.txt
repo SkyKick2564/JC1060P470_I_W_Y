@@ -10,5 +10,4 @@ idf_component_register(
         ota_manager
         audio_manager
         esp_board_manager
-        freertos
 )

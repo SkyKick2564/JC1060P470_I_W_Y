@@ -8,8 +8,6 @@
 
 #include "esp_log.h"
 #include "esp_err.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "network_manager.h"
 #include "ota_manager.h"
 #include "app_config.h"
@@ -59,6 +57,32 @@ static void on_audio_event(
     }
 }
 
+/*
+ * Called when Network Manager Internet connectivity changes.
+ */
+static void on_network_internet_changed(
+    void *arg,
+    esp_event_base_t event_base,
+    int32_t event_id,
+    void *event_data)
+{
+    network_manager_handle_t network = (network_manager_handle_t)arg;
+    network_status_t status = {0};
+    (void)event_base;
+    (void)event_data;
+
+    if (network_manager_get_status(network, &status) != ESP_OK) {
+        return;
+    }
+
+    if (event_id == NETWORK_EVENT_INTERNET_CONNECTED) {
+        ESP_LOGI(TAG, "Internet is available");
+    } else if (event_id == NETWORK_EVENT_INTERNET_DISCONNECTED) {
+        ESP_LOGW(TAG, "Internet is unavailable (Wi-Fi: %s, IP: %s)",
+                 status.wifi_connected ? "connected" : "disconnected",
+                 status.has_ip ? status.ip_address : "none");
+    }
+}
 
 static void on_wifi_scan_updated(
     void *arg,
@@ -124,16 +148,27 @@ static esp_err_t app_before_update(void *user_ctx)
         return err;
     }
 
-
-    /* Stop playback and unregister Audio Manager's Network Event handler
-     * before Network Manager releases the event loop and ESP-Hosted. */
-    err = audio_manager_deinit();
+    err = esp_event_handler_unregister(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_INTERNET_CONNECTED,
+        on_network_internet_changed
+    );
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Audio Manager deinit failed: %s",
+        ESP_LOGE(TAG, "Internet-connected event unregister failed: %s",
                  esp_err_to_name(err));
         return err;
     }
-    ESP_LOGI(TAG, "Audio Manager deinitialized");
+
+    err = esp_event_handler_unregister(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_INTERNET_DISCONNECTED,
+        on_network_internet_changed
+    );
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Internet-disconnected event unregister failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
 
     /* Deinit performs STOP internally, then tears down Wi-Fi and ESP-Hosted. */
     err = network_manager_deinit(network);
@@ -142,15 +177,25 @@ static esp_err_t app_before_update(void *user_ctx)
                  esp_err_to_name(err));
         return err;
     }
+
     ESP_LOGI(TAG, "Network Manager and ESP-Hosted deinitialized");
 
-    /* Deinitialize LVGL before touching board peripherals. */
+    /* Deinitialize LVGL before touching board peripherals */
     err = app_lvgl_deinit();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "LVGL deinit failed: %s",
                  esp_err_to_name(err));
         return err;
     }
+
+    err = audio_manager_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Audio Manager deinit failed: %s",
+                esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Audio Manager deinitialized");
 
     err = esp_board_manager_deinit();
     if (err != ESP_OK) {
@@ -299,96 +344,6 @@ static esp_err_t test_sdcard_filesystem(void)
     return ESP_OK;
 }
 
-/*
- * One-shot HTTP streaming test. This is an application caller of Audio
- * Manager; Internet events remain entirely inside Audio Manager.
- */
-#define AUDIO_STREAM_TEST_URL \
-    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-#define AUDIO_STREAM_TEST_INTERNET_TIMEOUT_MS 120000
-#define AUDIO_STREAM_TEST_PLAY_TIME_MS 20000
-
-static void audio_stream_test_task(void *arg)
-{
-    audio_manager_state_t audio_state = AUDIO_MANAGER_STATE_UNINITIALIZED;
-    esp_err_t err = ESP_ERR_INVALID_STATE;
-    bool playback_started = false;
-    (void)arg;
-
-    ESP_LOGI(TAG, "HTTP audio test: waiting for Audio Manager Internet state");
-
-    /*
-     * Audio Manager owns Internet state. The test only calls its public API;
-     * ESP_ERR_INVALID_STATE is retried while Internet is not yet available.
-     */
-    for (int elapsed_ms = 0;
-         elapsed_ms < AUDIO_STREAM_TEST_INTERNET_TIMEOUT_MS;
-         elapsed_ms += 1000) {
-        err = audio_manager_play_url(AUDIO_STREAM_TEST_URL);
-        if (err == ESP_OK) {
-            break;
-        }
-        if (err != ESP_ERR_INVALID_STATE) {
-            ESP_LOGE(TAG, "HTTP audio test request failed: %s",
-                     esp_err_to_name(err));
-            vTaskDelete(NULL);
-            return;
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "HTTP audio test skipped: Internet not available");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    ESP_LOGI(TAG, "HTTP audio test: URL accepted by Audio Manager");
-
-    for (int elapsed_ms = 0; elapsed_ms < 60000; elapsed_ms += 500) {
-        err = audio_manager_get_state(&audio_state);
-        if (err == ESP_OK && audio_state == AUDIO_MANAGER_STATE_PLAYING) {
-            playback_started = true;
-            break;
-        }
-        if (err == ESP_OK &&
-            (audio_state == AUDIO_MANAGER_STATE_ERROR ||
-             audio_state == AUDIO_MANAGER_STATE_FINISHED)) {
-            break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-
-    if (!playback_started) {
-        ESP_LOGE(TAG, "HTTP audio test did not reach PLAYING state (state=%d)",
-                 (int)audio_state);
-        vTaskDelete(NULL);
-        return;
-    }
-
-    ESP_LOGI(TAG, "HTTP audio test: playback active; listening for 20 seconds");
-    for (int elapsed_ms = 0;
-         elapsed_ms < AUDIO_STREAM_TEST_PLAY_TIME_MS;
-         elapsed_ms += 250) {
-        vTaskDelay(pdMS_TO_TICKS(250));
-        if (audio_manager_get_state(&audio_state) != ESP_OK ||
-            audio_state != AUDIO_MANAGER_STATE_PLAYING) {
-            break;
-        }
-    }
-
-    if (audio_state == AUDIO_MANAGER_STATE_PLAYING) {
-        ESP_LOGI(TAG, "HTTP audio test: stopping test playback");
-        err = audio_manager_stop();
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "HTTP audio test stop failed: %s",
-                     esp_err_to_name(err));
-        }
-    }
-
-    vTaskDelete(NULL);
-}
-
 void app_main(void)
 {
     network_manager_handle_t network = NULL;
@@ -403,16 +358,7 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Board Manager initialized");
 
-    /* Network Manager creates the default ESP Event Loop. */
-    err = network_manager_init(&network);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Network Manager init failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-    ESP_LOGI(TAG, "Network Manager initialized");
-
-    /* Initialize Audio Manager after Network Manager for Internet events. */
+    /* Initialize Audio Manager using the Board Manager audio_dac device. */
     err = audio_manager_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Audio Manager init failed: %s",
@@ -444,7 +390,14 @@ void app_main(void)
         return;
     }
 
-    ESP_LOGI(TAG, "Audio Manager ready; Internet status is tracked internally");
+    err = audio_manager_play_file("/sdcard/test.mp3");
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Play file failed: %s",
+                esp_err_to_name(err));
+        return;
+    }
+
+    ESP_LOGI(TAG, "MP3 playback queued");
 
     /* Initialize application and UI */
     err = app_init();
@@ -455,6 +408,14 @@ void app_main(void)
     }
 
     ESP_LOGI(TAG, "Application started");
+
+    err = network_manager_init(&network);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Network Manager init failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "Network Manager initialized");
 
     ota_manager_config_t ota_config = APP_OTA_CONFIG;
     ota_config.user_ctx = network;
@@ -496,6 +457,30 @@ void app_main(void)
         return;
     }
 
+    err = esp_event_handler_register(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_INTERNET_CONNECTED,
+        on_network_internet_changed,
+        network
+    );
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Internet-connected event registration failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+
+    err = esp_event_handler_register(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_INTERNET_DISCONNECTED,
+        on_network_internet_changed,
+        network
+    );
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Internet-disconnected event registration failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+
     err = network_manager_start(network);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Network Manager start failed: %s",
@@ -511,14 +496,4 @@ void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "Wi-Fi scanning enabled");
-
-    if (xTaskCreate(
-            audio_stream_test_task,
-            "audio_stream_test",
-            4096,
-            NULL,
-            4,
-            NULL) != pdPASS) {
-        ESP_LOGE(TAG, "Create HTTP audio test task failed");
-    }
 }
