@@ -821,6 +821,8 @@ static esp_err_t audio_manager_play_file_internal(
                 );
 
                 if (read_result == -ESP_ERR_HTTP_EAGAIN) {
+                    /* No data arrived before the socket read timeout. */
+                    vTaskDelay(pdMS_TO_TICKS(10));
                     continue;
                 }
                 if (read_result < 0) {
@@ -844,13 +846,19 @@ static esp_err_t audio_manager_play_file_internal(
             }
 
             if (bytes_read == 0) {
-                if (is_url && content_length > 0 &&
-                    total_read < content_length) {
-                    ESP_LOGE(AUDIO_MANAGER_TAG,
-                             "HTTP stream ended early: expected=%" PRId64
-                             ", received=%" PRId64,
-                             content_length, total_read);
-                    result = ESP_FAIL;
+                if (is_url) {
+                    if (content_length > 0 && total_read < content_length) {
+                        ESP_LOGE(AUDIO_MANAGER_TAG,
+                                 "HTTP stream ended early: expected=%" PRId64
+                                 ", received=%" PRId64,
+                                 content_length, total_read);
+                        result = ESP_FAIL;
+                    } else if (!esp_http_client_is_complete_data_received(
+                                   http_client)) {
+                        ESP_LOGE(AUDIO_MANAGER_TAG,
+                                 "HTTP response ended before all data was received");
+                        result = ESP_FAIL;
+                    }
                 }
                 break;
             }
