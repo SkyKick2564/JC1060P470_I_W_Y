@@ -231,8 +231,8 @@ void action_settings_released(lv_event_t *e)
 #define CONTROL_CENTER_HIDDEN_Y       (-600)
 #define CONTROL_CENTER_OPEN_Y         (0)
 
-#define CONTROL_CENTER_MIN_ANIM_TIME  (120)
-#define CONTROL_CENTER_MAX_ANIM_TIME  (320)
+#define CONTROL_CENTER_MIN_ANIM_TIME  (60)
+#define CONTROL_CENTER_MAX_ANIM_TIME  (110)
 #define CONTROL_CENTER_FLICK_SPEED    (650)
 #define CONTROL_CENTER_FLICK_MIN_MOVE (18)
 
