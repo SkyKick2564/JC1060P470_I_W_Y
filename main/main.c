@@ -97,14 +97,49 @@ static esp_err_t app_before_update(void *user_ctx)
 
     ESP_LOGW(TAG, "OTA: Application pre-flash callback");
 
-    err = network_manager_stop(network);
+    /* Remove App callbacks before the manager releases its handle. */
+    err = esp_event_handler_unregister(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_SCAN_UPDATED,
+        on_wifi_scan_updated
+    );
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Network Manager stop failed: %s",
+        ESP_LOGE(TAG, "Wi-Fi scan event unregister failed: %s",
                  esp_err_to_name(err));
         return err;
     }
 
-    ESP_LOGI(TAG, "Network Manager stopped");
+    err = esp_event_handler_unregister(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_INTERNET_CONNECTED,
+        on_network_internet_changed
+    );
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Internet-connected event unregister failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    err = esp_event_handler_unregister(
+        NETWORK_MANAGER_EVENT,
+        NETWORK_EVENT_INTERNET_DISCONNECTED,
+        on_network_internet_changed
+    );
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Internet-disconnected event unregister failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    /* Deinit performs STOP internally, then tears down Wi-Fi and ESP-Hosted. */
+    err = network_manager_deinit(network);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Network Manager deinit failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Network Manager and ESP-Hosted deinitialized");
 
     /* Deinitialize LVGL before touching board peripherals */
     err = app_lvgl_deinit();
