@@ -18,6 +18,45 @@
 static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 
+static void on_audio_event(
+    audio_manager_event_t event,
+    esp_err_t error,
+    const char *path,
+    void *user_ctx)
+{
+    (void)user_ctx;
+
+    switch (event) {
+    case AUDIO_MANAGER_EVENT_STARTED:
+        ESP_LOGI(TAG, "Audio started: %s", path);
+        break;
+
+    case AUDIO_MANAGER_EVENT_PAUSED:
+        ESP_LOGI(TAG, "Audio paused");
+        break;
+
+    case AUDIO_MANAGER_EVENT_RESUMED:
+        ESP_LOGI(TAG, "Audio resumed");
+        break;
+
+    case AUDIO_MANAGER_EVENT_STOPPED:
+        ESP_LOGI(TAG, "Audio stopped");
+        break;
+
+    case AUDIO_MANAGER_EVENT_FINISHED:
+        ESP_LOGI(TAG, "Audio playback finished: %s", path);
+        break;
+
+    case AUDIO_MANAGER_EVENT_ERROR:
+        ESP_LOGE(TAG, "Audio playback error: %s (%s)",
+                 path, esp_err_to_name(error));
+        break;
+
+    default:
+        break;
+    }
+}
+
 /*
  * Called when Network Manager Internet connectivity changes.
  */
@@ -333,6 +372,32 @@ void app_main(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "SD card filesystem test FAILED");
     }
+
+    err = audio_manager_register_event_callback(
+        on_audio_event,
+        NULL
+    );
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Register audio callback failed: %s",
+                esp_err_to_name(err));
+        return;
+    }
+
+    err = audio_manager_set_volume(70.0f);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Set volume failed: %s",
+                esp_err_to_name(err));
+        return;
+    }
+
+    err = audio_manager_play_file("/sdcard/test.mp3");
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Play file failed: %s",
+                esp_err_to_name(err));
+        return;
+    }
+
+    ESP_LOGI(TAG, "MP3 playback queued");
 
     /* Initialize application and UI */
     err = app_init();
