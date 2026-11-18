@@ -112,7 +112,16 @@ static esp_err_t app_before_update(void *user_ctx)
         ESP_LOGE(TAG, "LVGL deinit failed: %s",
                  esp_err_to_name(err));
         return err;
-        }
+    }
+
+    err = audio_manager_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Audio Manager deinit failed: %s",
+                esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Audio Manager deinitialized");
 
     err = esp_board_manager_deinit();
     if (err != ESP_OK) {
