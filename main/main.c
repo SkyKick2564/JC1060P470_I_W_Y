@@ -12,6 +12,7 @@
 #include "ota_manager.h"
 #include "app_config.h"
 #include "esp_board_manager.h"
+#include "audio_manager.h"
 #include "app.h"
 
 static const char *TAG = "MAIN";
@@ -273,6 +274,15 @@ void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "Board Manager initialized");
+
+    /* Initialize Audio Manager using the Board Manager audio_dac device. */
+    err = audio_manager_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Audio Manager init failed: %s",
+                 esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "Audio Manager initialized");
+    }
 
     /* Verify SD card filesystem read/write operations. */
     err = test_sdcard_filesystem();
