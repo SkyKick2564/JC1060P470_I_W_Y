@@ -325,10 +325,7 @@ void action_control_center_pressed(lv_event_t *e)
 
 void action_control_center_pressing(lv_event_t *e)
 {
-    lv_obj_t *target = lv_event_get_target(e);
-
-    if (!control_center_drag.active ||
-        control_center_drag.target != target) {
+    if (!control_center_drag.active) {
         return;
     }
 
@@ -339,7 +336,6 @@ void action_control_center_pressing(lv_event_t *e)
     }
 
     lv_point_t point;
-
     lv_indev_get_point(indev, &point);
 
     lv_coord_t delta_y =
@@ -348,20 +344,18 @@ void action_control_center_pressing(lv_event_t *e)
     lv_coord_t new_y =
         control_center_drag.start_y + delta_y;
 
-    /* จำกัดตำแหน่งให้อยู่ในช่วง -600 ถึง 0 */
     if (new_y < CONTROL_CENTER_HIDDEN_Y) {
         new_y = CONTROL_CENTER_HIDDEN_Y;
     }
-
-    if (new_y > CONTROL_CENTER_OPEN_Y) {
+    else if (new_y > CONTROL_CENTER_OPEN_Y) {
         new_y = CONTROL_CENTER_OPEN_Y;
     }
 
-    /* เคลื่อนที่ตามนิ้วแบบ 1:1 */
-    lv_obj_set_y(
-        objects.control_center_overlay,
-        new_y
-    );
+    lv_obj_t *overlay = objects.control_center_overlay;
+
+    if (overlay != NULL && lv_obj_get_y(overlay) != new_y) {
+        lv_obj_set_y(overlay, new_y);
+    }
 }
 
 void action_control_center_released(lv_event_t *e)

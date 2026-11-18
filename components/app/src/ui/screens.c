@@ -410,16 +410,16 @@ void create_screen_main() {
             lv_obj_add_event_cb(obj, action_control_center_pressing, LV_EVENT_PRESSING, (void *)0);
             lv_obj_add_event_cb(obj, action_control_center_released, LV_EVENT_RELEASED, (void *)0);
             add_style_card_dark(obj);
-            lv_obj_set_style_bg_color(obj, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_bg_opa(obj, 200, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0x535353), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_opa(obj, 240, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
         }
         {
             // control_center_touch_area
             lv_obj_t *obj = lv_obj_create(parent_obj);
             objects.control_center_touch_area = obj;
-            lv_obj_set_pos(obj, 924, 0);
-            lv_obj_set_size(obj, 100, 30);
+            lv_obj_set_pos(obj, 824, 0);
+            lv_obj_set_size(obj, 200, 54);
             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);

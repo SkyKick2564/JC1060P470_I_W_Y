@@ -1689,8 +1689,8 @@
                 "definition": {
                   "MAIN": {
                     "DEFAULT": {
-                      "bg_color": "#000000",
-                      "bg_opa": 200,
+                      "bg_color": "#535353",
+                      "bg_opa": 240,
                       "bg_grad_dir": "NONE"
                     }
                   }
@@ -1702,10 +1702,10 @@
             {
               "objID": "7c7fe26d-0381-4613-c2b7-cbe0c4880114",
               "type": "LVGLContainerWidget",
-              "left": 924,
+              "left": 824,
               "top": 0,
-              "width": 100,
-              "height": 30,
+              "width": 200,
+              "height": 54,
               "customInputs": [],
               "customOutputs": [],
               "style": {
