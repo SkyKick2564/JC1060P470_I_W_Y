@@ -18,7 +18,6 @@ void action_set_radial_background(lv_event_t *e)
     static bool initialized = false;
 
     if (!initialized) {
-
         static const lv_color_t colors[] = {
             LV_COLOR_MAKE(0x77, 0x77, 0x77),
             LV_COLOR_MAKE(0x20, 0x20, 0x20)
@@ -225,14 +224,14 @@ void action_settings_released(lv_event_t *e)
 
 /*
  * Control Center
- * Direct drag + velocity-aware smooth snap.
+ * Direct drag + velocity-aware linear snap.
  */
 
 #define CONTROL_CENTER_HIDDEN_Y       (-600)
 #define CONTROL_CENTER_OPEN_Y         (0)
 
-#define CONTROL_CENTER_MIN_ANIM_TIME  (60)
-#define CONTROL_CENTER_MAX_ANIM_TIME  (110)
+#define CONTROL_CENTER_MIN_ANIM_TIME  (120)
+#define CONTROL_CENTER_MAX_ANIM_TIME  (320)
 #define CONTROL_CENTER_FLICK_SPEED    (650)
 #define CONTROL_CENTER_FLICK_MIN_MOVE (18)
 
@@ -282,7 +281,7 @@ static void control_center_animate(
     }
 
     /*
-     * ใช้ความเร็วตอนปล่อยนิ้วเป็นจุดเริ่มต้น
+     * ใช้ความเร็วตอนปล่อยนิ้ว
      * หากความเร็วต่ำเกินไป ใช้ความเร็วขั้นต่ำแทน
      */
     int32_t speed = initial_velocity;
@@ -309,7 +308,7 @@ static void control_center_animate(
     /* คำนวณเวลาให้สัมพันธ์กับระยะทาง */
     int32_t abs_distance = (distance >= 0) ? distance : -distance;
     int32_t abs_speed = (speed >= 0) ? speed : -speed;
-    
+
     int32_t duration =
         (abs_distance * 1000) / abs_speed;
 
@@ -326,7 +325,10 @@ static void control_center_animate(
     lv_anim_set_exec_cb(&anim, control_center_anim_exec);
     lv_anim_set_values(&anim, current_y, target_y);
     lv_anim_set_duration(&anim, (uint32_t)duration);
-    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+
+    /* ความเร็วคงที่ตลอด Animation ไม่มีการชะลอช่วงท้าย */
+    lv_anim_set_path_cb(&anim, lv_anim_path_linear);
+
     lv_anim_start(&anim);
 }
 
