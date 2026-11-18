@@ -600,7 +600,8 @@ static esp_err_t audio_manager_play_file_internal(
             }
         }
 
-        if (!*stopped && !audio_manager_process_control()) {
+        if (result == ESP_OK && !*stopped &&
+            !audio_manager_process_control()) {
             *stopped = true;
         }
 
