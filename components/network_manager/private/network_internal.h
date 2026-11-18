@@ -80,6 +80,7 @@ typedef struct network_manager {
 
     nvs_handle_t nvs_handle;
     bool nvs_opened;
+    bool hosted_initialized;
     bool wifi_initialized;
     bool netif_initialized;
     bool initialized;
