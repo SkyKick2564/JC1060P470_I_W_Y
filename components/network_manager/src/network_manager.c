@@ -326,6 +326,22 @@ static esp_err_t network_manager_hw_deinit(network_manager_t *manager)
         manager->nvs_opened = false;
     }
 
+    /*
+     * Network Manager waits for ESP-Hosted auto-init during initialization,
+     * and owns its lifetime for the Wi-Fi coprocessor. Tear it down only
+     * after esp_wifi_deinit() has completed, so the final Wi-Fi RPCs can
+     * still reach the ESP32-C6.
+     */
+    if (manager->hosted_initialized) {
+        int hosted_err = eh_host_deinit();
+        if (hosted_err != 0) {
+            ESP_LOGE(TAG, "ESP-Hosted deinit failed: %d", hosted_err);
+            return ESP_FAIL;
+        }
+        manager->hosted_initialized = false;
+        ESP_LOGI(TAG, "ESP-Hosted deinitialized");
+    }
+
     return ESP_OK;
 }
 
@@ -339,6 +355,7 @@ static esp_err_t network_manager_hw_init(network_manager_t *manager)
         ESP_LOGE(TAG, "ESP-Hosted initialization failed: %d", hosted_result);
         return ESP_FAIL;
     }
+    manager->hosted_initialized = true;
 
     esp_err_t err = nvs_flash_init();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
@@ -542,6 +559,54 @@ static void network_manager_process_got_ip(
     network_manager_schedule_internet_check(manager, true);
 }
 
+static esp_err_t network_manager_stop_internal(network_manager_t *manager)
+{
+    if (!manager->started) {
+        return ESP_OK;
+    }
+
+    manager->started = false;
+    manager->wifi_connecting = false;
+    manager->wifi_config_switch_pending = false;
+    memset(&manager->pending_wifi_config, 0,
+           sizeof(manager->pending_wifi_config));
+    manager->reconnect_scan_pending = false;
+    manager->ap_scan_enabled = false;
+    manager->ap_scan_pending = false;
+
+    bool had_internet;
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    had_internet = manager->status.internet_connected;
+    xSemaphoreGive(manager->status_mutex);
+
+    esp_err_t err = wifi_manager_stop();
+    if (err != ESP_OK) {
+        manager->started = true;
+        network_manager_schedule_internet_check(manager, false);
+        return err;
+    }
+
+    manager->internet_check_pending = false;
+
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    manager->status.wifi_connected = false;
+    manager->status.has_ip = false;
+    manager->status.internet_connected = false;
+    manager->status.internet_check_done = false;
+    manager->status.ssid[0] = '\0';
+    manager->status.ip_address[0] = '\0';
+    manager->status.gateway[0] = '\0';
+    manager->status.state = NETWORK_STATE_STOPPED;
+    xSemaphoreGive(manager->status_mutex);
+
+    if (had_internet) {
+        network_manager_post_event(NETWORK_EVENT_INTERNET_DISCONNECTED);
+    }
+    network_manager_post_event(NETWORK_EVENT_STOPPED);
+    ESP_LOGI(TAG, "Network Manager stopped");
+    return ESP_OK;
+}
+
 static void network_manager_process_event(
     network_manager_t *manager,
     const network_message_t *message)
@@ -616,52 +681,12 @@ static esp_err_t network_manager_process_request(
         ESP_LOGI(TAG, "Network Manager started");
         return ESP_OK;
 
-    case NETWORK_REQUEST_STOP: {
+    case NETWORK_REQUEST_STOP:
         if (!manager->initialized || !manager->started) {
             return ESP_ERR_INVALID_STATE;
         }
-
-        manager->started = false;
-        manager->wifi_connecting = false;
-        manager->wifi_config_switch_pending = false;
-        memset(&manager->pending_wifi_config, 0,
-               sizeof(manager->pending_wifi_config));
-        manager->reconnect_scan_pending = false;
-        manager->ap_scan_enabled = false;
-        manager->ap_scan_pending = false;
-
-        bool had_internet;
-        xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
-        had_internet = manager->status.internet_connected;
-        xSemaphoreGive(manager->status_mutex);
-
-        err = wifi_manager_stop();
-        if (err != ESP_OK) {
-            manager->started = true;
-            network_manager_schedule_internet_check(manager, false);
-            return err;
-        }
-
-        manager->internet_check_pending = false;
-
-        xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
-        manager->status.wifi_connected = false;
-        manager->status.has_ip = false;
-        manager->status.internet_connected = false;
-        manager->status.internet_check_done = false;
-        manager->status.ssid[0] = '\0';
-        manager->status.ip_address[0] = '\0';
-        manager->status.gateway[0] = '\0';
-        manager->status.state = NETWORK_STATE_STOPPED;
-        xSemaphoreGive(manager->status_mutex);
-
-        if (had_internet) {
-            network_manager_post_event(NETWORK_EVENT_INTERNET_DISCONNECTED);
-        }
-        network_manager_post_event(NETWORK_EVENT_STOPPED);
-        ESP_LOGI(TAG, "Network Manager stopped");
+        err = network_manager_stop_internal(manager);
         break;
-    }
 
     case NETWORK_REQUEST_SET_CONFIG: {
         if (!manager->initialized) {
@@ -802,8 +827,14 @@ static esp_err_t network_manager_process_request(
         break;
 
     case NETWORK_REQUEST_DEINIT:
-        if (!manager->initialized || manager->started) {
+        if (!manager->initialized) {
             return ESP_ERR_INVALID_STATE;
+        }
+
+        /* Final deinit includes STOP; callers do not need a separate call. */
+        err = network_manager_stop_internal(manager);
+        if (err != ESP_OK) {
+            return err;
         }
 
         err = network_manager_hw_deinit(manager);
