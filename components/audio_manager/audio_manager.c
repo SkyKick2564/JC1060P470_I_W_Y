@@ -30,7 +30,7 @@
 #define AUDIO_MANAGER_INPUT_BUFFER_SIZE 2048
 #define AUDIO_MANAGER_OUTPUT_BUFFER_SIZE 8192
 #define AUDIO_MANAGER_DEFAULT_VOLUME 50.0f
-#define AUDIO_MANAGER_HTTP_TIMEOUT_MS 10000
+#define AUDIO_MANAGER_HTTP_TIMEOUT_MS 3000
 
 #define AUDIO_COMMAND_PLAY   (1UL << 0)
 #define AUDIO_COMMAND_PAUSE  (1UL << 1)
@@ -844,6 +844,14 @@ static esp_err_t audio_manager_play_file_internal(
             }
 
             if (bytes_read == 0) {
+                if (is_url && content_length > 0 &&
+                    total_read < content_length) {
+                    ESP_LOGE(AUDIO_MANAGER_TAG,
+                             "HTTP stream ended early: expected=%" PRId64
+                             ", received=%" PRId64,
+                             content_length, total_read);
+                    result = ESP_FAIL;
+                }
                 break;
             }
 
