@@ -217,6 +217,7 @@ void action_settings_released(lv_event_t *e)
 /*
  * Control Center
  * Direct drag + constant-speed linear snap.
+ * Background opacity follows overlay position.
  */
 
 #define CONTROL_CENTER_HIDDEN_Y       (-600)
@@ -238,6 +239,66 @@ static struct {
     bool active;
 } control_center_drag;
 
+/*
+ * เก็บค่า Max Opacity จาก EEZ Studio
+ * อ่านจาก Style ของ Overlay ก่อนเริ่มปรับค่า
+ */
+static lv_opa_t control_center_max_opa = LV_OPA_COVER;
+static bool control_center_opa_initialized = false;
+
+static void control_center_init_opacity(void)
+{
+    if (control_center_opa_initialized ||
+        objects.control_center_overlay == NULL) {
+        return;
+    }
+
+    control_center_max_opa = lv_obj_get_style_bg_opa(
+        objects.control_center_overlay,
+        LV_PART_MAIN
+    );
+
+    control_center_opa_initialized = true;
+}
+
+/*
+ * ปรับ Opacity ตามตำแหน่ง Overlay
+ *
+ * y = -600 : opacity 0
+ * y = 0    : opacity เท่ากับ Max จาก EEZ
+ */
+static void control_center_update_opacity(lv_coord_t y)
+{
+    lv_obj_t *overlay = objects.control_center_overlay;
+
+    if (overlay == NULL) {
+        return;
+    }
+
+    control_center_init_opacity();
+
+    int32_t progress = y - CONTROL_CENTER_HIDDEN_Y;
+
+    if (progress < 0) {
+        progress = 0;
+    }
+    else if (progress >
+             (CONTROL_CENTER_OPEN_Y - CONTROL_CENTER_HIDDEN_Y)) {
+        progress =
+            CONTROL_CENTER_OPEN_Y - CONTROL_CENTER_HIDDEN_Y;
+    }
+
+    int32_t opacity =
+        ((int32_t)control_center_max_opa * progress) /
+        (CONTROL_CENTER_OPEN_Y - CONTROL_CENTER_HIDDEN_Y);
+
+    lv_obj_set_style_bg_opa(
+        overlay,
+        (lv_opa_t)opacity,
+        LV_PART_MAIN
+    );
+}
+
 static bool control_center_is_event_target(lv_obj_t *target)
 {
     return target != NULL &&
@@ -247,7 +308,10 @@ static bool control_center_is_event_target(lv_obj_t *target)
 
 static void control_center_anim_exec(void *obj, int32_t y)
 {
-    lv_obj_set_y((lv_obj_t *)obj, (lv_coord_t)y);
+    lv_obj_t *overlay = (lv_obj_t *)obj;
+
+    lv_obj_set_y(overlay, (lv_coord_t)y);
+    control_center_update_opacity((lv_coord_t)y);
 }
 
 /*
@@ -268,6 +332,7 @@ static void control_center_animate(lv_coord_t target_y)
     lv_anim_delete(overlay, control_center_anim_exec);
 
     if (distance == 0) {
+        control_center_update_opacity(target_y);
         return;
     }
 
@@ -321,6 +386,8 @@ void action_control_center_pressed(lv_event_t *e)
         control_center_drag.active) {
         return;
     }
+
+    control_center_init_opacity();
 
     lv_indev_t *indev = lv_indev_active();
 
@@ -383,6 +450,7 @@ void action_control_center_pressing(lv_event_t *e)
 
     if (overlay != NULL && lv_obj_get_y(overlay) != new_y) {
         lv_obj_set_y(overlay, new_y);
+        control_center_update_opacity(new_y);
     }
 }
 
