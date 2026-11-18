@@ -105,7 +105,6 @@ static struct {
 
 void action_settings_long_pressed(lv_event_t *e)
 {
-    /* ถ้ามี Button อื่นกำลังถูกลากอยู่ ไม่อนุญาตให้เริ่ม Drag */
     if (button_drag.active) {
         return;
     }
@@ -123,7 +122,6 @@ void action_settings_long_pressed(lv_event_t *e)
         return;
     }
 
-    /* เก็บข้อมูล Button และ Input Device ที่เริ่มลาก */
     button_drag.button = button;
     button_drag.indev = indev;
     button_drag.start_x = lv_obj_get_x(button);
@@ -133,10 +131,8 @@ void action_settings_long_pressed(lv_event_t *e)
 
     button_drag.active = true;
 
-    /* นำ Button ขึ้นมาอยู่ด้านหน้าสุด */
     lv_obj_move_foreground(button);
 
-    /* ขยาย Image 110% จากจุดกึ่งกลาง */
     lv_obj_set_style_transform_pivot_x(
         image, lv_obj_get_width(image) / 2, LV_PART_MAIN
     );
@@ -158,7 +154,6 @@ void action_settings_pressing(lv_event_t *e)
 {
     lv_obj_t *button = lv_event_get_target(e);
 
-    /* อนุญาตให้เคลื่อนที่เฉพาะ Button ที่เป็นเจ้าของ Drag */
     if (!button_drag.active ||
         button_drag.button != button) {
         return;
@@ -191,7 +186,6 @@ void action_settings_released(lv_event_t *e)
 
     lv_obj_t *button = lv_event_get_target(e);
 
-    /* คืนสถานะ Drag เฉพาะ Button เจ้าของ Drag */
     if (!button_drag.active ||
         button_drag.button != button) {
         return;
@@ -209,14 +203,12 @@ void action_settings_released(lv_event_t *e)
         );
     }
 
-    /* คืนตำแหน่ง Button */
     lv_obj_set_pos(
         button,
         button_drag.start_x,
         button_drag.start_y
     );
 
-    /* ปลด Drag Lock */
     button_drag.active = false;
     button_drag.button = NULL;
     button_drag.indev = NULL;
@@ -224,19 +216,16 @@ void action_settings_released(lv_event_t *e)
 
 /*
  * Control Center
- * Direct drag + velocity-aware linear snap.
+ * Direct drag + constant-speed linear snap.
  */
 
 #define CONTROL_CENTER_HIDDEN_Y       (-600)
 #define CONTROL_CENTER_OPEN_Y         (0)
 
-#define CONTROL_CENTER_MIN_ANIM_TIME  (120)
-#define CONTROL_CENTER_MAX_ANIM_TIME  (320)
+#define CONTROL_CENTER_ANIM_SPEED     (2000)
+
 #define CONTROL_CENTER_FLICK_SPEED    (650)
 #define CONTROL_CENTER_FLICK_MIN_MOVE (18)
-
-#define CONTROL_CENTER_MIN_SPEED      (900)
-#define CONTROL_CENTER_MAX_SPEED      (2600)
 
 static struct {
     lv_obj_t *target;
@@ -261,9 +250,11 @@ static void control_center_anim_exec(void *obj, int32_t y)
     lv_obj_set_y((lv_obj_t *)obj, (lv_coord_t)y);
 }
 
-static void control_center_animate(
-    lv_coord_t target_y,
-    int32_t initial_velocity)
+/*
+ * ใช้ความเร็วคงที่ทั้งเปิดและปิด
+ * Linear animation ไม่มีการชะลอช่วงท้าย
+ */
+static void control_center_animate(lv_coord_t target_y)
 {
     lv_obj_t *overlay = objects.control_center_overlay;
 
@@ -280,43 +271,14 @@ static void control_center_animate(
         return;
     }
 
-    /*
-     * ใช้ความเร็วตอนปล่อยนิ้ว
-     * หากความเร็วต่ำเกินไป ใช้ความเร็วขั้นต่ำแทน
-     */
-    int32_t speed = initial_velocity;
-
-    if (distance > 0) {
-        if (speed < CONTROL_CENTER_MIN_SPEED) {
-            speed = CONTROL_CENTER_MIN_SPEED;
-        }
-    }
-    else {
-        if (speed > -CONTROL_CENTER_MIN_SPEED) {
-            speed = -CONTROL_CENTER_MIN_SPEED;
-        }
-    }
-
-    /* จำกัดความเร็วสูงสุด */
-    if (speed > CONTROL_CENTER_MAX_SPEED) {
-        speed = CONTROL_CENTER_MAX_SPEED;
-    }
-    else if (speed < -CONTROL_CENTER_MAX_SPEED) {
-        speed = -CONTROL_CENTER_MAX_SPEED;
-    }
-
-    /* คำนวณเวลาให้สัมพันธ์กับระยะทาง */
-    int32_t abs_distance = (distance >= 0) ? distance : -distance;
-    int32_t abs_speed = (speed >= 0) ? speed : -speed;
+    int32_t abs_distance =
+        (distance >= 0) ? distance : -distance;
 
     int32_t duration =
-        (abs_distance * 1000) / abs_speed;
+        (abs_distance * 1000) / CONTROL_CENTER_ANIM_SPEED;
 
-    if (duration < CONTROL_CENTER_MIN_ANIM_TIME) {
-        duration = CONTROL_CENTER_MIN_ANIM_TIME;
-    }
-    else if (duration > CONTROL_CENTER_MAX_ANIM_TIME) {
-        duration = CONTROL_CENTER_MAX_ANIM_TIME;
+    if (duration < 1) {
+        duration = 1;
     }
 
     lv_anim_t anim;
@@ -325,10 +287,7 @@ static void control_center_animate(
     lv_anim_set_exec_cb(&anim, control_center_anim_exec);
     lv_anim_set_values(&anim, current_y, target_y);
     lv_anim_set_duration(&anim, (uint32_t)duration);
-
-    /* ความเร็วคงที่ตลอด Animation ไม่มีการชะลอช่วงท้าย */
     lv_anim_set_path_cb(&anim, lv_anim_path_linear);
-
     lv_anim_start(&anim);
 }
 
@@ -345,10 +304,6 @@ static void control_center_update_velocity(lv_point_t point, uint32_t now)
         int32_t new_velocity =
             (delta_y * 1000) / (int32_t)elapsed;
 
-        /*
-         * Smooth velocity:
-         * ลดความผันผวนจาก Touch sample แต่ละรอบ
-         */
         control_center_drag.velocity_y =
             (control_center_drag.velocity_y * 2 + new_velocity) / 3;
     }
@@ -482,18 +437,10 @@ void action_control_center_released(lv_event_t *e)
             : CONTROL_CENTER_HIDDEN_Y;
     }
 
-    /* ถ้าความเร็วสวนทางกับปลายทาง ให้ไม่ใช้ความเร็วนั้น */
-    int32_t animation_velocity = velocity_y;
-
-    if ((destination > current_y && animation_velocity < 0) ||
-        (destination < current_y && animation_velocity > 0)) {
-        animation_velocity = 0;
-    }
-
     control_center_drag.active = false;
     control_center_drag.target = NULL;
     control_center_drag.indev = NULL;
     control_center_drag.velocity_y = 0;
 
-    control_center_animate(destination, animation_velocity);
+    control_center_animate(destination);
 }
