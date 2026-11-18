@@ -149,13 +149,12 @@ static esp_err_t test_sdcard_filesystem(void)
     static const char *mount_path = "/sdcard";
     static const char *test_path = "/sdcard/.exfat_rw_test.tmp";
     static const char test_data[] =
-        "ESP-IDF FatFs exFAT read/write test\\n";
+        "ESP-IDF FatFs exFAT read/write test\n";
     char read_data[sizeof(test_data) + 1] = {0};
     struct stat st;
     size_t written = 0;
     size_t received = 0;
     const size_t data_size = sizeof(test_data) - 1;
-    bool file_created = false;
 
     ESP_LOGI(TAG, "========== SD Card Filesystem Test ==========");
 
@@ -172,7 +171,6 @@ static esp_err_t test_sdcard_filesystem(void)
                  test_path, errno, strerror(errno));
         return ESP_FAIL;
     }
-    file_created = true;
     ESP_LOGI(TAG, "Test file created");
 
     while (written < data_size) {
@@ -255,12 +253,10 @@ static esp_err_t test_sdcard_filesystem(void)
                  errno, strerror(errno));
         return ESP_FAIL;
     }
-    file_created = false;
     ESP_LOGI(TAG, "Test file deleted");
 
     ESP_LOGI(TAG, "SD card filesystem test PASSED");
     ESP_LOGI(TAG, "==============================================");
-    (void)file_created;
     return ESP_OK;
 }
 
