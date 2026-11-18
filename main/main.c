@@ -1,5 +1,10 @@
 #include <stdbool.h>
 #include <stdio.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "esp_log.h"
 #include "esp_err.h"
@@ -133,6 +138,132 @@ static void app_update_available(
     ESP_LOGI(TAG, "  Size: %u bytes", (unsigned)info->size);
 }
 
+
+/*
+ * Basic SD card filesystem test:
+ * create -> write -> close -> reopen -> read -> compare -> delete.
+ * O_EXCL prevents overwriting an existing file.
+ */
+static esp_err_t test_sdcard_filesystem(void)
+{
+    static const char *mount_path = "/sdcard";
+    static const char *test_path = "/sdcard/.exfat_rw_test.tmp";
+    static const char test_data[] =
+        "ESP-IDF FatFs exFAT read/write test\\n";
+    char read_data[sizeof(test_data) + 1] = {0};
+    struct stat st;
+    size_t written = 0;
+    size_t received = 0;
+    const size_t data_size = sizeof(test_data) - 1;
+    bool file_created = false;
+
+    ESP_LOGI(TAG, "========== SD Card Filesystem Test ==========");
+
+    if (stat(mount_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        ESP_LOGE(TAG, "SD card mount path is unavailable: %s (errno=%d: %s)",
+                 mount_path, errno, strerror(errno));
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "Mount path verified: %s", mount_path);
+
+    int fd = open(test_path, O_WRONLY | O_CREAT | O_EXCL, 0666);
+    if (fd < 0) {
+        ESP_LOGE(TAG, "Create test file failed: %s (errno=%d: %s)",
+                 test_path, errno, strerror(errno));
+        return ESP_FAIL;
+    }
+    file_created = true;
+    ESP_LOGI(TAG, "Test file created");
+
+    while (written < data_size) {
+        ssize_t n = write(fd, test_data + written, data_size - written);
+        if (n < 0) {
+            ESP_LOGE(TAG, "Write test file failed (errno=%d: %s)",
+                     errno, strerror(errno));
+            close(fd);
+            unlink(test_path);
+            return ESP_FAIL;
+        }
+        if (n == 0) {
+            ESP_LOGE(TAG, "Write test file returned zero bytes");
+            close(fd);
+            unlink(test_path);
+            return ESP_FAIL;
+        }
+        written += (size_t)n;
+    }
+
+    if (fsync(fd) != 0) {
+        ESP_LOGE(TAG, "Sync test file failed (errno=%d: %s)",
+                 errno, strerror(errno));
+        close(fd);
+        unlink(test_path);
+        return ESP_FAIL;
+    }
+
+    if (close(fd) != 0) {
+        ESP_LOGE(TAG, "Close after write failed (errno=%d: %s)",
+                 errno, strerror(errno));
+        unlink(test_path);
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "Wrote and closed %u bytes", (unsigned)written);
+
+    fd = open(test_path, O_RDONLY);
+    if (fd < 0) {
+        ESP_LOGE(TAG, "Reopen test file failed (errno=%d: %s)",
+                 errno, strerror(errno));
+        unlink(test_path);
+        return ESP_FAIL;
+    }
+
+    while (received < sizeof(read_data)) {
+        ssize_t n = read(fd, read_data + received,
+                         sizeof(read_data) - received);
+        if (n < 0) {
+            ESP_LOGE(TAG, "Read test file failed (errno=%d: %s)",
+                     errno, strerror(errno));
+            close(fd);
+            unlink(test_path);
+            return ESP_FAIL;
+        }
+        if (n == 0) {
+            break;
+        }
+        received += (size_t)n;
+    }
+
+    if (close(fd) != 0) {
+        ESP_LOGE(TAG, "Close after read failed (errno=%d: %s)",
+                 errno, strerror(errno));
+        unlink(test_path);
+        return ESP_FAIL;
+    }
+
+    if (received != data_size ||
+        memcmp(read_data, test_data, data_size) != 0) {
+        ESP_LOGE(TAG, "Read-back verification failed (expected=%u, actual=%u)",
+                 (unsigned)data_size, (unsigned)received);
+        unlink(test_path);
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "Read-back verified: %u bytes match",
+             (unsigned)received);
+
+    if (unlink(test_path) != 0) {
+        ESP_LOGE(TAG, "Delete test file failed (errno=%d: %s)",
+                 errno, strerror(errno));
+        return ESP_FAIL;
+    }
+    file_created = false;
+    ESP_LOGI(TAG, "Test file deleted");
+
+    ESP_LOGI(TAG, "SD card filesystem test PASSED");
+    ESP_LOGI(TAG, "==============================================");
+    (void)file_created;
+    return ESP_OK;
+}
+
 void app_main(void)
 {
     network_manager_handle_t network = NULL;
@@ -146,6 +277,12 @@ void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "Board Manager initialized");
+
+    /* Verify SD card filesystem read/write operations. */
+    err = test_sdcard_filesystem();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SD card filesystem test FAILED");
+    }
 
     /* Initialize application and UI */
     err = app_init();
