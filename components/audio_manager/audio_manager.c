@@ -21,8 +21,8 @@
 
 #define AUDIO_MANAGER_TAG "AUDIO_MANAGER"
 #define AUDIO_MANAGER_TASK_STACK_SIZE (20 * 1024)
-#define AUDIO_MANAGER_TASK_PRIORITY 5
-#define AUDIO_MANAGER_INPUT_BUFFER_SIZE 2048
+#define AUDIO_MANAGER_TASK_PRIORITY 8
+#define AUDIO_MANAGER_INPUT_BUFFER_SIZE 8192
 #define AUDIO_MANAGER_OUTPUT_BUFFER_SIZE 8192
 #define AUDIO_MANAGER_DEFAULT_VOLUME 50.0f
 
@@ -565,8 +565,18 @@ static esp_err_t audio_manager_play_file_internal(
 
             size_t bytes_read = fread(
                 input_buffer, 1, AUDIO_MANAGER_INPUT_BUFFER_SIZE, file);
+            bool end_of_stream = feof(file) != 0;
+
             if (bytes_read == 0) {
                 if (ferror(file)) {
+                    ESP_LOGE(AUDIO_MANAGER_TAG,
+                             "Read audio file failed at offset=%ld",
+                             ftell(file));
+                    result = ESP_FAIL;
+                } else if (!end_of_stream) {
+                    ESP_LOGE(AUDIO_MANAGER_TAG,
+                             "Audio file read made no progress at offset=%ld",
+                             ftell(file));
                     result = ESP_FAIL;
                 }
                 break;
@@ -575,7 +585,7 @@ static esp_err_t audio_manager_play_file_internal(
             esp_audio_simple_dec_raw_t raw = {
                 .buffer = input_buffer,
                 .len = (uint32_t)bytes_read,
-                .eos = bytes_read < AUDIO_MANAGER_INPUT_BUFFER_SIZE,
+                .eos = end_of_stream,
             };
 
             while (raw.len > 0) {
@@ -604,8 +614,12 @@ static esp_err_t audio_manager_play_file_internal(
                 }
 
                 if (decode_err != ESP_AUDIO_ERR_OK) {
-                    ESP_LOGE(AUDIO_MANAGER_TAG, "Audio decode failed: %d",
-                             (int)decode_err);
+                    ESP_LOGE(AUDIO_MANAGER_TAG,
+                             "Audio decode failed: %d (input_remaining=%" PRIu32
+                             ", consumed=%" PRIu32 ", decoded=%" PRIu32
+                             ", file_offset=%ld)",
+                             (int)decode_err, raw.len, raw.consumed,
+                             decoded.decoded_size, ftell(file));
                     result = ESP_FAIL;
                     break;
                 }
