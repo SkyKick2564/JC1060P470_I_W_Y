@@ -61,6 +61,10 @@ typedef struct network_manager *network_manager_handle_t;
  *
  * The manager owns a FreeRTOS task and command/event queue.
  * Public control APIs submit commands to that task and wait for completion.
+ * network_manager_stop() stops Wi-Fi but keeps resources for a later start.
+ * network_manager_deinit() also stops Wi-Fi, deinitializes ESP-Hosted, and
+ * releases all Network Manager resources. Do not call stop() separately
+ * before deinit().
  */
 esp_err_t network_manager_init(network_manager_handle_t *out_handle);
 esp_err_t network_manager_start(network_manager_handle_t handle);
