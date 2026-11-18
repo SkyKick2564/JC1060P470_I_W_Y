@@ -52,7 +52,11 @@
 /  (0:Disable or 1:Enable) Also FF_FS_READONLY needs to be 0 to enable this option. */
 
 
-#define FF_USE_LABEL	CONFIG_FATFS_USE_LABEL
+#ifdef CONFIG_FATFS_USE_LABEL
+#define FF_USE_LABEL	1
+#else
+#define FF_USE_LABEL	0
+#endif
 /* This option switches volume label API functions, f_getlabel() and f_setlabel().
 /  (0:Disable or 1:Enable) */
 
