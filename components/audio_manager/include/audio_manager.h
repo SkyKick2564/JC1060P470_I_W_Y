@@ -72,15 +72,6 @@ esp_err_t audio_manager_register_event_callback(
  */
 esp_err_t audio_manager_play_file(const char *path);
 
-/**
- * @brief Queue an HTTP/HTTPS audio stream or PLS/M3U playlist.
- *
- * Direct stream responses must be MP3 (audio/mpeg) or use a .mp3/.wav URL.
- * Playlist entries must contain an absolute HTTP/HTTPS URL to a supported
- * MP3/WAV stream. Playback is asynchronous.
- */
-esp_err_t audio_manager_play_url(const char *url);
-
 /** Pause the current playback. */
 esp_err_t audio_manager_pause(void);
 

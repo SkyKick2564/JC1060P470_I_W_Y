@@ -1,7 +1,6 @@
 idf_component_register(
     SRCS
         "src/app.c"
-        "src/internet_radio.c"
         "src/app_touch_multi.c"
         "src/actions.c"
         "src/ui/ui.c"
@@ -27,6 +26,4 @@ idf_component_register(
         esp_lvgl_port
         esp_board_manager
         esp_lcd_touch
-        network_manager
-        audio_manager
 )

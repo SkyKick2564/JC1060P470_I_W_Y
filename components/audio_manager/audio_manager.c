@@ -17,8 +17,6 @@
 #include "esp_audio_dec_default.h"
 #include "esp_audio_simple_dec.h"
 #include "esp_audio_simple_dec_default.h"
-#include "esp_http_client.h"
-#include "esp_crt_bundle.h"
 
 #include "audio_manager.h"
 
@@ -46,7 +44,6 @@ static audio_manager_event_callback_t s_event_callback;
 static void *s_event_user_ctx;
 static float s_volume = AUDIO_MANAGER_DEFAULT_VOLUME;
 static char s_current_path[AUDIO_MANAGER_PATH_MAX];
-static bool s_current_is_url;
 
 #define AUDIO_MANAGER_PCM_QUEUE_LENGTH 8
 #define AUDIO_MANAGER_OUTPUT_TASK_STACK_SIZE (6 * 1024)
@@ -132,180 +129,14 @@ static esp_audio_simple_dec_type_t audio_manager_get_decoder_type(
     }
 
     extension++;
-    size_t extension_length = strcspn(extension, "?#");
-    if (extension_length == 3 && strncasecmp(extension, "mp3", 3) == 0) {
+    if (strcasecmp(extension, "mp3") == 0) {
         return ESP_AUDIO_SIMPLE_DEC_TYPE_MP3;
     }
-    if (extension_length == 3 && strncasecmp(extension, "wav", 3) == 0) {
+    if (strcasecmp(extension, "wav") == 0) {
         return ESP_AUDIO_SIMPLE_DEC_TYPE_WAV;
     }
 
     return ESP_AUDIO_SIMPLE_DEC_TYPE_NONE;
-}
-
-
-static bool audio_manager_contains_case_insensitive(const char *text,
-                                                     const char *value)
-{
-    size_t value_length;
-
-    if (text == NULL || value == NULL) {
-        return false;
-    }
-    value_length = strlen(value);
-    while (*text != '\0') {
-        if (strncasecmp(text, value, value_length) == 0) {
-            return true;
-        }
-        text++;
-    }
-    return false;
-}
-
-static bool audio_manager_is_http_url(const char *value)
-{
-    return value != NULL &&
-           (strncasecmp(value, "http://", 7) == 0 ||
-            strncasecmp(value, "https://", 8) == 0);
-}
-
-static bool audio_manager_is_playlist_url(const char *url,
-                                          const char *content_type)
-{
-    const char *query = strpbrk(url, "?#");
-    size_t length = query != NULL ? (size_t)(query - url) : strlen(url);
-
-    if (audio_manager_contains_case_insensitive(content_type, "audio/x-scpls") ||
-        audio_manager_contains_case_insensitive(content_type, "application/pls") ||
-        audio_manager_contains_case_insensitive(content_type, "audio/x-mpegurl") ||
-        audio_manager_contains_case_insensitive(content_type, "application/x-mpegurl")) {
-        return true;
-    }
-
-    return (length >= 4 && strncasecmp(url + length - 4, ".pls", 4) == 0) ||
-           (length >= 4 && strncasecmp(url + length - 4, ".m3u", 4) == 0);
-}
-
-static esp_err_t audio_manager_parse_playlist(char *playlist,
-                                               char *stream_url,
-                                               size_t stream_url_size)
-{
-    char *line = playlist;
-
-    while (line != NULL && *line != '\0') {
-        char *next = strpbrk(line, "\r\n");
-        if (next != NULL) {
-            *next++ = '\0';
-            while (*next == '\r' || *next == '\n') {
-                next++;
-            }
-        }
-
-        while (*line == ' ' || *line == '\t') {
-            line++;
-        }
-        char *end = line + strlen(line);
-        while (end > line && (end[-1] == ' ' || end[-1] == '\t')) {
-            *--end = '\0';
-        }
-
-        if (strncasecmp(line, "File", 4) == 0) {
-            char *equal = strchr(line, '=');
-            if (equal != NULL) {
-                line = equal + 1;
-            }
-        }
-
-        if (audio_manager_is_http_url(line)) {
-            size_t length = strlen(line);
-            if (length >= stream_url_size) {
-                return ESP_ERR_INVALID_SIZE;
-            }
-            memcpy(stream_url, line, length + 1);
-            return ESP_OK;
-        }
-        line = next;
-    }
-
-    return ESP_ERR_NOT_FOUND;
-}
-
-static esp_err_t audio_manager_http_event_handler(esp_http_client_event_t *event)
-{
-    char *content_type = (char *)event->user_data;
-
-    if (event->event_id == HTTP_EVENT_ON_HEADER &&
-        event->header_key != NULL && event->header_value != NULL &&
-        strcasecmp(event->header_key, "Content-Type") == 0 &&
-        content_type != NULL) {
-        snprintf(content_type, 96, "%s", event->header_value);
-    }
-    return ESP_OK;
-}
-
-static esp_err_t audio_manager_http_open(const char *url,
-                                         esp_http_client_handle_t *client,
-                                         char *content_type)
-{
-    esp_http_client_config_t config = {
-        .url = url,
-        .method = HTTP_METHOD_GET,
-        .timeout_ms = 15000,
-        .buffer_size = 4096,
-        .buffer_size_tx = 1024,
-        .user_agent = "ESP32-AudioManager/1.0",
-        .keep_alive_enable = true,
-        .event_handler = audio_manager_http_event_handler,
-        .user_data = content_type,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-    };
-
-    content_type[0] = '\0';
-    *client = esp_http_client_init(&config);
-    if (*client == NULL) {
-        return ESP_ERR_NO_MEM;
-    }
-
-    esp_err_t err = esp_http_client_open(*client, 0);
-    if (err != ESP_OK) {
-        esp_http_client_cleanup(*client);
-        *client = NULL;
-        return err;
-    }
-
-    int64_t content_length = esp_http_client_fetch_headers(*client);
-    if (content_length < 0) {
-        esp_http_client_close(*client);
-        esp_http_client_cleanup(*client);
-        *client = NULL;
-        return ESP_FAIL;
-    }
-
-    int status = esp_http_client_get_status_code(*client);
-    if (status < 200 || status >= 300) {
-        ESP_LOGE(AUDIO_MANAGER_TAG, "HTTP request failed, status=%d", status);
-        esp_http_client_close(*client);
-        esp_http_client_cleanup(*client);
-        *client = NULL;
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(AUDIO_MANAGER_TAG, "HTTP stream opened: status=%d, type=%s",
-             status, content_type[0] != '\0' ? content_type : "unknown");
-    return ESP_OK;
-}
-
-static esp_audio_simple_dec_type_t audio_manager_get_stream_decoder_type(
-    const char *url,
-    const char *content_type)
-{
-    if (audio_manager_contains_case_insensitive(content_type, "audio/mpeg") ||
-        audio_manager_contains_case_insensitive(content_type, "audio/mp3") ||
-        audio_manager_contains_case_insensitive(content_type, "audio/x-mpeg")) {
-        return ESP_AUDIO_SIMPLE_DEC_TYPE_MP3;
-    }
-
-    return audio_manager_get_decoder_type(url);
 }
 
 bool audio_manager_is_initialized(void)
@@ -445,7 +276,6 @@ esp_err_t audio_manager_deinit(void)
     s_event_callback = NULL;
     s_event_user_ctx = NULL;
     s_current_path[0] = '\0';
-    s_current_is_url = false;
     s_state = AUDIO_MANAGER_STATE_UNINITIALIZED;
     return ESP_OK;
 }
@@ -494,42 +324,6 @@ esp_err_t audio_manager_play_file(const char *path)
     }
 
     memcpy(s_current_path, path, path_length + 1);
-    s_current_is_url = false;
-    s_state = AUDIO_MANAGER_STATE_QUEUED;
-    xSemaphoreGive(s_lock);
-
-    xTaskNotify(s_player_task, AUDIO_COMMAND_PLAY, eSetBits);
-    return ESP_OK;
-}
-
-
-esp_err_t audio_manager_play_url(const char *url)
-{
-    size_t url_length;
-
-    if (!audio_manager_is_initialized()) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    if (!audio_manager_is_http_url(url)) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    url_length = strlen(url);
-    if (url_length >= sizeof(s_current_path)) {
-        return ESP_ERR_INVALID_SIZE;
-    }
-
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (s_state == AUDIO_MANAGER_STATE_QUEUED ||
-        s_state == AUDIO_MANAGER_STATE_PLAYING ||
-        s_state == AUDIO_MANAGER_STATE_PAUSED ||
-        s_state == AUDIO_MANAGER_STATE_STOPPING) {
-        xSemaphoreGive(s_lock);
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    memcpy(s_current_path, url, url_length + 1);
-    s_current_is_url = true;
     s_state = AUDIO_MANAGER_STATE_QUEUED;
     xSemaphoreGive(s_lock);
 
@@ -740,13 +534,9 @@ static bool audio_manager_process_control(void)
 static esp_err_t audio_manager_play_file_internal(
     const char *path,
     esp_audio_simple_dec_type_t decoder_type,
-    bool is_url,
     bool *stopped)
 {
     FILE *file = NULL;
-    esp_http_client_handle_t http_client = NULL;
-    char content_type[96] = {0};
-    char resolved_url[AUDIO_MANAGER_PATH_MAX] = {0};
     uint8_t *input_buffer = NULL;
     uint8_t *output_buffer = NULL;
     size_t output_buffer_size = AUDIO_MANAGER_OUTPUT_BUFFER_SIZE;
@@ -762,64 +552,10 @@ static esp_err_t audio_manager_play_file_internal(
     esp_audio_simple_dec_info_t decoder_info = {0};
 
     *stopped = false;
-    if (is_url) {
-        result = audio_manager_http_open(path, &http_client, content_type);
-        if (result != ESP_OK) {
-            ESP_LOGE(AUDIO_MANAGER_TAG, "Open stream failed: %s",
-                     esp_err_to_name(result));
-            return result;
-        }
-
-        if (audio_manager_is_playlist_url(path, content_type)) {
-            char playlist[2048];
-            size_t playlist_length = 0;
-            while (playlist_length < sizeof(playlist) - 1) {
-                int read_length = esp_http_client_read(
-                    http_client, playlist + playlist_length,
-                    (int)(sizeof(playlist) - 1 - playlist_length));
-                if (read_length < 0) {
-                    result = ESP_FAIL;
-                    break;
-                }
-                if (read_length == 0) {
-                    break;
-                }
-                playlist_length += (size_t)read_length;
-            }
-            playlist[playlist_length] = '\0';
-            if (result == ESP_OK) {
-                result = audio_manager_parse_playlist(
-                    playlist, resolved_url, sizeof(resolved_url));
-            }
-
-            esp_http_client_close(http_client);
-            esp_http_client_cleanup(http_client);
-            http_client = NULL;
-            if (result != ESP_OK) {
-                ESP_LOGE(AUDIO_MANAGER_TAG, "Unable to resolve playlist URL");
-                return result;
-            }
-
-            result = audio_manager_http_open(
-                resolved_url, &http_client, content_type);
-            if (result != ESP_OK) {
-                return result;
-            }
-        }
-
-        decoder_type = audio_manager_get_stream_decoder_type(
-            resolved_url[0] != '\0' ? resolved_url : path, content_type);
-        if (decoder_type == ESP_AUDIO_SIMPLE_DEC_TYPE_NONE) {
-            esp_http_client_close(http_client);
-            esp_http_client_cleanup(http_client);
-            return ESP_ERR_NOT_SUPPORTED;
-        }
-    } else {
-        file = fopen(path, "rb");
-        if (file == NULL) {
-            ESP_LOGE(AUDIO_MANAGER_TAG, "Open audio file failed: %s", path);
-            return ESP_ERR_NOT_FOUND;
-        }
+    file = fopen(path, "rb");
+    if (file == NULL) {
+        ESP_LOGE(AUDIO_MANAGER_TAG, "Open audio file failed: %s", path);
+        return ESP_ERR_NOT_FOUND;
     }
 
     do {
@@ -871,36 +607,19 @@ static esp_err_t audio_manager_play_file_internal(
                 break;
             }
 
-            int stream_read = 0;
-            size_t bytes_read = 0;
-            if (is_url) {
-                stream_read = esp_http_client_read(
-                    http_client, (char *)input_buffer,
-                    AUDIO_MANAGER_INPUT_BUFFER_SIZE);
-                if (stream_read == -ESP_ERR_HTTP_EAGAIN) {
-                    continue;
-                }
-                if (stream_read < 0) {
-                    result = ESP_FAIL;
-                    break;
-                }
-                bytes_read = (size_t)stream_read;
-            } else {
-                bytes_read = fread(
-                    input_buffer, 1, AUDIO_MANAGER_INPUT_BUFFER_SIZE, file);
-                if (bytes_read == 0 && ferror(file)) {
-                    result = ESP_FAIL;
-                    break;
-                }
-            }
+            size_t bytes_read = fread(
+                input_buffer, 1, AUDIO_MANAGER_INPUT_BUFFER_SIZE, file);
             if (bytes_read == 0) {
+                if (ferror(file)) {
+                    result = ESP_FAIL;
+                }
                 break;
             }
 
             esp_audio_simple_dec_raw_t raw = {
                 .buffer = input_buffer,
                 .len = (uint32_t)bytes_read,
-                .eos = !is_url && bytes_read < AUDIO_MANAGER_INPUT_BUFFER_SIZE,
+                .eos = bytes_read < AUDIO_MANAGER_INPUT_BUFFER_SIZE,
             };
 
             while (raw.len > 0) {
@@ -1077,10 +796,6 @@ static esp_err_t audio_manager_play_file_internal(
     if (file != NULL) {
         fclose(file);
     }
-    if (http_client != NULL) {
-        esp_http_client_close(http_client);
-        esp_http_client_cleanup(http_client);
-    }
     free(input_buffer);
     free(output_buffer);
 
@@ -1105,10 +820,8 @@ static void audio_manager_player_task(void *arg)
         }
 
         char path[AUDIO_MANAGER_PATH_MAX];
-        bool is_url;
         xSemaphoreTake(s_lock, portMAX_DELAY);
         memcpy(path, s_current_path, sizeof(path));
-        is_url = s_current_is_url;
         xSemaphoreGive(s_lock);
 
         xSemaphoreTake(s_lock, portMAX_DELAY);
@@ -1119,11 +832,10 @@ static void audio_manager_player_task(void *arg)
         bool stopped = cancelled_before_start;
         esp_err_t err = ESP_OK;
         if (!cancelled_before_start) {
-            esp_audio_simple_dec_type_t decoder_type = is_url ?
-                ESP_AUDIO_SIMPLE_DEC_TYPE_NONE :
+            esp_audio_simple_dec_type_t decoder_type =
                 audio_manager_get_decoder_type(path);
             err = audio_manager_play_file_internal(
-                path, decoder_type, is_url, &stopped);
+                path, decoder_type, &stopped);
         }
 
         if (stopped) {
