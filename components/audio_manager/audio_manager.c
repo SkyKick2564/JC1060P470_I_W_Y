@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "freertos/queue.h"
 
 #include "esp_log.h"
 #include "esp_board_manager.h"
@@ -43,6 +44,46 @@ static audio_manager_event_callback_t s_event_callback;
 static void *s_event_user_ctx;
 static float s_volume = AUDIO_MANAGER_DEFAULT_VOLUME;
 static char s_current_path[AUDIO_MANAGER_PATH_MAX];
+
+#define AUDIO_MANAGER_PCM_QUEUE_LENGTH 8
+#define AUDIO_MANAGER_OUTPUT_TASK_STACK_SIZE (6 * 1024)
+#define AUDIO_MANAGER_OUTPUT_TASK_PRIORITY (AUDIO_MANAGER_TASK_PRIORITY + 2)
+
+typedef struct {
+    size_t size;
+    uint8_t data[];
+} audio_pcm_block_t;
+
+typedef struct {
+    QueueHandle_t queue;
+    SemaphoreHandle_t done;
+    volatile esp_err_t error;
+    esp_codec_dev_handle_t codec;
+} audio_output_context_t;
+
+static void audio_manager_output_task(void *arg)
+{
+    audio_output_context_t *ctx = (audio_output_context_t *)arg;
+    audio_pcm_block_t *block = NULL;
+
+    while (xQueueReceive(ctx->queue, &block, portMAX_DELAY) == pdTRUE) {
+        if (block == NULL) {
+            break;
+        }
+
+        if (ctx->error == ESP_OK) {
+            esp_err_t err = esp_codec_dev_write(ctx->codec, block->data,
+                                                 (int)block->size);
+            if (err != ESP_CODEC_DEV_OK) {
+                ctx->error = err;
+            }
+        }
+        free(block);
+    }
+
+    xSemaphoreGive(ctx->done);
+    vTaskDelete(NULL);
+}
 
 static void audio_manager_set_state(audio_manager_state_t state)
 {
@@ -504,6 +545,9 @@ static esp_err_t audio_manager_play_file_internal(
     bool simple_decoder_registered = false;
     bool codec_opened = false;
     bool codec_info_ready = false;
+    bool output_task_started = false;
+    audio_output_context_t output_ctx = {0};
+    TaskHandle_t output_task = NULL;
     esp_err_t result = ESP_OK;
     esp_audio_simple_dec_info_t decoder_info = {0};
 
@@ -625,14 +669,58 @@ static esp_err_t audio_manager_play_file_internal(
                         codec_info_ready = true;
                     }
 
-                    esp_err_t write_err = esp_codec_dev_write(
-                        s_audio_dac->codec_dev,
-                        decoded.buffer,
-                        decoded.decoded_size);
-                    if (write_err != ESP_CODEC_DEV_OK) {
-                        ESP_LOGE(AUDIO_MANAGER_TAG, "Write PCM failed: %s",
-                                 esp_err_to_name(write_err));
-                        result = write_err;
+                    if (!output_task_started) {
+                        output_ctx.queue = xQueueCreate(
+                            AUDIO_MANAGER_PCM_QUEUE_LENGTH,
+                            sizeof(audio_pcm_block_t *));
+                        output_ctx.done = xSemaphoreCreateBinary();
+                        output_ctx.error = ESP_OK;
+                        output_ctx.codec = s_audio_dac->codec_dev;
+                        if (output_ctx.queue == NULL || output_ctx.done == NULL) {
+                            result = ESP_ERR_NO_MEM;
+                            break;
+                        }
+
+                        if (xTaskCreate(
+                                audio_manager_output_task,
+                                "audio_output",
+                                AUDIO_MANAGER_OUTPUT_TASK_STACK_SIZE,
+                                &output_ctx,
+                                AUDIO_MANAGER_OUTPUT_TASK_PRIORITY,
+                                &output_task) != pdPASS) {
+                            result = ESP_ERR_NO_MEM;
+                            break;
+                        }
+                        output_task_started = true;
+                    }
+
+                    audio_pcm_block_t *block = malloc(
+                        sizeof(audio_pcm_block_t) + decoded.decoded_size);
+                    if (block == NULL) {
+                        result = ESP_ERR_NO_MEM;
+                        break;
+                    }
+                    block->size = decoded.decoded_size;
+                    memcpy(block->data, decoded.buffer, decoded.decoded_size);
+
+                    bool block_queued = false;
+                    while (!block_queued) {
+                        if (xQueueSend(output_ctx.queue, &block,
+                                       pdMS_TO_TICKS(100)) == pdTRUE) {
+                            block_queued = true;
+                            block = NULL; /* Queue/output task owns the block. */
+                        } else if (output_ctx.error != ESP_OK) {
+                            break;
+                        }
+                    }
+
+                    if (block != NULL) {
+                        free(block);
+                    }
+                    if (output_ctx.error != ESP_OK) {
+                        result = output_ctx.error;
+                        ESP_LOGE(AUDIO_MANAGER_TAG, "PCM output failed: %s",
+                                 esp_err_to_name(result));
                         break;
                     }
                 }
@@ -666,6 +754,29 @@ static esp_err_t audio_manager_play_file_internal(
             result = ESP_FAIL;
         }
     } while (0);
+
+    /*
+     * Stop the output task only after all queued PCM has been consumed.
+     * This keeps the codec open until the final write has completed.
+     */
+    if (output_task_started) {
+        audio_pcm_block_t *end_marker = NULL;
+        while (xQueueSend(output_ctx.queue, &end_marker,
+                          pdMS_TO_TICKS(100)) != pdTRUE) {
+            /* Wait while the output task drains the queue. */
+        }
+        xSemaphoreTake(output_ctx.done, portMAX_DELAY);
+        if (output_ctx.error != ESP_OK && result == ESP_OK) {
+            result = output_ctx.error;
+        }
+    }
+
+    if (output_ctx.queue != NULL) {
+        vQueueDelete(output_ctx.queue);
+    }
+    if (output_ctx.done != NULL) {
+        vSemaphoreDelete(output_ctx.done);
+    }
 
     if (codec_opened) {
         esp_codec_dev_close(s_audio_dac->codec_dev);
