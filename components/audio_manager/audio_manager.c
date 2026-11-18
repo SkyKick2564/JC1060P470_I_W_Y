@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -31,6 +32,8 @@
 #define AUDIO_COMMAND_STOP   (1UL << 3)
 
 static dev_audio_codec_handles_t *s_audio_dac;
+static bool s_codec_opened;
+static void audio_manager_player_task(void *arg);
 static TaskHandle_t s_player_task;
 static SemaphoreHandle_t s_lock;
 static audio_manager_state_t s_state = AUDIO_MANAGER_STATE_UNINITIALIZED;
@@ -298,8 +301,7 @@ esp_err_t audio_manager_set_volume(float volume)
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
     s_volume = volume;
-    if (s_state == AUDIO_MANAGER_STATE_PLAYING ||
-        s_state == AUDIO_MANAGER_STATE_PAUSED) {
+    if (s_codec_opened) {
         err = esp_codec_dev_set_out_vol(s_audio_dac->codec_dev, volume);
     }
     xSemaphoreGive(s_lock);
@@ -385,6 +387,10 @@ static esp_err_t audio_manager_open_codec(
         esp_codec_dev_close(s_audio_dac->codec_dev);
         return err;
     }
+
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_codec_opened = true;
+    xSemaphoreGive(s_lock);
 
     ESP_LOGI(AUDIO_MANAGER_TAG,
              "Codec opened: sample_rate=%" PRIu32 ", channels=%u, bits=%u",
@@ -594,6 +600,10 @@ static esp_err_t audio_manager_play_file_internal(
             }
         }
 
+        if (!*stopped && !audio_manager_process_control()) {
+            *stopped = true;
+        }
+
         if (result == ESP_OK && !*stopped && !codec_info_ready) {
             ESP_LOGE(AUDIO_MANAGER_TAG, "No decodable audio data: %s", path);
             result = ESP_FAIL;
@@ -602,6 +612,9 @@ static esp_err_t audio_manager_play_file_internal(
 
     if (codec_opened) {
         esp_codec_dev_close(s_audio_dac->codec_dev);
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        s_codec_opened = false;
+        xSemaphoreGive(s_lock);
     }
     if (decoder != NULL) {
         esp_audio_simple_dec_close(decoder);
@@ -638,11 +651,19 @@ static void audio_manager_player_task(void *arg)
         memcpy(path, s_current_path, sizeof(path));
         xSemaphoreGive(s_lock);
 
-        bool stopped = false;
-        esp_audio_simple_dec_type_t decoder_type =
-            audio_manager_get_decoder_type(path);
-        esp_err_t err = audio_manager_play_file_internal(
-            path, decoder_type, &stopped);
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        bool cancelled_before_start =
+            (s_state == AUDIO_MANAGER_STATE_STOPPING);
+        xSemaphoreGive(s_lock);
+
+        bool stopped = cancelled_before_start;
+        esp_err_t err = ESP_OK;
+        if (!cancelled_before_start) {
+            esp_audio_simple_dec_type_t decoder_type =
+                audio_manager_get_decoder_type(path);
+            err = audio_manager_play_file_internal(
+                path, decoder_type, &stopped);
+        }
 
         if (stopped) {
             audio_manager_set_state(AUDIO_MANAGER_STATE_STOPPED);
