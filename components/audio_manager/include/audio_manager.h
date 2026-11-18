@@ -2,6 +2,7 @@
 #define AUDIO_MANAGER_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "esp_err.h"
 
