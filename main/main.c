@@ -77,6 +77,21 @@ static void on_network_internet_changed(
 
     if (event_id == NETWORK_EVENT_INTERNET_CONNECTED) {
         ESP_LOGI(TAG, "Internet is available");
+
+        static bool stream_test_started = false;
+        if (!stream_test_started) {
+            /* Radio Paradise official direct MP3 128 kbps live stream. */
+            esp_err_t play_err = audio_manager_play_url(
+                "http://stream-tx1.radioparadise.com/mp3-128"
+            );
+            if (play_err == ESP_OK) {
+                stream_test_started = true;
+                ESP_LOGI(TAG, "Internet radio stream queued");
+            } else {
+                ESP_LOGE(TAG, "Queue internet radio stream failed: %s",
+                         esp_err_to_name(play_err));
+            }
+        }
     } else if (event_id == NETWORK_EVENT_INTERNET_DISCONNECTED) {
         ESP_LOGW(TAG, "Internet is unavailable (Wi-Fi: %s, IP: %s)",
                  status.wifi_connected ? "connected" : "disconnected",
@@ -399,14 +414,7 @@ void app_main(void)
         return;
     }
 
-    err = audio_manager_play_file("/sdcard/test.mp3");
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Play file failed: %s",
-                esp_err_to_name(err));
-        return;
-    }
-
-    ESP_LOGI(TAG, "MP3 playback queued");
+    ESP_LOGI(TAG, "Waiting for Internet before starting MP3 stream");
 
     /* Initialize application and UI */
     err = app_init();
