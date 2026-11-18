@@ -30,12 +30,14 @@
 #define AUDIO_COMMAND_PAUSE  (1UL << 1)
 #define AUDIO_COMMAND_RESUME (1UL << 2)
 #define AUDIO_COMMAND_STOP   (1UL << 3)
+#define AUDIO_COMMAND_EXIT   (1UL << 4)
 
 static dev_audio_codec_handles_t *s_audio_dac;
 static bool s_codec_opened;
 static void audio_manager_player_task(void *arg);
 static TaskHandle_t s_player_task;
 static SemaphoreHandle_t s_lock;
+static SemaphoreHandle_t s_task_exit_sem;
 static audio_manager_state_t s_state = AUDIO_MANAGER_STATE_UNINITIALIZED;
 static audio_manager_event_callback_t s_event_callback;
 static void *s_event_user_ctx;
@@ -136,6 +138,14 @@ esp_err_t audio_manager_init(void)
         return ESP_ERR_NO_MEM;
     }
 
+    s_task_exit_sem = xSemaphoreCreateBinary();
+    if (s_task_exit_sem == NULL) {
+        vSemaphoreDelete(s_lock);
+        s_lock = NULL;
+        s_audio_dac = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
     s_state = AUDIO_MANAGER_STATE_IDLE;
     if (xTaskCreate(
             audio_manager_player_task,
@@ -144,6 +154,8 @@ esp_err_t audio_manager_init(void)
             NULL,
             AUDIO_MANAGER_TASK_PRIORITY,
             &s_player_task) != pdPASS) {
+        vSemaphoreDelete(s_task_exit_sem);
+        s_task_exit_sem = NULL;
         vSemaphoreDelete(s_lock);
         s_lock = NULL;
         s_audio_dac = NULL;
@@ -157,22 +169,66 @@ esp_err_t audio_manager_init(void)
 
 esp_err_t audio_manager_deinit(void)
 {
+    audio_manager_state_t state;
+    TickType_t start_tick;
+
     if (!audio_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (s_state == AUDIO_MANAGER_STATE_QUEUED ||
-        s_state == AUDIO_MANAGER_STATE_PLAYING ||
-        s_state == AUDIO_MANAGER_STATE_PAUSED ||
-        s_state == AUDIO_MANAGER_STATE_STOPPING) {
-        xSemaphoreGive(s_lock);
+    /* Do not allow deinit from the player task's event callback. */
+    if (xTaskGetCurrentTaskHandle() == s_player_task) {
         return ESP_ERR_INVALID_STATE;
+    }
+
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    state = s_state;
+    if (state == AUDIO_MANAGER_STATE_QUEUED ||
+        state == AUDIO_MANAGER_STATE_PLAYING ||
+        state == AUDIO_MANAGER_STATE_PAUSED ||
+        state == AUDIO_MANAGER_STATE_STOPPING) {
+        s_state = AUDIO_MANAGER_STATE_STOPPING;
     }
     xSemaphoreGive(s_lock);
 
-    vTaskDelete(s_player_task);
+    if (state == AUDIO_MANAGER_STATE_QUEUED ||
+        state == AUDIO_MANAGER_STATE_PLAYING ||
+        state == AUDIO_MANAGER_STATE_PAUSED ||
+        state == AUDIO_MANAGER_STATE_STOPPING) {
+        xTaskNotify(s_player_task, AUDIO_COMMAND_STOP, eSetBits);
+
+        start_tick = xTaskGetTickCount();
+        while (true) {
+            xSemaphoreTake(s_lock, portMAX_DELAY);
+            state = s_state;
+            xSemaphoreGive(s_lock);
+
+            if (state != AUDIO_MANAGER_STATE_STOPPING &&
+                state != AUDIO_MANAGER_STATE_QUEUED &&
+                state != AUDIO_MANAGER_STATE_PLAYING &&
+                state != AUDIO_MANAGER_STATE_PAUSED) {
+                break;
+            }
+
+            if ((xTaskGetTickCount() - start_tick) >= pdMS_TO_TICKS(10000)) {
+                ESP_LOGE(AUDIO_MANAGER_TAG,
+                         "Timed out waiting for playback to stop");
+                return ESP_ERR_TIMEOUT;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+    }
+
+    /* Ask the idle player task to exit, then wait for its acknowledgement. */
+    xTaskNotify(s_player_task, AUDIO_COMMAND_EXIT, eSetBits);
+    if (xSemaphoreTake(s_task_exit_sem, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGE(AUDIO_MANAGER_TAG, "Timed out waiting for player task exit");
+        return ESP_ERR_TIMEOUT;
+    }
+
     s_player_task = NULL;
+    vSemaphoreDelete(s_task_exit_sem);
+    s_task_exit_sem = NULL;
     vSemaphoreDelete(s_lock);
     s_lock = NULL;
     s_audio_dac = NULL;
@@ -642,6 +698,11 @@ static void audio_manager_player_task(void *arg)
     while (true) {
         uint32_t commands = 0;
         xTaskNotifyWait(0, UINT32_MAX, &commands, portMAX_DELAY);
+
+        if ((commands & AUDIO_COMMAND_EXIT) != 0) {
+            xSemaphoreGive(s_task_exit_sem);
+            vTaskDelete(NULL);
+        }
 
         if ((commands & AUDIO_COMMAND_PLAY) == 0) {
             continue;
