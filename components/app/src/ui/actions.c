@@ -225,15 +225,19 @@ void action_settings_released(lv_event_t *e)
 
 /*
  * Control Center
- * Direct drag + velocity-aware snap.
+ * Direct drag + velocity-aware smooth snap.
  */
 
 #define CONTROL_CENTER_HIDDEN_Y       (-600)
 #define CONTROL_CENTER_OPEN_Y         (0)
-#define CONTROL_CENTER_ANIM_TIME      (220)
-#define CONTROL_CENTER_FLICK_TIME     (160)
+
+#define CONTROL_CENTER_MIN_ANIM_TIME  (120)
+#define CONTROL_CENTER_MAX_ANIM_TIME  (320)
 #define CONTROL_CENTER_FLICK_SPEED    (650)
 #define CONTROL_CENTER_FLICK_MIN_MOVE (18)
+
+#define CONTROL_CENTER_MIN_SPEED      (900)
+#define CONTROL_CENTER_MAX_SPEED      (2600)
 
 static struct {
     lv_obj_t *target;
@@ -258,7 +262,9 @@ static void control_center_anim_exec(void *obj, int32_t y)
     lv_obj_set_y((lv_obj_t *)obj, (lv_coord_t)y);
 }
 
-static void control_center_animate(lv_coord_t target_y, bool flick)
+static void control_center_animate(
+    lv_coord_t target_y,
+    int32_t initial_velocity)
 {
     lv_obj_t *overlay = objects.control_center_overlay;
 
@@ -267,11 +273,51 @@ static void control_center_animate(lv_coord_t target_y, bool flick)
     }
 
     lv_coord_t current_y = lv_obj_get_y(overlay);
+    int32_t distance = target_y - current_y;
 
     lv_anim_delete(overlay, control_center_anim_exec);
 
-    if (current_y == target_y) {
+    if (distance == 0) {
         return;
+    }
+
+    /*
+     * ใช้ความเร็วตอนปล่อยนิ้วเป็นจุดเริ่มต้น
+     * หากความเร็วต่ำเกินไป ใช้ความเร็วขั้นต่ำแทน
+     */
+    int32_t speed = initial_velocity;
+
+    if (distance > 0) {
+        if (speed < CONTROL_CENTER_MIN_SPEED) {
+            speed = CONTROL_CENTER_MIN_SPEED;
+        }
+    }
+    else {
+        if (speed > -CONTROL_CENTER_MIN_SPEED) {
+            speed = -CONTROL_CENTER_MIN_SPEED;
+        }
+    }
+
+    /* จำกัดความเร็วสูงสุด */
+    if (speed > CONTROL_CENTER_MAX_SPEED) {
+        speed = CONTROL_CENTER_MAX_SPEED;
+    }
+    else if (speed < -CONTROL_CENTER_MAX_SPEED) {
+        speed = -CONTROL_CENTER_MAX_SPEED;
+    }
+
+    /* คำนวณเวลาให้สัมพันธ์กับระยะทาง */
+    int32_t abs_distance = (distance >= 0) ? distance : -distance;
+    int32_t abs_speed = (speed >= 0) ? speed : -speed;
+    
+    int32_t duration =
+        (abs_distance * 1000) / abs_speed;
+
+    if (duration < CONTROL_CENTER_MIN_ANIM_TIME) {
+        duration = CONTROL_CENTER_MIN_ANIM_TIME;
+    }
+    else if (duration > CONTROL_CENTER_MAX_ANIM_TIME) {
+        duration = CONTROL_CENTER_MAX_ANIM_TIME;
     }
 
     lv_anim_t anim;
@@ -279,17 +325,14 @@ static void control_center_animate(lv_coord_t target_y, bool flick)
     lv_anim_set_var(&anim, overlay);
     lv_anim_set_exec_cb(&anim, control_center_anim_exec);
     lv_anim_set_values(&anim, current_y, target_y);
-    lv_anim_set_duration(
-        &anim,
-        flick ? CONTROL_CENTER_FLICK_TIME : CONTROL_CENTER_ANIM_TIME
-    );
+    lv_anim_set_duration(&anim, (uint32_t)duration);
     lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
     lv_anim_start(&anim);
 }
 
 /*
- * คำนวณความเร็วแนวตั้งจาก sample ล่าสุด
- * ค่าเป็น pixel/second: บวก = ปัดลง, ลบ = ปัดขึ้น
+ * คำนวณความเร็วแนวตั้ง
+ * บวก = ปัดลง, ลบ = ปัดขึ้น
  */
 static void control_center_update_velocity(lv_point_t point, uint32_t now)
 {
@@ -297,8 +340,15 @@ static void control_center_update_velocity(lv_point_t point, uint32_t now)
 
     if (elapsed > 0) {
         int32_t delta_y = point.y - control_center_drag.last_point.y;
-        control_center_drag.velocity_y =
+        int32_t new_velocity =
             (delta_y * 1000) / (int32_t)elapsed;
+
+        /*
+         * Smooth velocity:
+         * ลดความผันผวนจาก Touch sample แต่ละรอบ
+         */
+        control_center_drag.velocity_y =
+            (control_center_drag.velocity_y * 2 + new_velocity) / 3;
     }
 
     control_center_drag.last_point = point;
@@ -321,7 +371,6 @@ void action_control_center_pressed(lv_event_t *e)
         return;
     }
 
-    /* หยุด Animation เดิม เพื่อให้เริ่มลากต่อจากตำแหน่งปัจจุบันได้ */
     lv_anim_delete(
         objects.control_center_overlay,
         control_center_anim_exec
@@ -333,15 +382,14 @@ void action_control_center_pressed(lv_event_t *e)
         lv_obj_get_y(objects.control_center_overlay);
 
     lv_indev_get_point(indev, &control_center_drag.start_point);
-    control_center_drag.last_point = control_center_drag.start_point;
+
+    control_center_drag.last_point =
+        control_center_drag.start_point;
+
     control_center_drag.last_tick = lv_tick_get();
     control_center_drag.velocity_y = 0;
     control_center_drag.active = true;
 
-    /*
-     * Overlay ต้องอยู่เหนือ touch_area ขณะเปิด
-     * เพื่อให้พื้นที่แผงรับการสัมผัสได้ทั่วทั้งจอ
-     */
     lv_obj_move_foreground(objects.control_center_overlay);
 }
 
@@ -360,6 +408,7 @@ void action_control_center_pressing(lv_event_t *e)
 
     lv_point_t point;
     lv_indev_get_point(indev, &point);
+
     control_center_update_velocity(point, lv_tick_get());
 
     lv_coord_t new_y =
@@ -375,7 +424,6 @@ void action_control_center_pressing(lv_event_t *e)
 
     lv_obj_t *overlay = objects.control_center_overlay;
 
-    /* ไม่สั่ง layout ซ้ำเมื่อพิกัดไม่ได้เปลี่ยน */
     if (overlay != NULL && lv_obj_get_y(overlay) != new_y) {
         lv_obj_set_y(overlay, new_y);
     }
@@ -397,14 +445,16 @@ void action_control_center_released(lv_event_t *e)
         return;
     }
 
-    /* เก็บตำแหน่งสุดท้าย เผื่อมีการเคลื่อนที่ระหว่าง PRESSING ครั้งล่าสุดกับ RELEASED */
     lv_point_t point;
     lv_indev_get_point(control_center_drag.indev, &point);
+
     control_center_update_velocity(point, lv_tick_get());
 
     lv_coord_t current_y = lv_obj_get_y(overlay);
+
     int32_t total_move =
         point.y - control_center_drag.start_point.y;
+
     int32_t velocity_y = control_center_drag.velocity_y;
 
     bool fast_down =
@@ -424,19 +474,24 @@ void action_control_center_released(lv_event_t *e)
         destination = CONTROL_CENTER_HIDDEN_Y;
     }
     else {
-        /* ถ้าไม่ได้ปัดเร็ว ใช้ตำแหน่งกึ่งกลางเป็นเกณฑ์ */
         destination =
             (current_y > (CONTROL_CENTER_HIDDEN_Y / 2))
             ? CONTROL_CENTER_OPEN_Y
             : CONTROL_CENTER_HIDDEN_Y;
     }
 
-    bool flick = fast_down || fast_up;
+    /* ถ้าความเร็วสวนทางกับปลายทาง ให้ไม่ใช้ความเร็วนั้น */
+    int32_t animation_velocity = velocity_y;
+
+    if ((destination > current_y && animation_velocity < 0) ||
+        (destination < current_y && animation_velocity > 0)) {
+        animation_velocity = 0;
+    }
 
     control_center_drag.active = false;
     control_center_drag.target = NULL;
     control_center_drag.indev = NULL;
     control_center_drag.velocity_y = 0;
 
-    control_center_animate(destination, flick);
+    control_center_animate(destination, animation_velocity);
 }
