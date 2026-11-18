@@ -310,54 +310,40 @@ static esp_err_t test_sdcard_filesystem(void)
 
 static void audio_stream_test_task(void *arg)
 {
-    network_manager_handle_t network = (network_manager_handle_t)arg;
-    network_status_t status = {0};
     audio_manager_state_t audio_state = AUDIO_MANAGER_STATE_UNINITIALIZED;
-    esp_err_t err;
-    bool internet_ready = false;
+    esp_err_t err = ESP_ERR_INVALID_STATE;
     bool playback_started = false;
+    (void)arg;
 
-    ESP_LOGI(TAG, "HTTP audio test: waiting for Internet");
+    ESP_LOGI(TAG, "HTTP audio test: waiting for Audio Manager Internet state");
 
+    /*
+     * Audio Manager owns Internet state. The test only calls its public API;
+     * ESP_ERR_INVALID_STATE is retried while Internet is not yet available.
+     */
     for (int elapsed_ms = 0;
          elapsed_ms < AUDIO_STREAM_TEST_INTERNET_TIMEOUT_MS;
          elapsed_ms += 1000) {
-        err = network_manager_get_status(network, &status);
-        if (err == ESP_OK &&
-            status.internet_check_done &&
-            status.internet_connected) {
-            internet_ready = true;
-            break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    if (!internet_ready) {
-        ESP_LOGE(TAG, "HTTP audio test skipped: Internet not available");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    /* Allow the queued Network Event to update Audio Manager's private state. */
-    vTaskDelay(pdMS_TO_TICKS(500));
-
-    ESP_LOGI(TAG, "HTTP audio test: requesting URL playback");
-    for (int attempt = 0; attempt < 10; ++attempt) {
         err = audio_manager_play_url(AUDIO_STREAM_TEST_URL);
         if (err == ESP_OK) {
             break;
         }
         if (err != ESP_ERR_INVALID_STATE) {
-            break;
+            ESP_LOGE(TAG, "HTTP audio test request failed: %s",
+                     esp_err_to_name(err));
+            vTaskDelete(NULL);
+            return;
         }
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
+
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "HTTP audio test request failed: %s",
-                 esp_err_to_name(err));
+        ESP_LOGE(TAG, "HTTP audio test skipped: Internet not available");
         vTaskDelete(NULL);
         return;
     }
+
+    ESP_LOGI(TAG, "HTTP audio test: URL accepted by Audio Manager");
 
     for (int elapsed_ms = 0; elapsed_ms < 60000; elapsed_ms += 500) {
         err = audio_manager_get_state(&audio_state);
@@ -530,7 +516,7 @@ void app_main(void)
             audio_stream_test_task,
             "audio_stream_test",
             4096,
-            network,
+            NULL,
             4,
             NULL) != pdPASS) {
         ESP_LOGE(TAG, "Create HTTP audio test task failed");
