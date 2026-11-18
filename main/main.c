@@ -57,47 +57,6 @@ static void on_audio_event(
     }
 }
 
-/*
- * Called when Network Manager Internet connectivity changes.
- */
-static void on_network_internet_changed(
-    void *arg,
-    esp_event_base_t event_base,
-    int32_t event_id,
-    void *event_data)
-{
-    network_manager_handle_t network = (network_manager_handle_t)arg;
-    network_status_t status = {0};
-    (void)event_base;
-    (void)event_data;
-
-    if (network_manager_get_status(network, &status) != ESP_OK) {
-        return;
-    }
-
-    if (event_id == NETWORK_EVENT_INTERNET_CONNECTED) {
-        ESP_LOGI(TAG, "Internet is available");
-
-        static bool stream_test_started = false;
-        if (!stream_test_started) {
-            /* Radio Paradise official direct MP3 128 kbps live stream. */
-            esp_err_t play_err = audio_manager_play_url(
-                "http://stream-tx1.radioparadise.com/mp3-128"
-            );
-            if (play_err == ESP_OK) {
-                stream_test_started = true;
-                ESP_LOGI(TAG, "Internet radio stream queued");
-            } else {
-                ESP_LOGE(TAG, "Queue internet radio stream failed: %s",
-                         esp_err_to_name(play_err));
-            }
-        }
-    } else if (event_id == NETWORK_EVENT_INTERNET_DISCONNECTED) {
-        ESP_LOGW(TAG, "Internet is unavailable (Wi-Fi: %s, IP: %s)",
-                 status.wifi_connected ? "connected" : "disconnected",
-                 status.has_ip ? status.ip_address : "none");
-    }
-}
 
 static void on_wifi_scan_updated(
     void *arg,
@@ -163,27 +122,6 @@ static esp_err_t app_before_update(void *user_ctx)
         return err;
     }
 
-    err = esp_event_handler_unregister(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_INTERNET_CONNECTED,
-        on_network_internet_changed
-    );
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Internet-connected event unregister failed: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
-
-    err = esp_event_handler_unregister(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_INTERNET_DISCONNECTED,
-        on_network_internet_changed
-    );
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Internet-disconnected event unregister failed: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
 
     /* Deinit performs STOP internally, then tears down Wi-Fi and ESP-Hosted. */
     err = network_manager_deinit(network);
@@ -414,7 +352,7 @@ void app_main(void)
         return;
     }
 
-    ESP_LOGI(TAG, "Waiting for Internet before starting MP3 stream");
+    ESP_LOGI(TAG, "Audio Manager ready; Internet status is tracked internally");
 
     /* Initialize application and UI */
     err = app_init();
@@ -462,30 +400,6 @@ void app_main(void)
     );
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi scan event registration failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-
-    err = esp_event_handler_register(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_INTERNET_CONNECTED,
-        on_network_internet_changed,
-        network
-    );
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Internet-connected event registration failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-
-    err = esp_event_handler_register(
-        NETWORK_MANAGER_EVENT,
-        NETWORK_EVENT_INTERNET_DISCONNECTED,
-        on_network_internet_changed,
-        network
-    );
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Internet-disconnected event registration failed: %s",
                  esp_err_to_name(err));
         return;
     }
