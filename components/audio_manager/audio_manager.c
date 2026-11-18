@@ -740,6 +740,7 @@ static esp_err_t audio_manager_play_file_internal(
     bool codec_opened = false;
     bool codec_info_ready = false;
     bool output_task_started = false;
+    bool playback_started = false;
     audio_output_context_t output_ctx = {0};
     TaskHandle_t output_task = NULL;
     esp_err_t result = ESP_OK;
@@ -800,9 +801,9 @@ static esp_err_t audio_manager_play_file_internal(
             break;
         }
 
-        ESP_LOGI(AUDIO_MANAGER_TAG, "Playback started: %s", path);
-        audio_manager_set_state(AUDIO_MANAGER_STATE_PLAYING);
-        audio_manager_emit_event(AUDIO_MANAGER_EVENT_STARTED, ESP_OK);
+        ESP_LOGI(AUDIO_MANAGER_TAG,
+                 "Decoder ready; waiting for first decoded audio frame: %s",
+                 path);
 
         while (result == ESP_OK) {
             if (!audio_manager_process_control()) {
@@ -958,6 +959,17 @@ static esp_err_t audio_manager_play_file_internal(
                                        pdMS_TO_TICKS(100)) == pdTRUE) {
                             block_queued = true;
                             block = NULL; /* Queue/output task owns the block. */
+
+                            if (!playback_started) {
+                                playback_started = true;
+                                audio_manager_set_state(
+                                    AUDIO_MANAGER_STATE_PLAYING);
+                                audio_manager_emit_event(
+                                    AUDIO_MANAGER_EVENT_STARTED, ESP_OK);
+                                ESP_LOGI(AUDIO_MANAGER_TAG,
+                                         "Playback started; first PCM block queued: %s",
+                                         path);
+                            }
                         } else if (output_ctx.error != ESP_OK) {
                             break;
                         }
