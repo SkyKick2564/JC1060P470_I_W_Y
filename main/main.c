@@ -358,7 +358,16 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Board Manager initialized");
 
-    /* Initialize Audio Manager using the Board Manager audio_dac device. */
+    /* Network Manager creates the default ESP Event Loop. */
+    err = network_manager_init(&network);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Network Manager init failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "Network Manager initialized");
+
+    /* Initialize Audio Manager after Network Manager for Internet events. */
     err = audio_manager_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Audio Manager init failed: %s",
@@ -408,14 +417,6 @@ void app_main(void)
     }
 
     ESP_LOGI(TAG, "Application started");
-
-    err = network_manager_init(&network);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Network Manager init failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-    ESP_LOGI(TAG, "Network Manager initialized");
 
     ota_manager_config_t ota_config = APP_OTA_CONFIG;
     ota_config.user_ctx = network;

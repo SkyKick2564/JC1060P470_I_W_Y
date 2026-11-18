@@ -7,5 +7,9 @@ idf_component_register(
         esp_board_manager
         esp_codec_dev
         esp_audio_codec
+        esp_event
+        network_manager
+        esp_http_client
+        mbedtls
         freertos
 )
