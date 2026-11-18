@@ -1,62 +1,6 @@
 #include "actions.h"
 #include "screens.h"
 
-/*
- * ESP32-P4:
- * ใช้ Radial Gradient จริงของ LVGL 9.5
- */
-void action_set_radial_background(lv_event_t *e)
-{
-    (void)e;
-
-    if (objects.main == NULL) {
-        return;
-    }
-
-    static lv_style_t style;
-    static lv_grad_dsc_t grad;
-    static bool initialized = false;
-
-    if (!initialized) {
-        static const lv_color_t colors[] = {
-            LV_COLOR_MAKE(0x77, 0x77, 0x77),
-            LV_COLOR_MAKE(0x20, 0x20, 0x20)
-        };
-
-        lv_style_init(&style);
-
-        lv_grad_init_stops(
-            &grad,
-            colors,
-            NULL,
-            NULL,
-            2
-        );
-
-        lv_grad_radial_init(
-            &grad,
-            LV_GRAD_CENTER,
-            LV_GRAD_CENTER,
-            LV_GRAD_RIGHT,
-            LV_GRAD_BOTTOM,
-            LV_GRAD_EXTEND_PAD
-        );
-
-        lv_style_set_bg_opa(&style, LV_OPA_COVER);
-        lv_style_set_bg_grad(&style, &grad);
-
-        initialized = true;
-    }
-
-    lv_obj_set_style_bg_image_src(
-        objects.main, NULL, LV_PART_MAIN
-    );
-
-    lv_obj_add_style(
-        objects.main, &style, LV_PART_MAIN
-    );
-}
-
 static void set_settings_button_color(lv_event_t *e, bool pressed)
 {
     lv_obj_t *button = lv_event_get_target(e);
