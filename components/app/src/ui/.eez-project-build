@@ -13,6 +13,7 @@
     "images.h",
     "images/ui_image_camera_icon.c",
     "images/ui_image_lightning.c",
+    "images/ui_image_media_icon.c",
     "images/ui_image_setting_icon.c",
     "screens.c",
     "screens.h",

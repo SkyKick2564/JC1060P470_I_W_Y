@@ -329,10 +329,42 @@ void create_screen_main() {
                             }
                         }
                         {
+                            // media_btn
+                            lv_obj_t *obj = lv_button_create(parent_obj);
+                            objects.media_btn = obj;
+                            lv_obj_set_pos(obj, 672, 20);
+                            lv_obj_set_size(obj, 130, 130);
+                            lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
+                            lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
+                            lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
+                            lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
+                            lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_text_opa(obj, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_text_font(obj, &ui_font_noto_sans_thai18, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            lv_obj_set_style_shadow_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+                            {
+                                lv_obj_t *parent_obj = obj;
+                                {
+                                    lv_obj_t *obj = lv_label_create(parent_obj);
+                                    lv_obj_set_pos(obj, 0, 45);
+                                    lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                                    lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+                                    lv_label_set_text_static(obj, "MediaPlay");
+                                }
+                                {
+                                    lv_obj_t *obj = lv_image_create(parent_obj);
+                                    lv_obj_set_pos(obj, 5, 0);
+                                    lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                                    lv_image_set_src(obj, &img_media_icon);
+                                }
+                            }
+                        }
+                        {
                             // setting_btn
                             lv_obj_t *obj = lv_button_create(parent_obj);
                             objects.setting_btn = obj;
-                            lv_obj_set_pos(obj, 672, 20);
+                            lv_obj_set_pos(obj, 822, 20);
                             lv_obj_set_size(obj, 130, 130);
                             lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
@@ -455,6 +487,7 @@ void delete_screen_main() {
     objects.home = 0;
     objects.card_network = 0;
     objects.camera_btn = 0;
+    objects.media_btn = 0;
     objects.setting_btn = 0;
     objects.setting = 0;
     objects.obj0 = 0;

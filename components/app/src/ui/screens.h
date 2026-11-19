@@ -32,6 +32,7 @@ typedef struct _objects_t {
     lv_obj_t *home;
     lv_obj_t *card_network;
     lv_obj_t *camera_btn;
+    lv_obj_t *media_btn;
     lv_obj_t *setting_btn;
     lv_obj_t *setting;
     lv_obj_t *obj0;
