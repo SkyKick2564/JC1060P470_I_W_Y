@@ -92,7 +92,7 @@ static esp_player_err_t media_video_aac_decoder_factory(
     aac_cfg.channel = info->channels;
     aac_cfg.bits_per_sample = info->bits_per_sample ?
                               info->bits_per_sample : VIDEO_OUTPUT_BITS;
-    aac_cfg.no_adts_header = true;
+    aac_cfg.no_adts_header = false;
 
     esp_audio_simple_dec_cfg_t decoder_cfg = {
         .dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_AAC,
@@ -108,7 +108,7 @@ static esp_player_err_t media_video_aac_decoder_factory(
                ESP_PLAYER_ERR_NO_MEM : ESP_PLAYER_ERR_FAIL;
     }
 
-    ESP_LOGI(TAG, "AAC MP4 decoder configured: %u Hz, %u ch, %u bit, no ADTS",
+    ESP_LOGI(TAG, "AAC MP4 decoder configured: %u Hz, %u ch, %u bit, ADTS mode",
              (unsigned)info->sample_rate,
              (unsigned)info->channels,
              (unsigned)aac_cfg.bits_per_sample);
