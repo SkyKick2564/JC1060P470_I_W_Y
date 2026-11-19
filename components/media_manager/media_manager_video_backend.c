@@ -249,7 +249,7 @@ static esp_video_render_err_t video_backend_write_fb(
      * LVGL stall is reported to the caller instead of deadlocking playback.
      */
     const int64_t lock_start_us = esp_timer_get_time();
-    if (!lvgl_port_lock(pdMS_TO_TICKS(100))) {
+    if (!lvgl_port_lock(100)) {
         ESP_LOGW(TAG, "LVGL lock timeout after %" PRId64 " us",
                  esp_timer_get_time() - lock_start_us);
         return ESP_VIDEO_RENDER_ERR_TIMEOUT;
