@@ -243,14 +243,15 @@ static esp_video_render_err_t video_backend_write_fb(
     }
 
     /*
-     * Keep frame delivery lossless. The renderer owns this framebuffer until
-     * write_fb returns, so waiting for LVGL is the backpressure mechanism:
-     * do not turn a temporarily busy LVGL timer/render pass into a failed
-     * video frame after an arbitrary 100 ms timeout. A zero timeout means
-     * wait indefinitely in esp_lvgl_port.
+     * Video is real-time data: never stall the decoder waiting for LVGL.
+     * LVGL can hold its port lock while rendering/scaling the previous frame.
+     * If it is still busy after 1 ms, drop this frame and let the renderer
+     * reuse the framebuffer on the next cycle. Blocking here propagates
+     * backpressure into decoding and audio/video playback.
      */
-    if (!lvgl_port_lock(0)) {
-        return ESP_VIDEO_RENDER_ERR_TIMEOUT;
+    if (!lvgl_port_lock(1)) {
+        ESP_LOGD(TAG, "Drop late video frame: LVGL is busy");
+        return ESP_VIDEO_RENDER_ERR_OK;
     }
 
     if (!lv_obj_is_valid(ctx->widget) ||
