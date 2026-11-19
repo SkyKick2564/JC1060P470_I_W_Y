@@ -316,8 +316,11 @@ esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget)
     s_target_widget = image_widget;
     portEXIT_CRITICAL(&s_target_mux);
 
-    ESP_LOGI(TAG, image_widget == NULL ?
-             "EEZ Image target cleared" : "EEZ Image target registered");
+    if (image_widget == NULL) {
+        ESP_LOGI(TAG, "EEZ Image target cleared");
+    } else {
+        ESP_LOGI(TAG, "EEZ Image target registered");
+    }
     return ESP_OK;
 }
 
