@@ -1,0 +1,4 @@
+# Media playback is limited to local SD-card files.
+CONFIG_ESP_PLAYER_ENABLE_FILE_IO=y
+CONFIG_ESP_PLAYER_ENABLE_HTTP_IO=n
+CONFIG_ESP_PLAYER_ENABLE_HLS_IO=n
