@@ -9,7 +9,6 @@ dependencies:
     version: "~1.0"
   espressif/esp_extractor:
     version: "~1.0"
-    version: "~1.0"
   espressif/esp_video_codec:
     version: "~0.5"
   espressif/esp_h264:
