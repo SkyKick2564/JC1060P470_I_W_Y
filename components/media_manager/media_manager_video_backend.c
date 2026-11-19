@@ -182,8 +182,11 @@ static esp_video_render_err_t video_backend_lock_fb(
 
     video_backend_context_t *ctx = backend;
     if (lock) {
-        return xSemaphoreTake(ctx->lock, pdMS_TO_TICKS(1000)) == pdTRUE ?
-            ESP_VIDEO_RENDER_ERR_OK : ESP_VIDEO_RENDER_ERR_TIMEOUT;
+        if (xSemaphoreTake(ctx->lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
+            ESP_LOGW(TAG, "Framebuffer lock timed out");
+            return ESP_VIDEO_RENDER_ERR_TIMEOUT;
+        }
+        return ESP_VIDEO_RENDER_ERR_OK;
     }
 
     xSemaphoreGive(ctx->lock);
@@ -243,6 +246,7 @@ static esp_video_render_err_t video_backend_write_fb(
      * the LVGL task is processing touch input or refreshing the display.
      */
     if (!lvgl_port_lock(pdMS_TO_TICKS(100))) {
+        ESP_LOGW(TAG, "LVGL port lock timed out while publishing video frame");
         return ESP_VIDEO_RENDER_ERR_TIMEOUT;
     }
 
