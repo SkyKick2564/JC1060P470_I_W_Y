@@ -11,21 +11,23 @@
 #include "codec_api.h"
 #include "codec_app_def.h"
 
-#define TAG "MEDIA_H264_OPENH264"\n\nstatic void *media_openh264_alloc(size_t size);
+#define TAG "MEDIA_H264_OPENH264"
 
 typedef struct {
     ISVCDecoder *decoder;
     uint8_t *annexb;
     uint8_t *pending_frame;
-    uint32_t pending_size;\n    uint32_t pending_consumed;
+    uint32_t pending_size;
+    uint32_t pending_consumed;
     uint32_t width;
     uint32_t height;
-    int frame_type;
-    int64_t pending_pts;
-    int64_t pending_dts;
-    bool have_sps;
-    bool have_pps;
+    esp_video_codec_frame_type_t frame_type;
+    uint32_t pending_pts;
+    uint32_t pending_dts;
 } media_openh264_t;
+
+static uint8_t *s_parameter_sets;
+static size_t s_parameter_sets_size;
 
 static const esp_video_codec_pixel_fmt_t s_output_formats[] = {
     ESP_VIDEO_CODEC_PIXEL_FMT_YUV420P,
@@ -40,17 +42,121 @@ static void *media_openh264_alloc(size_t size)
     return ptr;
 }
 
+esp_vc_err_t media_manager_h264_openh264_set_avcc(const uint8_t *record, size_t size)
+{
+    if (record == NULL || size < 7 || record[0] != 1) {
+        return ESP_VC_ERR_INVALID_ARG;
+    }
+
+    size_t offset = 6;
+    uint8_t sps_count = record[5] & 0x1F;
+    size_t output_size = 0;
+
+    for (uint8_t i = 0; i < sps_count; i++) {
+        if (offset + 2 > size) {
+            return ESP_VC_ERR_WRONG_DATA;
+        }
+        uint16_t length = ((uint16_t)record[offset] << 8) | record[offset + 1];
+        offset += 2;
+        if (length == 0 || offset + length > size) {
+            return ESP_VC_ERR_WRONG_DATA;
+        }
+        output_size += 4 + length;
+        offset += length;
+    }
+
+    if (offset >= size) {
+        return ESP_VC_ERR_WRONG_DATA;
+    }
+    uint8_t pps_count = record[offset++];
+    for (uint8_t i = 0; i < pps_count; i++) {
+        if (offset + 2 > size) {
+            return ESP_VC_ERR_WRONG_DATA;
+        }
+        uint16_t length = ((uint16_t)record[offset] << 8) | record[offset + 1];
+        offset += 2;
+        if (length == 0 || offset + length > size) {
+            return ESP_VC_ERR_WRONG_DATA;
+        }
+        output_size += 4 + length;
+        offset += length;
+    }
+
+    if (sps_count == 0 || pps_count == 0 || output_size == 0) {
+        return ESP_VC_ERR_WRONG_DATA;
+    }
+
+    uint8_t *annexb = (uint8_t *)media_openh264_alloc(output_size);
+    if (annexb == NULL) {
+        return ESP_VC_ERR_NO_MEMORY;
+    }
+
+    offset = 6;
+    size_t dst = 0;
+    for (uint8_t i = 0; i < (uint8_t)(sps_count + pps_count); i++) {
+        if (i == sps_count) {
+            offset++;
+        }
+        uint16_t length = ((uint16_t)record[offset] << 8) | record[offset + 1];
+        offset += 2;
+        annexb[dst++] = 0;
+        annexb[dst++] = 0;
+        annexb[dst++] = 0;
+        annexb[dst++] = 1;
+        memcpy(annexb + dst, record + offset, length);
+        dst += length;
+        offset += length;
+    }
+
+    heap_caps_free(s_parameter_sets);
+    s_parameter_sets = annexb;
+    s_parameter_sets_size = output_size;
+    ESP_LOGI(TAG, "Stored avcC SPS/PPS: %u bytes", (unsigned)output_size);
+    return ESP_VC_ERR_OK;
+}
+
 static esp_vc_err_t media_openh264_get_caps(esp_video_dec_caps_t *caps)
 {
     if (caps == NULL) {
         return ESP_VC_ERR_INVALID_ARG;
     }
+
     memset(caps, 0, sizeof(*caps));
     caps->in_frame_align = 1;
     caps->out_frame_align = 1;
     caps->out_fmts = s_output_formats;
     caps->out_fmt_num = sizeof(s_output_formats) / sizeof(s_output_formats[0]);
     return ESP_VC_ERR_OK;
+}
+
+static void media_openh264_feed_parameter_sets(media_openh264_t *ctx)
+{
+    if (s_parameter_sets == NULL || s_parameter_sets_size == 0) {
+        ESP_LOGW(TAG, "No avcC SPS/PPS supplied; decoder needs in-band parameter sets");
+        return;
+    }
+
+    size_t offset = 0;
+    while (offset + 4 < s_parameter_sets_size) {
+        size_t nal_start = offset + 4;
+        size_t nal_end = nal_start;
+        while (nal_end + 3 < s_parameter_sets_size &&
+               !(s_parameter_sets[nal_end] == 0 &&
+                 s_parameter_sets[nal_end + 1] == 0 &&
+                 s_parameter_sets[nal_end + 2] == 0 &&
+                 s_parameter_sets[nal_end + 3] == 1)) {
+            nal_end++;
+        }
+        if (nal_end + 3 >= s_parameter_sets_size) {
+            nal_end = s_parameter_sets_size;
+        }
+
+        uint8_t *planes[3] = { NULL, NULL, NULL };
+        SBufferInfo info = {};
+        (void)ctx->decoder->DecodeFrameNoDelay(
+            s_parameter_sets + offset, (int)(nal_end - offset), planes, &info);
+        offset = nal_end;
+    }
 }
 
 static esp_vc_err_t media_openh264_open(
@@ -85,8 +191,66 @@ static esp_vc_err_t media_openh264_open(
         return ESP_VC_ERR_FAIL;
     }
 
+    media_openh264_feed_parameter_sets(ctx);
     *handle = ctx;
     ESP_LOGI(TAG, "OpenH264 Main/High-capable software decoder opened");
+    return ESP_VC_ERR_OK;
+}
+
+static esp_vc_err_t media_openh264_store_frame(
+    media_openh264_t *ctx,
+    uint8_t **planes,
+    const SBufferInfo *info,
+    uint32_t pts,
+    uint32_t dts,
+    uint8_t nal_type,
+    uint32_t consumed)
+{
+    if (info->iBufferStatus != 1 || planes[0] == NULL ||
+        planes[1] == NULL || planes[2] == NULL) {
+        return ESP_VC_ERR_NO_MORE_DATA;
+    }
+
+    const SSysMEMBuffer *sys = &info->UsrData.sSystemBuffer;
+    uint32_t width = (uint32_t)sys->iWidth;
+    uint32_t height = (uint32_t)sys->iHeight;
+    if (width == 0 || height == 0 || sys->iStride[0] < (int)width ||
+        sys->iStride[1] < (int)((width + 1) / 2)) {
+        return ESP_VC_ERR_WRONG_DATA;
+    }
+
+    uint32_t chroma_width = (width + 1) / 2;
+    uint32_t chroma_height = (height + 1) / 2;
+    uint32_t required = width * height + 2 * chroma_width * chroma_height;
+    uint8_t *frame = (uint8_t *)media_openh264_alloc(required);
+    if (frame == NULL) {
+        return ESP_VC_ERR_NO_MEMORY;
+    }
+
+    uint8_t *dst_y = frame;
+    uint8_t *dst_u = dst_y + width * height;
+    uint8_t *dst_v = dst_u + chroma_width * chroma_height;
+    for (uint32_t row = 0; row < height; row++) {
+        memcpy(dst_y + row * width, planes[0] + row * sys->iStride[0], width);
+    }
+    for (uint32_t row = 0; row < chroma_height; row++) {
+        memcpy(dst_u + row * chroma_width,
+               planes[1] + row * sys->iStride[1], chroma_width);
+        memcpy(dst_v + row * chroma_width,
+               planes[2] + row * sys->iStride[1], chroma_width);
+    }
+
+    heap_caps_free(ctx->pending_frame);
+    ctx->pending_frame = frame;
+    ctx->pending_size = required;
+    ctx->pending_consumed = consumed;
+    ctx->width = width;
+    ctx->height = height;
+    ctx->pending_pts = pts;
+    ctx->pending_dts = dts;
+    ctx->frame_type = (nal_type == 5) ? ESP_VIDEO_CODEC_FRAME_TYPE_IDR :
+                      (nal_type == 1) ? ESP_VIDEO_CODEC_FRAME_TYPE_P :
+                                        ESP_VIDEO_CODEC_FRAME_TYPE_NONE;
     return ESP_VC_ERR_OK;
 }
 
@@ -106,8 +270,8 @@ static esp_vc_err_t media_openh264_copy_pending(
     output->decoded_size = ctx->pending_size;
     output->pts = ctx->pending_pts;
     output->dts = ctx->pending_dts;
-    output->frame_type = (esp_video_codec_frame_type_t)ctx->frame_type;
-    input->consumed = 0;
+    output->frame_type = ctx->frame_type;
+    input->consumed = ctx->pending_consumed;
     heap_caps_free(ctx->pending_frame);
     ctx->pending_frame = NULL;
     ctx->pending_size = 0;
@@ -128,13 +292,24 @@ static esp_vc_err_t media_openh264_decode(
     if (ctx->pending_size > 0) {
         return media_openh264_copy_pending(ctx, input, output);
     }
+
     if (input->size == 0) {
-        output->decoded_size = 0;
-        return ESP_VC_ERR_NO_MORE_DATA;
+        uint8_t *planes[3] = { NULL, NULL, NULL };
+        SBufferInfo info = {};
+        (void)ctx->decoder->FlushFrame(planes, &info);
+        if (info.iBufferStatus != 1) {
+            output->decoded_size = 0;
+            return ESP_VC_ERR_NO_MORE_DATA;
+        }
+        esp_vc_err_t store_ret = media_openh264_store_frame(
+            ctx, planes, &info, input->pts, input->dts,
+            0, 0);
+        if (store_ret != ESP_VC_ERR_OK) {
+            return store_ret;
+        }
+        return media_openh264_copy_pending(ctx, input, output);
     }
 
-    /* MP4/AVCC samples store a 4-byte big-endian NAL length before each NAL.
-     * OpenH264's decoder API expects Annex-B start codes and one NAL at a time. */
     heap_caps_free(ctx->annexb);
     ctx->annexb = (uint8_t *)media_openh264_alloc(input->size + 4);
     if (ctx->annexb == NULL) {
@@ -145,17 +320,17 @@ static esp_vc_err_t media_openh264_decode(
     bool produced = false;
     uint8_t *planes[3] = { NULL, NULL, NULL };
     SBufferInfo info = {};
+    uint8_t last_nal_type = 0;
 
     while (src_offset < input->size) {
         uint32_t nal_size = 0;
-        uint32_t prefix_size = 0;
         const uint8_t *nal = NULL;
 
         if (input->size - src_offset >= 4 &&
             input->data[src_offset] == 0 && input->data[src_offset + 1] == 0 &&
             (input->data[src_offset + 2] == 1 ||
              (input->data[src_offset + 2] == 0 && input->data[src_offset + 3] == 1))) {
-            prefix_size = (input->data[src_offset + 2] == 1) ? 3 : 4;
+            uint32_t prefix_size = (input->data[src_offset + 2] == 1) ? 3 : 4;
             uint32_t start = src_offset + prefix_size;
             uint32_t end = start;
             while (end + 3 < input->size &&
@@ -195,10 +370,7 @@ static esp_vc_err_t media_openh264_decode(
             return ESP_VC_ERR_WRONG_DATA;
         }
 
-        uint8_t nal_type = nal[0] & 0x1F;
-        ctx->have_sps |= (nal_type == 7);
-        ctx->have_pps |= (nal_type == 8);
-
+        last_nal_type = nal[0] & 0x1F;
         ctx->annexb[0] = 0;
         ctx->annexb[1] = 0;
         ctx->annexb[2] = 0;
@@ -207,48 +379,18 @@ static esp_vc_err_t media_openh264_decode(
 
         memset(&info, 0, sizeof(info));
         planes[0] = planes[1] = planes[2] = NULL;
-        ctx->decoder->DecodeFrameNoDelay(
+        (void)ctx->decoder->DecodeFrameNoDelay(
             ctx->annexb, (int)(nal_size + 4), planes, &info);
 
-        if (info.iBufferStatus == 1 && planes[0] != NULL &&
-            planes[1] != NULL && planes[2] != NULL) {
-            const SSysMEMBuffer *sys = &info.UsrData.sSystemBuffer;
-            uint32_t width = (uint32_t)sys->iWidth;
-            uint32_t height = (uint32_t)sys->iHeight;
-            uint32_t chroma_width = (width + 1) / 2;
-            uint32_t chroma_height = (height + 1) / 2;
-            uint32_t required = width * height +
-                               2 * chroma_width * chroma_height;
-            uint8_t *frame = (uint8_t *)media_openh264_alloc(required);
-            if (frame == NULL) {
+        if (info.iBufferStatus == 1) {
+            esp_vc_err_t store_ret = media_openh264_store_frame(
+                ctx, planes, &info, input->pts, input->dts,
+                last_nal_type, input->size);
+            if (store_ret != ESP_VC_ERR_OK) {
                 heap_caps_free(ctx->annexb);
                 ctx->annexb = NULL;
-                return ESP_VC_ERR_NO_MEMORY;
+                return store_ret;
             }
-
-            uint8_t *dst_y = frame;
-            uint8_t *dst_u = dst_y + width * height;
-            uint8_t *dst_v = dst_u + chroma_width * chroma_height;
-            for (uint32_t row = 0; row < height; row++) {
-                memcpy(dst_y + row * width,
-                       planes[0] + row * sys->iStride[0], width);
-            }
-            for (uint32_t row = 0; row < chroma_height; row++) {
-                memcpy(dst_u + row * chroma_width,
-                       planes[1] + row * sys->iStride[1], chroma_width);
-                memcpy(dst_v + row * chroma_width,
-                       planes[2] + row * sys->iStride[1], chroma_width);
-            }
-
-            heap_caps_free(ctx->pending_frame);
-            ctx->pending_frame = frame;
-            ctx->pending_size = required;\n            ctx->pending_consumed = input->size;
-            ctx->width = width;
-            ctx->height = height;
-            ctx->pending_pts = input->pts;
-            ctx->pending_dts = input->dts;
-            ctx->frame_type = (nal_type == 5) ?
-                ESP_VIDEO_CODEC_FRAME_TYPE_IDR : ESP_VIDEO_CODEC_FRAME_TYPE_NONE;
             produced = true;
         }
     }
@@ -274,6 +416,7 @@ static esp_vc_err_t media_openh264_get_frame_info(
     if (ctx == NULL || info == NULL || ctx->width == 0 || ctx->height == 0) {
         return ESP_VC_ERR_INVALID_STATE;
     }
+
     memset(info, 0, sizeof(*info));
     info->origin_res.width = ctx->width;
     info->origin_res.height = ctx->height;
@@ -300,6 +443,7 @@ static esp_vc_err_t media_openh264_close(esp_video_dec_handle_t handle)
     if (ctx == NULL) {
         return ESP_VC_ERR_INVALID_ARG;
     }
+
     heap_caps_free(ctx->annexb);
     heap_caps_free(ctx->pending_frame);
     if (ctx->decoder != NULL) {
