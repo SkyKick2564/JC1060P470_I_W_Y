@@ -707,16 +707,6 @@ dependencies:
       type: service
     version: 9.5.0
 
-    dependencies: []
-    source:
-      git: https://github.com/jonasborn/openh264-esp32.git
-      path: .
-      type: git
-    targets:
-    - esp32
-    - esp32s3
-    - esp32p4
-    version: 4a7856e61919d2c7b580413151f3cfb1323a3585
 direct_dependencies:
 - espressif/cjson
 - espressif/esp_audio_codec
