@@ -1,11 +1,17 @@
 idf_component_register(
     SRCS
         "media_manager.c"
+        "media_manager_video_backend.c"
     INCLUDE_DIRS
         "include"
+    PRIV_INCLUDE_DIRS
+        "."
     REQUIRES
         esp_board_manager
         esp_codec_dev
         esp_audio_codec
+        esp_video_render
+        lvgl
+        esp_lvgl_port
         freertos
 )

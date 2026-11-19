@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "esp_err.h"
+#include "lvgl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,10 +66,22 @@ esp_err_t media_manager_register_event_callback(
 );
 
 /**
- * @brief Queue a WAV or MP3 file for playback and return immediately.
+ * @brief Set the EEZ/LVGL Image widget that will display decoded video frames.
  *
- * Supported extensions are .wav and .mp3 (case-insensitive). Example:
- * "/sdcard/music/song.mp3".
+ * Call after app_init()/ui_init(), when the EEZ Image widget exists and has
+ * its final dimensions. Pass NULL to detach the target. The widget must remain
+ * alive until video playback has stopped and the video renderer is destroyed.
+ *
+ * This only registers the target; it does not create or modify the UI layout.
+ */
+esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget);
+
+/**
+ * @brief Queue a supported media file for playback and return immediately.
+ *
+ * Current playback implementation supports .wav and .mp3 (case-insensitive).
+ * Video playback is being added through the registered EEZ Image widget.
+ * Example: "/sdcard/music/song.mp3".
  */
 esp_err_t media_manager_play_file(const char *path);
 
