@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
 #include "esp_log.h"
 #include "esp_video_dec.h"
 #include "esp_video_dec_reg.h"
@@ -29,6 +30,9 @@ typedef struct {
     esp_video_codec_frame_type_t frame_type;
     uint32_t pending_pts;
     uint32_t pending_dts;
+    uint32_t timing_access_units;
+    uint64_t timing_decode_us;
+    uint32_t timing_decode_max_us;
 } media_openh264_t;
 
 static uint8_t *s_parameter_sets;
@@ -323,6 +327,8 @@ static esp_vc_err_t media_openh264_decode(
         return media_openh264_copy_pending(ctx, input, output);
     }
 
+    const int64_t decode_start_us = esp_timer_get_time();
+
     heap_caps_free(ctx->annexb);
     ctx->annexb = (uint8_t *)media_openh264_alloc(input->size + 4);
     if (ctx->annexb == NULL) {
@@ -411,6 +417,23 @@ static esp_vc_err_t media_openh264_decode(
     input->consumed = input->size;
     heap_caps_free(ctx->annexb);
     ctx->annexb = NULL;
+
+    const uint32_t decode_elapsed_us =
+        (uint32_t)(esp_timer_get_time() - decode_start_us);
+    ctx->timing_access_units++;
+    ctx->timing_decode_us += decode_elapsed_us;
+    if (decode_elapsed_us > ctx->timing_decode_max_us) {
+        ctx->timing_decode_max_us = decode_elapsed_us;
+    }
+    if ((ctx->timing_access_units % 25U) == 0U) {
+        ESP_LOGI(TAG,
+                 "Decode timing: %u AU avg=%u us max=%u us (budget=40000 us at 25 FPS)",
+                 (unsigned)ctx->timing_access_units,
+                 (unsigned)(ctx->timing_decode_us / 25U),
+                 (unsigned)ctx->timing_decode_max_us);
+        ctx->timing_decode_us = 0;
+        ctx->timing_decode_max_us = 0;
+    }
 
     /*
      * OpenH264 is a CPU-bound software decoder. Yield for one tick after
