@@ -9,13 +9,10 @@
 #include "esp_log.h"
 #include "esp_codec_dev.h"
 #include "esp_player.h"
-#include "esp_player_advance.h"
-#include "esp_aac_dec.h"
 #include "esp_audio_render.h"
 #include "esp_video_render.h"
 #include "esp_extractor_defaults.h"
 #include "esp_audio_dec_default.h"
-#include "esp_gmf_audio_dec.h"
 #include "esp_video_dec_default.h"
 #include "media_lib_adapter.h"
 
@@ -62,58 +59,6 @@ typedef struct {
     EventGroupHandle_t events;
     esp_player_error_source_t error_source;
 } media_video_event_context_t;
-
-/*
- * AAC access units stored in MP4 do not carry ADTS headers.
- * Use ESP Player's custom-decoder hook to configure its own GMF AAC
- * decoder with the stream parameters supplied by the MP4 extractor.
- */
-static esp_player_err_t media_video_aac_decoder_factory(
-    void *user_ctx,
-    uint32_t codec_cc,
-    const esp_player_audio_stream_info_t *info,
-    esp_gmf_element_handle_t *out_element)
-{
-    (void)user_ctx;
-
-    if (codec_cc != (uint32_t)ESP_FOURCC_AAC) {
-        return ESP_PLAYER_ERR_NOT_SUPPORT;
-    }
-    if (info == NULL || out_element == NULL) {
-        return ESP_PLAYER_ERR_INVALID_ARG;
-    }
-    if (info->sample_rate == 0 || info->channels == 0) {
-        ESP_LOGE(TAG, "AAC track has invalid format information");
-        return ESP_PLAYER_ERR_FAIL;
-    }
-
-    esp_aac_dec_cfg_t aac_cfg = ESP_AAC_DEC_CONFIG_DEFAULT();
-    aac_cfg.sample_rate = (int32_t)info->sample_rate;
-    aac_cfg.channel = info->channels;
-    aac_cfg.bits_per_sample = info->bits_per_sample ?
-                              info->bits_per_sample : VIDEO_OUTPUT_BITS;
-    aac_cfg.no_adts_header = false;
-
-    esp_audio_simple_dec_cfg_t decoder_cfg = {
-        .dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_AAC,
-        .dec_cfg = &aac_cfg,
-        .cfg_size = sizeof(aac_cfg),
-        .use_frame_dec = true,
-    };
-
-    esp_gmf_err_t err = esp_gmf_audio_dec_init(&decoder_cfg, out_element);
-    if (err != ESP_GMF_ERR_OK) {
-        ESP_LOGE(TAG, "Could not create AAC decoder: %d", (int)err);
-        return err == ESP_GMF_ERR_MEMORY_LACK ?
-               ESP_PLAYER_ERR_NO_MEM : ESP_PLAYER_ERR_FAIL;
-    }
-
-    ESP_LOGI(TAG, "AAC MP4 decoder configured: %u Hz, %u ch, %u bit, ADTS mode",
-             (unsigned)info->sample_rate,
-             (unsigned)info->channels,
-             (unsigned)aac_cfg.bits_per_sample);
-    return ESP_PLAYER_ERR_OK;
-}
 
 typedef struct {
     size_t size;
@@ -502,15 +447,6 @@ esp_err_t media_manager_video_play_file(
         player_cfg.audio_render_hd = audio_stream;
         player_cfg.video_render_hd = video_enabled ? video_render : NULL;
         if (esp_player_init(&player_cfg, &player) != ESP_PLAYER_ERR_OK) {
-            result = ESP_FAIL;
-            break;
-        }
-
-        esp_player_custom_elements_t custom_elements = {
-            .adec_factory = media_video_aac_decoder_factory,
-        };
-        if (esp_player_set_custom_elements(player, &custom_elements) !=
-            ESP_PLAYER_ERR_OK) {
             result = ESP_FAIL;
             break;
         }
