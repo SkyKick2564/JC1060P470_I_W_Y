@@ -33,6 +33,10 @@ typedef struct {
     uint32_t timing_access_units;
     uint64_t timing_decode_us;
     uint32_t timing_decode_max_us;
+    uint64_t timing_codec_us;
+    uint64_t timing_store_us;
+    uint32_t timing_codec_max_us;
+    uint32_t timing_store_max_us;
 } media_openh264_t;
 
 static uint8_t *s_parameter_sets;
@@ -328,6 +332,8 @@ static esp_vc_err_t media_openh264_decode(
     }
 
     const int64_t decode_start_us = esp_timer_get_time();
+    uint32_t codec_elapsed_us = 0;
+    uint32_t store_elapsed_us = 0;
 
     heap_caps_free(ctx->annexb);
     ctx->annexb = (uint8_t *)media_openh264_alloc(input->size + 4);
@@ -398,13 +404,17 @@ static esp_vc_err_t media_openh264_decode(
 
         memset(&info, 0, sizeof(info));
         planes[0] = planes[1] = planes[2] = NULL;
+        int64_t codec_start_us = esp_timer_get_time();
         (void)ctx->decoder->DecodeFrameNoDelay(
             ctx->annexb, (int)(nal_size + 4), planes, &info);
+        codec_elapsed_us += (uint32_t)(esp_timer_get_time() - codec_start_us);
 
         if (info.iBufferStatus == 1) {
+            int64_t store_start_us = esp_timer_get_time();
             esp_vc_err_t store_ret = media_openh264_store_frame(
                 ctx, planes, &info, input->pts, input->dts,
                 last_nal_type, input->size);
+            store_elapsed_us += (uint32_t)(esp_timer_get_time() - store_start_us);
             if (store_ret != ESP_VC_ERR_OK) {
                 heap_caps_free(ctx->annexb);
                 ctx->annexb = NULL;
@@ -422,17 +432,34 @@ static esp_vc_err_t media_openh264_decode(
         (uint32_t)(esp_timer_get_time() - decode_start_us);
     ctx->timing_access_units++;
     ctx->timing_decode_us += decode_elapsed_us;
+    ctx->timing_codec_us += codec_elapsed_us;
+    ctx->timing_store_us += store_elapsed_us;
+    if (codec_elapsed_us > ctx->timing_codec_max_us) {
+        ctx->timing_codec_max_us = codec_elapsed_us;
+    }
+    if (store_elapsed_us > ctx->timing_store_max_us) {
+        ctx->timing_store_max_us = store_elapsed_us;
+    }
     if (decode_elapsed_us > ctx->timing_decode_max_us) {
         ctx->timing_decode_max_us = decode_elapsed_us;
     }
     if ((ctx->timing_access_units % 25U) == 0U) {
         ESP_LOGI(TAG,
-                 "Decode timing: %u AU avg=%u us max=%u us (budget=40000 us at 25 FPS)",
-                 (unsigned)ctx->timing_access_units,
+                 "25 AU timing avg(us): total=%u codec=%u store=%u parse+alloc=%u | max(us): total=%u codec=%u store=%u",
                  (unsigned)(ctx->timing_decode_us / 25U),
-                 (unsigned)ctx->timing_decode_max_us);
+                 (unsigned)(ctx->timing_codec_us / 25U),
+                 (unsigned)(ctx->timing_store_us / 25U),
+                 (unsigned)((ctx->timing_decode_us - ctx->timing_codec_us -
+                             ctx->timing_store_us) / 25U),
+                 (unsigned)ctx->timing_decode_max_us,
+                 (unsigned)ctx->timing_codec_max_us,
+                 (unsigned)ctx->timing_store_max_us);
         ctx->timing_decode_us = 0;
         ctx->timing_decode_max_us = 0;
+        ctx->timing_codec_us = 0;
+        ctx->timing_store_us = 0;
+        ctx->timing_codec_max_us = 0;
+        ctx->timing_store_max_us = 0;
     }
 
     /*
