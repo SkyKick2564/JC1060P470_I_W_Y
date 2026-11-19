@@ -1,4 +1,5 @@
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,6 +41,7 @@ typedef struct {
     uint16_t source_height;
     bool source_info_valid;
     bool source_bound;
+    uint32_t dropped_frames;
 } video_backend_context_t;
 
 static portMUX_TYPE s_target_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -242,12 +244,18 @@ static esp_video_render_err_t video_backend_write_fb(
     }
 
     /*
-     * Wait briefly for LVGL rather than dropping a video frame whenever
-     * the LVGL task is processing touch input or refreshing the display.
+     * Never stall the video pipeline waiting for LVGL. Display refresh and
+     * touch handling can hold the LVGL mutex long enough to make the renderer
+     * miss its frame deadline. Drop this frame instead; returning TIMEOUT
+     * makes esp_video_render reset its rate control and can stall A/V playback.
      */
-    if (!lvgl_port_lock(pdMS_TO_TICKS(100))) {
-        ESP_LOGW(TAG, "LVGL port lock timed out while publishing video frame");
-        return ESP_VIDEO_RENDER_ERR_TIMEOUT;
+    if (!lvgl_port_lock(0)) {
+        ctx->dropped_frames++;
+        if ((ctx->dropped_frames % 25U) == 1U) {
+            ESP_LOGW(TAG, "Dropped video frame: LVGL is busy (total=%" PRIu32 ")",
+                     ctx->dropped_frames);
+        }
+        return ESP_VIDEO_RENDER_ERR_OK;
     }
 
     if (!lv_obj_is_valid(ctx->widget) ||
