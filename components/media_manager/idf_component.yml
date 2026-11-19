@@ -13,9 +13,6 @@ dependencies:
     version: "~0.5"
   espressif/esp_h264:
     version: "^1.4.1"
-  openh264:
-    git: "https://github.com/jonasborn/openh264-esp32.git"
-    version: "4a7856e61919d2c7b580413151f3cfb1323a3585"
   espressif/media_lib_sal:
     version: "~1.0"
   espressif/gmf_core:
