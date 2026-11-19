@@ -170,6 +170,7 @@ static esp_player_err_t media_video_player_event(
     case ESP_PLAYER_EVENT_PAUSED:
         xEventGroupSetBits(ctx->events, VIDEO_EVENT_PAUSED);
         break;
+    case ESP_PLAYER_EVENT_TRACK_INFO_PARSED:
     case ESP_PLAYER_EVENT_VIDEO_INFO_PARSED:
         xEventGroupSetBits(ctx->events, VIDEO_EVENT_INFO_PARSED);
         break;

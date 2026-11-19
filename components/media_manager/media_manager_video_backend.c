@@ -97,8 +97,8 @@ static esp_video_render_err_t video_backend_init(
     ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB565;
     ctx->fb.info.width = MEDIA_MANAGER_VIDEO_MAX_WIDTH;
     ctx->fb.info.height = MEDIA_MANAGER_VIDEO_MAX_HEIGHT;
-    ctx->fb.size = (uint32_t)MEDIA_VIDEO_MAX_WIDTH *
-                   MEDIA_VIDEO_MAX_HEIGHT * 2U;
+    ctx->fb.size = (uint32_t)MEDIA_MANAGER_VIDEO_MAX_WIDTH *
+                   MEDIA_MANAGER_VIDEO_MAX_HEIGHT * 2U;
 
     portENTER_CRITICAL(&s_target_mux);
     s_active_backend = ctx;
@@ -106,7 +106,7 @@ static esp_video_render_err_t video_backend_init(
 
     *out_backend = (esp_video_render_backend_handle_t)ctx;
     ESP_LOGI(TAG, "EEZ Image target attached; render canvas %ux%u",
-             MEDIA_VIDEO_MAX_WIDTH, MEDIA_VIDEO_MAX_HEIGHT);
+             MEDIA_MANAGER_VIDEO_MAX_WIDTH, MEDIA_MANAGER_VIDEO_MAX_HEIGHT);
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
@@ -231,7 +231,7 @@ static esp_video_render_err_t video_backend_write_fb(
     ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
     ctx->image.header.w = ctx->source_width;
     ctx->image.header.h = ctx->source_height;
-    ctx->image.header.stride = MEDIA_VIDEO_MAX_WIDTH * 2U;
+    ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
     ctx->image.data_size = ctx->fb.size;
     ctx->image.data = ctx->buffer;
 
@@ -334,8 +334,8 @@ esp_err_t media_manager_video_backend_set_source_info(
     }
 
     bool valid = width > 0 && height > 0 &&
-                 width <= MEDIA_VIDEO_MAX_WIDTH &&
-                 height <= MEDIA_VIDEO_MAX_HEIGHT;
+                 width <= MEDIA_MANAGER_VIDEO_MAX_WIDTH &&
+                 height <= MEDIA_MANAGER_VIDEO_MAX_HEIGHT;
 
     if (xSemaphoreTake(ctx->lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
@@ -351,7 +351,7 @@ esp_err_t media_manager_video_backend_set_source_info(
     if (!valid) {
         ESP_LOGE(TAG, "Video resolution %ux%u exceeds supported maximum %ux%u",
                  (unsigned)width, (unsigned)height,
-                 MEDIA_VIDEO_MAX_WIDTH, MEDIA_VIDEO_MAX_HEIGHT);
+                 MEDIA_MANAGER_VIDEO_MAX_WIDTH, MEDIA_MANAGER_VIDEO_MAX_HEIGHT);
         return ESP_ERR_NOT_SUPPORTED;
     }
 
