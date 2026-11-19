@@ -19,6 +19,7 @@
 #include "esp_audio_simple_dec_default.h"
 
 #include "media_manager.h"
+#include "media_manager_video_backend.h"
 
 #define MEDIA_MANAGER_TAG "MEDIA_MANAGER"
 #define MEDIA_MANAGER_TASK_STACK_SIZE (20 * 1024)
@@ -139,6 +140,47 @@ static esp_audio_simple_dec_type_t media_manager_get_decoder_type(
     return ESP_AUDIO_SIMPLE_DEC_TYPE_NONE;
 }
 
+static bool media_manager_is_video_file(const char *path)
+{
+    const char *extension = strrchr(path, '.');
+    if (extension == NULL) {
+        return false;
+    }
+
+    extension++;
+    return strcasecmp(extension, "mp4") == 0 ||
+           strcasecmp(extension, "avi") == 0 ||
+           strcasecmp(extension, "ts") == 0;
+}
+
+void media_manager_notify_codec_opened(bool opened)
+{
+    if (s_lock != NULL) {
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        s_codec_opened = opened;
+        xSemaphoreGive(s_lock);
+    } else {
+        s_codec_opened = opened;
+    }
+}
+
+static void media_manager_video_event_handler(
+    media_manager_event_t event,
+    esp_err_t error,
+    void *user_ctx)
+{
+    (void)user_ctx;
+
+    if (event == MEDIA_MANAGER_EVENT_STARTED ||
+        event == MEDIA_MANAGER_EVENT_RESUMED) {
+        media_manager_set_state(MEDIA_MANAGER_STATE_PLAYING);
+    } else if (event == MEDIA_MANAGER_EVENT_PAUSED) {
+        media_manager_set_state(MEDIA_MANAGER_STATE_PAUSED);
+    }
+
+    media_manager_emit_event(event, error);
+}
+
 bool media_manager_is_initialized(void)
 {
     return s_player_task != NULL && s_state != MEDIA_MANAGER_STATE_UNINITIALIZED;
@@ -204,7 +246,7 @@ esp_err_t media_manager_init(void)
         return ESP_ERR_NO_MEM;
     }
 
-    ESP_LOGI(MEDIA_MANAGER_TAG, "Initialized; WAV and MP3 playback available");
+    ESP_LOGI(MEDIA_MANAGER_TAG, "Initialized; SD audio/video playback manager ready");
     return ESP_OK;
 }
 
@@ -310,7 +352,8 @@ esp_err_t media_manager_play_file(const char *path)
     if (path_length >= sizeof(s_current_path)) {
         return ESP_ERR_INVALID_SIZE;
     }
-    if (media_manager_get_decoder_type(path) == ESP_AUDIO_SIMPLE_DEC_TYPE_NONE) {
+    if (media_manager_get_decoder_type(path) == ESP_AUDIO_SIMPLE_DEC_TYPE_NONE &&
+        !media_manager_is_video_file(path)) {
         return ESP_ERR_NOT_SUPPORTED;
     }
 
@@ -832,10 +875,25 @@ static void media_manager_player_task(void *arg)
         bool stopped = cancelled_before_start;
         esp_err_t err = ESP_OK;
         if (!cancelled_before_start) {
-            esp_audio_simple_dec_type_t decoder_type =
-                media_manager_get_decoder_type(path);
-            err = media_manager_play_file_internal(
-                path, decoder_type, &stopped);
+            if (media_manager_is_video_file(path)) {
+                float volume;
+                xSemaphoreTake(s_lock, portMAX_DELAY);
+                volume = s_volume;
+                xSemaphoreGive(s_lock);
+
+                err = media_manager_video_play_file(
+                    path,
+                    s_audio_dac->codec_dev,
+                    volume,
+                    media_manager_video_event_handler,
+                    NULL,
+                    &stopped);
+            } else {
+                esp_audio_simple_dec_type_t decoder_type =
+                    media_manager_get_decoder_type(path);
+                err = media_manager_play_file_internal(
+                    path, decoder_type, &stopped);
+            }
         }
 
         if (stopped) {

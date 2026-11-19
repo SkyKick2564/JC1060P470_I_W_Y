@@ -17,8 +17,6 @@
 
 #define TAG "MEDIA_VIDEO_BACKEND"
 
-#define MEDIA_VIDEO_MAX_WIDTH  1280
-#define MEDIA_VIDEO_MAX_HEIGHT 720
 #define MEDIA_VIDEO_SOURCE_INFO_READY BIT(0)
 
 typedef struct {
@@ -97,8 +95,8 @@ static esp_video_render_err_t video_backend_init(
     lvgl_port_unlock();
 
     ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB565;
-    ctx->fb.info.width = MEDIA_VIDEO_MAX_WIDTH;
-    ctx->fb.info.height = MEDIA_VIDEO_MAX_HEIGHT;
+    ctx->fb.info.width = MEDIA_MANAGER_VIDEO_MAX_WIDTH;
+    ctx->fb.info.height = MEDIA_MANAGER_VIDEO_MAX_HEIGHT;
     ctx->fb.size = (uint32_t)MEDIA_VIDEO_MAX_WIDTH *
                    MEDIA_VIDEO_MAX_HEIGHT * 2U;
 

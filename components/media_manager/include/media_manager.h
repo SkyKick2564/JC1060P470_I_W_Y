@@ -45,7 +45,8 @@ typedef void (*media_manager_event_callback_t)(
  * @brief Initialize Media Manager after esp_board_manager_init().
  *
  * Creates the background playback task and obtains the Board Manager
- * "audio_dac" device. WAV and MP3 decoders are provided by esp_audio_codec.
+ * "audio_dac" device. Audio and video playback use Espressif decoder/render
+ * components; MP3/WAV playback retains the existing audio decoder path.
  */
 esp_err_t media_manager_init(void);
 
@@ -79,11 +80,12 @@ esp_err_t media_manager_register_event_callback(
 esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget);
 
 /**
- * @brief Queue a supported media file for playback and return immediately.
+ * @brief Queue a file from the SD card for playback and return immediately.
  *
- * Current playback implementation supports .wav and .mp3 (case-insensitive).
- * Video playback is being added through the registered EEZ Image widget.
- * Example: "/sdcard/music/song.mp3".
+ * Audio: .wav and .mp3.
+ * Video containers: .mp4, .avi and .ts (audio/video tracks are synchronized).
+ * Video playback requires a target registered with media_manager_set_video_widget().
+ * Example: "/sdcard/media/movie.mp4".
  */
 esp_err_t media_manager_play_file(const char *path);
 
