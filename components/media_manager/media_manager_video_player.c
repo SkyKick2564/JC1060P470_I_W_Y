@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "esp_codec_dev.h"
 #include "esp_player.h"
 #include "esp_audio_render.h"
@@ -48,7 +49,7 @@
 #define VIDEO_RENDER_FPS         30
 
 #define VIDEO_AUDIO_QUEUE_LENGTH       24
-#define VIDEO_AUDIO_PCM_BLOCK_SIZE     8192
+#define VIDEO_AUDIO_PCM_BLOCK_SIZE     (64 * 1024)
 #define VIDEO_AUDIO_OUTPUT_TASK_STACK  (4 * 1024)
 #define VIDEO_AUDIO_OUTPUT_TASK_PRIO   (configMAX_PRIORITIES - 3)
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
@@ -378,8 +379,10 @@ esp_err_t media_manager_video_play_file(
         audio_output.free_queue = xQueueCreate(
             VIDEO_AUDIO_QUEUE_LENGTH, sizeof(media_video_pcm_block_t *));
         audio_output.done = xSemaphoreCreateBinary();
-        audio_block_pool = calloc(
-            VIDEO_AUDIO_QUEUE_LENGTH, sizeof(*audio_block_pool));
+        audio_block_pool = heap_caps_calloc(
+            VIDEO_AUDIO_QUEUE_LENGTH,
+            sizeof(*audio_block_pool),
+            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (audio_output.queue == NULL || audio_output.free_queue == NULL ||
             audio_output.done == NULL || audio_block_pool == NULL) {
             result = ESP_ERR_NO_MEM;
@@ -610,7 +613,7 @@ esp_err_t media_manager_video_play_file(
         }
     }
 
-    free(audio_block_pool);
+    heap_caps_free(audio_block_pool);
 
     if (audio_output.queue != NULL) {
         vQueueDelete(audio_output.queue);
