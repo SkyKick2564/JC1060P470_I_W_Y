@@ -118,10 +118,30 @@ static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
         return -1;
     }
 
-    /* Reuse a preallocated block; avoid heap allocation in the render path. */
-    if (xQueueReceive(output->free_queue, &block,
-                      VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE || block == NULL) {
-        ESP_LOGW(TAG, "Audio PCM pool is exhausted");
+    /*
+     * Apply backpressure when the decoder produces PCM faster than the codec
+     * consumes it. Keep waiting for a returned block instead of failing
+     * playback merely because all preallocated blocks are temporarily busy.
+     * Poll periodically so a codec write error can abort the wait promptly.
+     */
+    while (xQueueReceive(output->free_queue, &block,
+                         VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE) {
+        if (output->error != ESP_OK) {
+            ESP_LOGE(TAG, "Audio output stopped while waiting for a PCM block: %s",
+                     esp_err_to_name(output->error));
+            return -1;
+        }
+    }
+
+    if (block == NULL) {
+        ESP_LOGE(TAG, "Received an invalid PCM block from the free pool");
+        return -1;
+    }
+
+    if (output->error != ESP_OK) {
+        (void)xQueueSend(output->free_queue, &block, 0);
+        ESP_LOGE(TAG, "Audio output is in error state: %s",
+                 esp_err_to_name(output->error));
         return -1;
     }
 
