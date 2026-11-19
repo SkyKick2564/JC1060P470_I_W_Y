@@ -398,7 +398,8 @@ static esp_err_t media_video_load_mp4_avcc(const char *path)
 
 static void media_video_register_defaults(const char *path)
 {
-    (void)media_video_load_mp4_avcc(path);\n    media_lib_add_default_adapter();
+    (void)media_video_load_mp4_avcc(path);
+    media_lib_add_default_adapter();
     esp_extractor_register_default();
     esp_audio_dec_register_default();
     esp_video_dec_register_default();
