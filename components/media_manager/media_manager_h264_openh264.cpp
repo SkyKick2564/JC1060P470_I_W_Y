@@ -324,8 +324,7 @@ static esp_vc_err_t media_openh264_decode(
             return ESP_VC_ERR_NO_MORE_DATA;
         }
         esp_vc_err_t store_ret = media_openh264_store_frame(
-            ctx, planes, &info, input->pts, input->dts,
-            0, 0);
+            ctx, planes, &info, input->pts, input->dts, 0, 0);
         if (store_ret != ESP_VC_ERR_OK) {
             return store_ret;
         }
@@ -333,150 +332,182 @@ static esp_vc_err_t media_openh264_decode(
     }
 
     const int64_t decode_start_us = esp_timer_get_time();
-    uint32_t codec_elapsed_us = 0;
-    uint32_t store_elapsed_us = 0;
+    uint8_t *planes[3] = { NULL, NULL, NULL };
+    SBufferInfo info = {};
+    uint8_t frame_type_nal = 0;
+    uint32_t nal_count = 0;
+    size_t annexb_size = 0;
 
+    /*
+     * Decode a complete access unit in one OpenH264 call. The previous
+     * implementation called DecodeFrameNoDelay once for every NAL, causing
+     * repeated decoder entry/bitstream setup for SEI, SPS/PPS and each slice.
+     * MP4 AVCC length fields are replaced with Annex-B start codes; the total
+     * byte count is unchanged for four-byte NAL lengths.
+     */
     heap_caps_free(ctx->annexb);
-    ctx->annexb = (uint8_t *)media_openh264_alloc(input->size + 4);
+    ctx->annexb = (uint8_t *)media_openh264_alloc(input->size + 4U);
     if (ctx->annexb == NULL) {
         return ESP_VC_ERR_NO_MEMORY;
     }
 
-    uint32_t src_offset = 0;
-    bool produced = false;
-    uint8_t *planes[3] = { NULL, NULL, NULL };
-    SBufferInfo info = {};
-    uint8_t last_nal_type = 0;
+    const bool input_is_annexb =
+        input->size >= 4 &&
+        input->data[0] == 0 && input->data[1] == 0 &&
+        (input->data[2] == 1 ||
+         (input->data[2] == 0 && input->data[3] == 1));
 
-    while (src_offset < input->size) {
-        uint32_t nal_size = 0;
-        const uint8_t *nal = NULL;
+    if (input_is_annexb) {
+        uint32_t src_offset = 0;
+        while (src_offset < input->size) {
+            uint32_t prefix_size = 0;
+            if (input->size - src_offset >= 4 &&
+                input->data[src_offset] == 0 && input->data[src_offset + 1] == 0 &&
+                input->data[src_offset + 2] == 0 && input->data[src_offset + 3] == 1) {
+                prefix_size = 4;
+            } else if (input->size - src_offset >= 3 &&
+                       input->data[src_offset] == 0 && input->data[src_offset + 1] == 0 &&
+                       input->data[src_offset + 2] == 1) {
+                prefix_size = 3;
+            } else {
+                heap_caps_free(ctx->annexb);
+                ctx->annexb = NULL;
+                return ESP_VC_ERR_WRONG_DATA;
+            }
 
-        if (input->size - src_offset >= 4 &&
-            input->data[src_offset] == 0 && input->data[src_offset + 1] == 0 &&
-            (input->data[src_offset + 2] == 1 ||
-             (input->data[src_offset + 2] == 0 && input->data[src_offset + 3] == 1))) {
-            uint32_t prefix_size = (input->data[src_offset + 2] == 1) ? 3 : 4;
-            uint32_t start = src_offset + prefix_size;
-            uint32_t end = start;
-            while (end + 3 < input->size &&
-                   !(input->data[end] == 0 && input->data[end + 1] == 0 &&
-                     (input->data[end + 2] == 1 ||
-                      (input->data[end + 2] == 0 && input->data[end + 3] == 1)))) {
-                end++;
+            uint32_t nal_start = src_offset + prefix_size;
+            uint32_t nal_end = nal_start;
+            while (nal_end + 3 < input->size &&
+                   !(input->data[nal_end] == 0 && input->data[nal_end + 1] == 0 &&
+                     (input->data[nal_end + 2] == 1 ||
+                      (input->data[nal_end + 2] == 0 && input->data[nal_end + 3] == 1)))) {
+                nal_end++;
             }
-            if (end + 3 >= input->size) {
-                end = input->size;
+            if (nal_end + 3 >= input->size) {
+                nal_end = input->size;
             }
-            nal = input->data + start;
-            nal_size = end - start;
-            src_offset = end;
-        } else {
+            while (nal_end > nal_start && input->data[nal_end - 1] == 0) {
+                nal_end--;
+            }
+            if (nal_end <= nal_start) {
+                heap_caps_free(ctx->annexb);
+                ctx->annexb = NULL;
+                return ESP_VC_ERR_WRONG_DATA;
+            }
+
+            uint32_t nal_size = nal_end - nal_start;
+            ctx->annexb[annexb_size++] = 0;
+            ctx->annexb[annexb_size++] = 0;
+            ctx->annexb[annexb_size++] = 0;
+            ctx->annexb[annexb_size++] = 1;
+            memcpy(ctx->annexb + annexb_size, input->data + nal_start, nal_size);
+            annexb_size += nal_size;
+
+            uint8_t nal_type = input->data[nal_start] & 0x1F;
+            if (nal_type == 5) {
+                frame_type_nal = 5;
+            } else if (nal_type == 1 && frame_type_nal == 0) {
+                frame_type_nal = 1;
+            }
+            nal_count++;
+            src_offset = nal_end;
+            while (src_offset < input->size && input->data[src_offset] == 0) {
+                src_offset++;
+            }
+        }
+    } else {
+        uint32_t src_offset = 0;
+        while (src_offset < input->size) {
             if (input->size - src_offset < 4) {
                 heap_caps_free(ctx->annexb);
                 ctx->annexb = NULL;
                 return ESP_VC_ERR_WRONG_DATA;
             }
-            nal_size = ((uint32_t)input->data[src_offset] << 24) |
-                       ((uint32_t)input->data[src_offset + 1] << 16) |
-                       ((uint32_t)input->data[src_offset + 2] << 8) |
-                       input->data[src_offset + 3];
-            if (nal_size == 0 || nal_size > input->size - src_offset - 4) {
+
+            uint32_t nal_size = ((uint32_t)input->data[src_offset] << 24) |
+                                ((uint32_t)input->data[src_offset + 1] << 16) |
+                                ((uint32_t)input->data[src_offset + 2] << 8) |
+                                input->data[src_offset + 3];
+            src_offset += 4;
+            if (nal_size == 0 || nal_size > input->size - src_offset ||
+                annexb_size + 4U + nal_size > input->size + 4U) {
                 heap_caps_free(ctx->annexb);
                 ctx->annexb = NULL;
                 return ESP_VC_ERR_WRONG_DATA;
             }
-            nal = input->data + src_offset + 4;
-            src_offset += 4 + nal_size;
-        }
 
-        if (nal == NULL || nal_size == 0 || nal_size > input->size) {
-            heap_caps_free(ctx->annexb);
-            ctx->annexb = NULL;
-            return ESP_VC_ERR_WRONG_DATA;
-        }
-
-        last_nal_type = nal[0] & 0x1F;
-        ctx->annexb[0] = 0;
-        ctx->annexb[1] = 0;
-        ctx->annexb[2] = 0;
-        ctx->annexb[3] = 1;
-        memcpy(ctx->annexb + 4, nal, nal_size);
-
-        memset(&info, 0, sizeof(info));
-        planes[0] = planes[1] = planes[2] = NULL;
-        int64_t codec_start_us = esp_timer_get_time();
-        (void)ctx->decoder->DecodeFrameNoDelay(
-            ctx->annexb, (int)(nal_size + 4), planes, &info);
-        codec_elapsed_us += (uint32_t)(esp_timer_get_time() - codec_start_us);
-
-        if (info.iBufferStatus == 1) {
-            int64_t store_start_us = esp_timer_get_time();
-            esp_vc_err_t store_ret = media_openh264_store_frame(
-                ctx, planes, &info, input->pts, input->dts,
-                last_nal_type, input->size);
-            store_elapsed_us += (uint32_t)(esp_timer_get_time() - store_start_us);
-            if (store_ret != ESP_VC_ERR_OK) {
-                heap_caps_free(ctx->annexb);
-                ctx->annexb = NULL;
-                return store_ret;
+            ctx->annexb[annexb_size++] = 0;
+            ctx->annexb[annexb_size++] = 0;
+            ctx->annexb[annexb_size++] = 0;
+            ctx->annexb[annexb_size++] = 1;
+            memcpy(ctx->annexb + annexb_size, input->data + src_offset, nal_size);
+            uint8_t nal_type = input->data[src_offset] & 0x1F;
+            if (nal_type == 5) {
+                frame_type_nal = 5;
+            } else if (nal_type == 1 && frame_type_nal == 0) {
+                frame_type_nal = 1;
             }
-            produced = true;
+            annexb_size += nal_size;
+            src_offset += nal_size;
+            nal_count++;
         }
     }
 
-    input->consumed = input->size;
+    if (nal_count == 0 || annexb_size == 0 || annexb_size > (size_t)(input->size + 4U)) {
+        heap_caps_free(ctx->annexb);
+        ctx->annexb = NULL;
+        return ESP_VC_ERR_WRONG_DATA;
+    }
+
+    (void)ctx->decoder->DecodeFrameNoDelay(
+        ctx->annexb, (int)annexb_size, planes, &info);
+
     heap_caps_free(ctx->annexb);
     ctx->annexb = NULL;
 
+    input->consumed = input->size;
     const uint32_t decode_elapsed_us =
         (uint32_t)(esp_timer_get_time() - decode_start_us);
+
     ctx->timing_access_units++;
     ctx->timing_decode_us += decode_elapsed_us;
-    ctx->timing_codec_us += codec_elapsed_us;
-    ctx->timing_store_us += store_elapsed_us;
-    if (codec_elapsed_us > ctx->timing_codec_max_us) {
-        ctx->timing_codec_max_us = codec_elapsed_us;
-    }
-    if (store_elapsed_us > ctx->timing_store_max_us) {
-        ctx->timing_store_max_us = store_elapsed_us;
+    ctx->timing_codec_us += decode_elapsed_us;
+    if (decode_elapsed_us > ctx->timing_codec_max_us) {
+        ctx->timing_codec_max_us = decode_elapsed_us;
     }
     if (decode_elapsed_us > ctx->timing_decode_max_us) {
         ctx->timing_decode_max_us = decode_elapsed_us;
     }
+
     if ((ctx->timing_access_units % 25U) == 0U) {
         ESP_LOGI(TAG,
-                 "25 AU timing avg(us): total=%u codec=%u store=%u parse+alloc=%u | max(us): total=%u codec=%u store=%u",
+                 "25 AU timing avg(us): total=%u codec=%u | max(us): total=%u codec=%u",
                  (unsigned)(ctx->timing_decode_us / 25U),
                  (unsigned)(ctx->timing_codec_us / 25U),
-                 (unsigned)(ctx->timing_store_us / 25U),
-                 (unsigned)((ctx->timing_decode_us - ctx->timing_codec_us -
-                             ctx->timing_store_us) / 25U),
                  (unsigned)ctx->timing_decode_max_us,
-                 (unsigned)ctx->timing_codec_max_us,
-                 (unsigned)ctx->timing_store_max_us);
+                 (unsigned)ctx->timing_codec_max_us);
         ctx->timing_decode_us = 0;
         ctx->timing_decode_max_us = 0;
         ctx->timing_codec_us = 0;
-        ctx->timing_store_us = 0;
         ctx->timing_codec_max_us = 0;
+        ctx->timing_store_us = 0;
         ctx->timing_store_max_us = 0;
     }
 
-    /*
-     * OpenH264 is a CPU-bound software decoder. Yield for one tick after
-     * each compressed access unit so the idle task, LVGL and system services
-     * can run instead of starving CPU 0 during continuous playback.
-     */
-    vTaskDelay(1);
-
-    if (!produced) {
-        output->decoded_size = 0;
-        output->pts = input->pts;
-        output->dts = input->dts;
-        return ESP_VC_ERR_OK;
+    if (info.iBufferStatus == 1) {
+        esp_vc_err_t store_ret = media_openh264_store_frame(
+            ctx, planes, &info, input->pts, input->dts,
+            frame_type_nal, input->size);
+        if (store_ret != ESP_VC_ERR_OK) {
+            return store_ret;
+        }
+        return media_openh264_copy_pending(ctx, input, output);
     }
-    return media_openh264_copy_pending(ctx, input, output);
+
+    output->decoded_size = 0;
+    output->pts = input->pts;
+    output->dts = input->dts;
+    return ESP_VC_ERR_OK;
 }
 
 static esp_vc_err_t media_openh264_get_frame_info(
