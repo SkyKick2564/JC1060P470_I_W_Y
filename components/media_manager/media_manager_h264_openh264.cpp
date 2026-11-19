@@ -11,7 +11,7 @@
 #include "codec_api.h"
 #include "codec_app_def.h"
 
-#define TAG "MEDIA_H264_OPENH264"
+#define TAG "MEDIA_H264_OPENH264"\n\nstatic void *media_openh264_alloc(size_t size);
 
 typedef struct {
     ISVCDecoder *decoder;
