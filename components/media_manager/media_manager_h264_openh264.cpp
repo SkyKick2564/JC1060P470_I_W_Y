@@ -202,7 +202,8 @@ static esp_vc_err_t media_openh264_open(
 
     SDecodingParam param = {};
     param.uiTargetDqLayer = (unsigned char)-1;
-    param.eEcActiveIdc = ERROR_CON_SLICE_MV_COPY_CROSS_IDR_FREEZE_RES_CHANGE;
+    /* SD-card playback uses a local, complete bitstream; skip concealment work. */
+    param.eEcActiveIdc = ERROR_CON_DISABLE;
     param.sVideoProperty.size = sizeof(param.sVideoProperty);
     param.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_AVC;
 
