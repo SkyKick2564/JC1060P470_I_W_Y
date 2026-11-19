@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "freertos/FreeRTOS.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -22,7 +23,6 @@ typedef struct {
     lv_obj_t *widget;
     const void *previous_src;
     uint8_t *buffer;
-    size_t buffer_size;
     esp_video_render_fb_t fb;
     lv_image_dsc_t image;
     bool source_bound;
