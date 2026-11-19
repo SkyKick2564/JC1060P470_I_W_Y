@@ -46,7 +46,8 @@
 #define VIDEO_OUTPUT_CHANNELS    2
 #define VIDEO_RENDER_FPS         30
 
-#define VIDEO_AUDIO_QUEUE_LENGTH       12
+#define VIDEO_AUDIO_QUEUE_LENGTH       24
+#define VIDEO_AUDIO_PCM_BLOCK_SIZE     8192
 #define VIDEO_AUDIO_OUTPUT_TASK_STACK  (4 * 1024)
 #define VIDEO_AUDIO_OUTPUT_TASK_PRIO   (configMAX_PRIORITIES - 3)
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
@@ -62,11 +63,12 @@ typedef struct {
 
 typedef struct {
     size_t size;
-    uint8_t data[];
+    uint8_t data[VIDEO_AUDIO_PCM_BLOCK_SIZE];
 } media_video_pcm_block_t;
 
 typedef struct {
     QueueHandle_t queue;
+    QueueHandle_t free_queue;
     SemaphoreHandle_t done;
     esp_codec_dev_handle_t codec;
     volatile esp_err_t error;
@@ -92,7 +94,9 @@ static void media_video_audio_output_task(void *arg)
             }
         }
 
-        free(block);
+        if (xQueueSend(output->free_queue, &block, 0) != pdTRUE) {
+            ESP_LOGE(TAG, "Could not return PCM block to free pool");
+        }
     }
 
     xSemaphoreGive(output->done);
@@ -103,15 +107,19 @@ static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
 {
     media_video_audio_output_t *output =
         (media_video_audio_output_t *)ctx;
-    media_video_pcm_block_t *block;
+    media_video_pcm_block_t *block = NULL;
 
     if (output == NULL || output->queue == NULL ||
-        pcm == NULL || length == 0) {
+        output->free_queue == NULL || pcm == NULL || length == 0 ||
+        length > VIDEO_AUDIO_PCM_BLOCK_SIZE) {
+        ESP_LOGE(TAG, "Invalid PCM block length: %" PRIu32, length);
         return -1;
     }
 
-    block = malloc(sizeof(*block) + length);
-    if (block == NULL) {
+    /* Reuse a preallocated block; avoid heap allocation in the render path. */
+    if (xQueueReceive(output->free_queue, &block,
+                      VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE || block == NULL) {
+        ESP_LOGW(TAG, "Audio PCM pool is exhausted");
         return -1;
     }
 
@@ -119,7 +127,7 @@ static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
     memcpy(block->data, pcm, length);
 
     if (xQueueSend(output->queue, &block, VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE) {
-        free(block);
+        (void)xQueueSend(output->free_queue, &block, 0);
         ESP_LOGW(TAG, "Audio output queue is full");
         return -1;
     }
@@ -324,6 +332,7 @@ esp_err_t media_manager_video_play_file(
     esp_audio_render_stream_handle_t audio_stream = NULL;
     esp_video_render_handle_t video_render = NULL;
     media_video_audio_output_t audio_output = {0};
+    media_video_pcm_block_t *audio_block_pool = NULL;
     TaskHandle_t audio_output_task = NULL;
     bool audio_output_task_started = false;
     esp_player_handle_t player = NULL;
@@ -365,9 +374,25 @@ esp_err_t media_manager_video_play_file(
         audio_output.error = ESP_OK;
         audio_output.queue = xQueueCreate(
             VIDEO_AUDIO_QUEUE_LENGTH, sizeof(media_video_pcm_block_t *));
+        audio_output.free_queue = xQueueCreate(
+            VIDEO_AUDIO_QUEUE_LENGTH, sizeof(media_video_pcm_block_t *));
         audio_output.done = xSemaphoreCreateBinary();
-        if (audio_output.queue == NULL || audio_output.done == NULL) {
+        audio_block_pool = calloc(
+            VIDEO_AUDIO_QUEUE_LENGTH, sizeof(*audio_block_pool));
+        if (audio_output.queue == NULL || audio_output.free_queue == NULL ||
+            audio_output.done == NULL || audio_block_pool == NULL) {
             result = ESP_ERR_NO_MEM;
+            break;
+        }
+
+        for (size_t i = 0; i < VIDEO_AUDIO_QUEUE_LENGTH; i++) {
+            media_video_pcm_block_t *block = &audio_block_pool[i];
+            if (xQueueSend(audio_output.free_queue, &block, 0) != pdTRUE) {
+                result = ESP_FAIL;
+                break;
+            }
+        }
+        if (result != ESP_OK) {
             break;
         }
 
@@ -584,8 +609,13 @@ esp_err_t media_manager_video_play_file(
         }
     }
 
+    free(audio_block_pool);
+
     if (audio_output.queue != NULL) {
         vQueueDelete(audio_output.queue);
+    }
+    if (audio_output.free_queue != NULL) {
+        vQueueDelete(audio_output.free_queue);
     }
     if (audio_output.done != NULL) {
         vSemaphoreDelete(audio_output.done);
