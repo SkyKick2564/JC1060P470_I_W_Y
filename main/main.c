@@ -12,14 +12,14 @@
 #include "ota_manager.h"
 #include "app_config.h"
 #include "esp_board_manager.h"
-#include "audio_manager.h"
+#include "media_manager.h"
 #include "app.h"
 
 static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 
 static void on_audio_event(
-    audio_manager_event_t event,
+    media_manager_event_t event,
     esp_err_t error,
     const char *path,
     void *user_ctx)
@@ -27,27 +27,27 @@ static void on_audio_event(
     (void)user_ctx;
 
     switch (event) {
-    case AUDIO_MANAGER_EVENT_STARTED:
+    case MEDIA_MANAGER_EVENT_STARTED:
         ESP_LOGI(TAG, "Audio started: %s", path);
         break;
 
-    case AUDIO_MANAGER_EVENT_PAUSED:
+    case MEDIA_MANAGER_EVENT_PAUSED:
         ESP_LOGI(TAG, "Audio paused");
         break;
 
-    case AUDIO_MANAGER_EVENT_RESUMED:
+    case MEDIA_MANAGER_EVENT_RESUMED:
         ESP_LOGI(TAG, "Audio resumed");
         break;
 
-    case AUDIO_MANAGER_EVENT_STOPPED:
+    case MEDIA_MANAGER_EVENT_STOPPED:
         ESP_LOGI(TAG, "Audio stopped");
         break;
 
-    case AUDIO_MANAGER_EVENT_FINISHED:
+    case MEDIA_MANAGER_EVENT_FINISHED:
         ESP_LOGI(TAG, "Audio playback finished: %s", path);
         break;
 
-    case AUDIO_MANAGER_EVENT_ERROR:
+    case MEDIA_MANAGER_EVENT_ERROR:
         ESP_LOGE(TAG, "Audio playback error: %s (%s)",
                  path, esp_err_to_name(error));
         break;
@@ -188,14 +188,14 @@ static esp_err_t app_before_update(void *user_ctx)
         return err;
     }
 
-    err = audio_manager_deinit();
+    err = media_manager_deinit();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Audio Manager deinit failed: %s",
+        ESP_LOGE(TAG, "Media Manager deinit failed: %s",
                 esp_err_to_name(err));
         return err;
     }
 
-    ESP_LOGI(TAG, "Audio Manager deinitialized");
+    ESP_LOGI(TAG, "Media Manager deinitialized");
 
     err = esp_board_manager_deinit();
     if (err != ESP_OK) {
@@ -358,13 +358,13 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Board Manager initialized");
 
-    /* Initialize Audio Manager using the Board Manager audio_dac device. */
-    err = audio_manager_init();
+    /* Initialize Media Manager using the Board Manager audio_dac device. */
+    err = media_manager_init();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Audio Manager init failed: %s",
+        ESP_LOGE(TAG, "Media Manager init failed: %s",
                  esp_err_to_name(err));
     } else {
-        ESP_LOGI(TAG, "Audio Manager initialized");
+        ESP_LOGI(TAG, "Media Manager initialized");
     }
 
     /* Verify SD card filesystem read/write operations. */
@@ -373,7 +373,7 @@ void app_main(void)
         ESP_LOGE(TAG, "SD card filesystem test FAILED");
     }
 
-    err = audio_manager_register_event_callback(
+    err = media_manager_register_event_callback(
         on_audio_event,
         NULL
     );
@@ -383,14 +383,14 @@ void app_main(void)
         return;
     }
 
-    err = audio_manager_set_volume(70.0f);
+    err = media_manager_set_volume(70.0f);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Set volume failed: %s",
                 esp_err_to_name(err));
         return;
     }
 
-    err = audio_manager_play_file("/sdcard/test.mp3");
+    err = media_manager_play_file("/sdcard/test.mp3");
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Play file failed: %s",
                 esp_err_to_name(err));

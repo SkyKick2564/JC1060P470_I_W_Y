@@ -18,14 +18,14 @@
 #include "esp_audio_simple_dec.h"
 #include "esp_audio_simple_dec_default.h"
 
-#include "audio_manager.h"
+#include "media_manager.h"
 
-#define AUDIO_MANAGER_TAG "AUDIO_MANAGER"
-#define AUDIO_MANAGER_TASK_STACK_SIZE (20 * 1024)
-#define AUDIO_MANAGER_TASK_PRIORITY 5
-#define AUDIO_MANAGER_INPUT_BUFFER_SIZE 2048
-#define AUDIO_MANAGER_OUTPUT_BUFFER_SIZE 8192
-#define AUDIO_MANAGER_DEFAULT_VOLUME 50.0f
+#define MEDIA_MANAGER_TAG "MEDIA_MANAGER"
+#define MEDIA_MANAGER_TASK_STACK_SIZE (20 * 1024)
+#define MEDIA_MANAGER_TASK_PRIORITY 5
+#define MEDIA_MANAGER_INPUT_BUFFER_SIZE 2048
+#define MEDIA_MANAGER_OUTPUT_BUFFER_SIZE 8192
+#define MEDIA_MANAGER_DEFAULT_VOLUME 50.0f
 
 #define AUDIO_COMMAND_PLAY   (1UL << 0)
 #define AUDIO_COMMAND_PAUSE  (1UL << 1)
@@ -35,19 +35,19 @@
 
 static dev_audio_codec_handles_t *s_audio_dac;
 static bool s_codec_opened;
-static void audio_manager_player_task(void *arg);
+static void media_manager_player_task(void *arg);
 static TaskHandle_t s_player_task;
 static SemaphoreHandle_t s_lock;
 static SemaphoreHandle_t s_task_exit_sem;
-static audio_manager_state_t s_state = AUDIO_MANAGER_STATE_UNINITIALIZED;
-static audio_manager_event_callback_t s_event_callback;
+static media_manager_state_t s_state = MEDIA_MANAGER_STATE_UNINITIALIZED;
+static media_manager_event_callback_t s_event_callback;
 static void *s_event_user_ctx;
-static float s_volume = AUDIO_MANAGER_DEFAULT_VOLUME;
-static char s_current_path[AUDIO_MANAGER_PATH_MAX];
+static float s_volume = MEDIA_MANAGER_DEFAULT_VOLUME;
+static char s_current_path[MEDIA_MANAGER_PATH_MAX];
 
-#define AUDIO_MANAGER_PCM_QUEUE_LENGTH 8
-#define AUDIO_MANAGER_OUTPUT_TASK_STACK_SIZE (6 * 1024)
-#define AUDIO_MANAGER_OUTPUT_TASK_PRIORITY (AUDIO_MANAGER_TASK_PRIORITY + 2)
+#define MEDIA_MANAGER_PCM_QUEUE_LENGTH 8
+#define MEDIA_MANAGER_OUTPUT_TASK_STACK_SIZE (6 * 1024)
+#define MEDIA_MANAGER_OUTPUT_TASK_PRIORITY (MEDIA_MANAGER_TASK_PRIORITY + 2)
 
 typedef struct {
     size_t size;
@@ -61,7 +61,7 @@ typedef struct {
     esp_codec_dev_handle_t codec;
 } audio_output_context_t;
 
-static void audio_manager_output_task(void *arg)
+static void media_manager_output_task(void *arg)
 {
     audio_output_context_t *ctx = (audio_output_context_t *)arg;
     audio_pcm_block_t *block = NULL;
@@ -85,7 +85,7 @@ static void audio_manager_output_task(void *arg)
     vTaskDelete(NULL);
 }
 
-static void audio_manager_set_state(audio_manager_state_t state)
+static void media_manager_set_state(media_manager_state_t state)
 {
     if (s_lock != NULL) {
         xSemaphoreTake(s_lock, portMAX_DELAY);
@@ -96,11 +96,11 @@ static void audio_manager_set_state(audio_manager_state_t state)
     }
 }
 
-static void audio_manager_emit_event(
-    audio_manager_event_t event,
+static void media_manager_emit_event(
+    media_manager_event_t event,
     esp_err_t error)
 {
-    audio_manager_event_callback_t callback;
+    media_manager_event_callback_t callback;
     void *user_ctx;
     const char *path = s_current_path;
 
@@ -119,7 +119,7 @@ static void audio_manager_emit_event(
     }
 }
 
-static esp_audio_simple_dec_type_t audio_manager_get_decoder_type(
+static esp_audio_simple_dec_type_t media_manager_get_decoder_type(
     const char *path)
 {
     const char *extension = strrchr(path, '.');
@@ -139,21 +139,21 @@ static esp_audio_simple_dec_type_t audio_manager_get_decoder_type(
     return ESP_AUDIO_SIMPLE_DEC_TYPE_NONE;
 }
 
-bool audio_manager_is_initialized(void)
+bool media_manager_is_initialized(void)
 {
-    return s_player_task != NULL && s_state != AUDIO_MANAGER_STATE_UNINITIALIZED;
+    return s_player_task != NULL && s_state != MEDIA_MANAGER_STATE_UNINITIALIZED;
 }
 
-esp_err_t audio_manager_init(void)
+esp_err_t media_manager_init(void)
 {
     esp_err_t err;
 
-    if (audio_manager_is_initialized()) {
+    if (media_manager_is_initialized()) {
         return ESP_OK;
     }
 
     if (!esp_board_manager_check_name("audio_dac")) {
-        ESP_LOGE(AUDIO_MANAGER_TAG, "Board does not provide audio_dac");
+        ESP_LOGE(MEDIA_MANAGER_TAG, "Board does not provide audio_dac");
         return ESP_ERR_NOT_SUPPORTED;
     }
 
@@ -163,7 +163,7 @@ esp_err_t audio_manager_init(void)
     );
     if (err != ESP_OK) {
         s_audio_dac = NULL;
-        ESP_LOGE(AUDIO_MANAGER_TAG, "Get audio_dac handle failed: %s",
+        ESP_LOGE(MEDIA_MANAGER_TAG, "Get audio_dac handle failed: %s",
                  esp_err_to_name(err));
         return err;
     }
@@ -187,33 +187,33 @@ esp_err_t audio_manager_init(void)
         return ESP_ERR_NO_MEM;
     }
 
-    s_state = AUDIO_MANAGER_STATE_IDLE;
+    s_state = MEDIA_MANAGER_STATE_IDLE;
     if (xTaskCreate(
-            audio_manager_player_task,
-            "audio_player",
-            AUDIO_MANAGER_TASK_STACK_SIZE,
+            media_manager_player_task,
+            "media_player",
+            MEDIA_MANAGER_TASK_STACK_SIZE,
             NULL,
-            AUDIO_MANAGER_TASK_PRIORITY,
+            MEDIA_MANAGER_TASK_PRIORITY,
             &s_player_task) != pdPASS) {
         vSemaphoreDelete(s_task_exit_sem);
         s_task_exit_sem = NULL;
         vSemaphoreDelete(s_lock);
         s_lock = NULL;
         s_audio_dac = NULL;
-        s_state = AUDIO_MANAGER_STATE_UNINITIALIZED;
+        s_state = MEDIA_MANAGER_STATE_UNINITIALIZED;
         return ESP_ERR_NO_MEM;
     }
 
-    ESP_LOGI(AUDIO_MANAGER_TAG, "Initialized; WAV and MP3 playback available");
+    ESP_LOGI(MEDIA_MANAGER_TAG, "Initialized; WAV and MP3 playback available");
     return ESP_OK;
 }
 
-esp_err_t audio_manager_deinit(void)
+esp_err_t media_manager_deinit(void)
 {
-    audio_manager_state_t state;
+    media_manager_state_t state;
     TickType_t start_tick;
 
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -224,18 +224,18 @@ esp_err_t audio_manager_deinit(void)
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
     state = s_state;
-    if (state == AUDIO_MANAGER_STATE_QUEUED ||
-        state == AUDIO_MANAGER_STATE_PLAYING ||
-        state == AUDIO_MANAGER_STATE_PAUSED ||
-        state == AUDIO_MANAGER_STATE_STOPPING) {
-        s_state = AUDIO_MANAGER_STATE_STOPPING;
+    if (state == MEDIA_MANAGER_STATE_QUEUED ||
+        state == MEDIA_MANAGER_STATE_PLAYING ||
+        state == MEDIA_MANAGER_STATE_PAUSED ||
+        state == MEDIA_MANAGER_STATE_STOPPING) {
+        s_state = MEDIA_MANAGER_STATE_STOPPING;
     }
     xSemaphoreGive(s_lock);
 
-    if (state == AUDIO_MANAGER_STATE_QUEUED ||
-        state == AUDIO_MANAGER_STATE_PLAYING ||
-        state == AUDIO_MANAGER_STATE_PAUSED ||
-        state == AUDIO_MANAGER_STATE_STOPPING) {
+    if (state == MEDIA_MANAGER_STATE_QUEUED ||
+        state == MEDIA_MANAGER_STATE_PLAYING ||
+        state == MEDIA_MANAGER_STATE_PAUSED ||
+        state == MEDIA_MANAGER_STATE_STOPPING) {
         xTaskNotify(s_player_task, AUDIO_COMMAND_STOP, eSetBits);
 
         start_tick = xTaskGetTickCount();
@@ -244,15 +244,15 @@ esp_err_t audio_manager_deinit(void)
             state = s_state;
             xSemaphoreGive(s_lock);
 
-            if (state != AUDIO_MANAGER_STATE_STOPPING &&
-                state != AUDIO_MANAGER_STATE_QUEUED &&
-                state != AUDIO_MANAGER_STATE_PLAYING &&
-                state != AUDIO_MANAGER_STATE_PAUSED) {
+            if (state != MEDIA_MANAGER_STATE_STOPPING &&
+                state != MEDIA_MANAGER_STATE_QUEUED &&
+                state != MEDIA_MANAGER_STATE_PLAYING &&
+                state != MEDIA_MANAGER_STATE_PAUSED) {
                 break;
             }
 
             if ((xTaskGetTickCount() - start_tick) >= pdMS_TO_TICKS(10000)) {
-                ESP_LOGE(AUDIO_MANAGER_TAG,
+                ESP_LOGE(MEDIA_MANAGER_TAG,
                          "Timed out waiting for playback to stop");
                 return ESP_ERR_TIMEOUT;
             }
@@ -263,7 +263,7 @@ esp_err_t audio_manager_deinit(void)
     /* Ask the idle player task to exit, then wait for its acknowledgement. */
     xTaskNotify(s_player_task, AUDIO_COMMAND_EXIT, eSetBits);
     if (xSemaphoreTake(s_task_exit_sem, pdMS_TO_TICKS(5000)) != pdTRUE) {
-        ESP_LOGE(AUDIO_MANAGER_TAG, "Timed out waiting for player task exit");
+        ESP_LOGE(MEDIA_MANAGER_TAG, "Timed out waiting for player task exit");
         return ESP_ERR_TIMEOUT;
     }
 
@@ -276,15 +276,15 @@ esp_err_t audio_manager_deinit(void)
     s_event_callback = NULL;
     s_event_user_ctx = NULL;
     s_current_path[0] = '\0';
-    s_state = AUDIO_MANAGER_STATE_UNINITIALIZED;
+    s_state = MEDIA_MANAGER_STATE_UNINITIALIZED;
     return ESP_OK;
 }
 
-esp_err_t audio_manager_register_event_callback(
-    audio_manager_event_callback_t callback,
+esp_err_t media_manager_register_event_callback(
+    media_manager_event_callback_t callback,
     void *user_ctx)
 {
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -295,11 +295,11 @@ esp_err_t audio_manager_register_event_callback(
     return ESP_OK;
 }
 
-esp_err_t audio_manager_play_file(const char *path)
+esp_err_t media_manager_play_file(const char *path)
 {
     size_t path_length;
 
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
     if (path == NULL || path[0] == '\0') {
@@ -310,35 +310,35 @@ esp_err_t audio_manager_play_file(const char *path)
     if (path_length >= sizeof(s_current_path)) {
         return ESP_ERR_INVALID_SIZE;
     }
-    if (audio_manager_get_decoder_type(path) == ESP_AUDIO_SIMPLE_DEC_TYPE_NONE) {
+    if (media_manager_get_decoder_type(path) == ESP_AUDIO_SIMPLE_DEC_TYPE_NONE) {
         return ESP_ERR_NOT_SUPPORTED;
     }
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (s_state == AUDIO_MANAGER_STATE_QUEUED ||
-        s_state == AUDIO_MANAGER_STATE_PLAYING ||
-        s_state == AUDIO_MANAGER_STATE_PAUSED ||
-        s_state == AUDIO_MANAGER_STATE_STOPPING) {
+    if (s_state == MEDIA_MANAGER_STATE_QUEUED ||
+        s_state == MEDIA_MANAGER_STATE_PLAYING ||
+        s_state == MEDIA_MANAGER_STATE_PAUSED ||
+        s_state == MEDIA_MANAGER_STATE_STOPPING) {
         xSemaphoreGive(s_lock);
         return ESP_ERR_INVALID_STATE;
     }
 
     memcpy(s_current_path, path, path_length + 1);
-    s_state = AUDIO_MANAGER_STATE_QUEUED;
+    s_state = MEDIA_MANAGER_STATE_QUEUED;
     xSemaphoreGive(s_lock);
 
     xTaskNotify(s_player_task, AUDIO_COMMAND_PLAY, eSetBits);
     return ESP_OK;
 }
 
-esp_err_t audio_manager_pause(void)
+esp_err_t media_manager_pause(void)
 {
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (s_state != AUDIO_MANAGER_STATE_PLAYING) {
+    if (s_state != MEDIA_MANAGER_STATE_PLAYING) {
         xSemaphoreGive(s_lock);
         return ESP_ERR_INVALID_STATE;
     }
@@ -348,14 +348,14 @@ esp_err_t audio_manager_pause(void)
     return ESP_OK;
 }
 
-esp_err_t audio_manager_resume(void)
+esp_err_t media_manager_resume(void)
 {
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (s_state != AUDIO_MANAGER_STATE_PAUSED) {
+    if (s_state != MEDIA_MANAGER_STATE_PAUSED) {
         xSemaphoreGive(s_lock);
         return ESP_ERR_INVALID_STATE;
     }
@@ -365,31 +365,31 @@ esp_err_t audio_manager_resume(void)
     return ESP_OK;
 }
 
-esp_err_t audio_manager_stop(void)
+esp_err_t media_manager_stop(void)
 {
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (s_state != AUDIO_MANAGER_STATE_QUEUED &&
-        s_state != AUDIO_MANAGER_STATE_PLAYING &&
-        s_state != AUDIO_MANAGER_STATE_PAUSED) {
+    if (s_state != MEDIA_MANAGER_STATE_QUEUED &&
+        s_state != MEDIA_MANAGER_STATE_PLAYING &&
+        s_state != MEDIA_MANAGER_STATE_PAUSED) {
         xSemaphoreGive(s_lock);
         return ESP_ERR_INVALID_STATE;
     }
-    s_state = AUDIO_MANAGER_STATE_STOPPING;
+    s_state = MEDIA_MANAGER_STATE_STOPPING;
     xSemaphoreGive(s_lock);
 
     xTaskNotify(s_player_task, AUDIO_COMMAND_STOP, eSetBits);
     return ESP_OK;
 }
 
-esp_err_t audio_manager_set_volume(float volume)
+esp_err_t media_manager_set_volume(float volume)
 {
     esp_err_t err = ESP_OK;
 
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
     if (volume < 0.0f || volume > 100.0f) {
@@ -404,16 +404,16 @@ esp_err_t audio_manager_set_volume(float volume)
     xSemaphoreGive(s_lock);
 
     if (err != ESP_CODEC_DEV_OK) {
-        ESP_LOGE(AUDIO_MANAGER_TAG, "Set output volume failed: %s",
+        ESP_LOGE(MEDIA_MANAGER_TAG, "Set output volume failed: %s",
                  esp_err_to_name(err));
         return err;
     }
     return ESP_OK;
 }
 
-esp_err_t audio_manager_get_volume(float *volume)
+esp_err_t media_manager_get_volume(float *volume)
 {
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
     if (volume == NULL) {
@@ -426,9 +426,9 @@ esp_err_t audio_manager_get_volume(float *volume)
     return ESP_OK;
 }
 
-esp_err_t audio_manager_get_state(audio_manager_state_t *state)
+esp_err_t media_manager_get_state(media_manager_state_t *state)
 {
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
     if (state == NULL) {
@@ -441,11 +441,11 @@ esp_err_t audio_manager_get_state(audio_manager_state_t *state)
     return ESP_OK;
 }
 
-esp_err_t audio_manager_get_current_file(char *path, size_t path_size)
+esp_err_t media_manager_get_current_file(char *path, size_t path_size)
 {
     size_t required;
 
-    if (!audio_manager_is_initialized()) {
+    if (!media_manager_is_initialized()) {
         return ESP_ERR_INVALID_STATE;
     }
     if (path == NULL || path_size == 0) {
@@ -463,7 +463,7 @@ esp_err_t audio_manager_get_current_file(char *path, size_t path_size)
     return ESP_OK;
 }
 
-static esp_err_t audio_manager_open_codec(
+static esp_err_t media_manager_open_codec(
     const esp_audio_simple_dec_info_t *info)
 {
     esp_codec_dev_sample_info_t sample_info = {
@@ -474,7 +474,7 @@ static esp_err_t audio_manager_open_codec(
 
     esp_err_t err = esp_codec_dev_open(s_audio_dac->codec_dev, &sample_info);
     if (err != ESP_CODEC_DEV_OK) {
-        ESP_LOGE(AUDIO_MANAGER_TAG, "Open audio codec failed: %s",
+        ESP_LOGE(MEDIA_MANAGER_TAG, "Open audio codec failed: %s",
                  esp_err_to_name(err));
         return err;
     }
@@ -489,7 +489,7 @@ static esp_err_t audio_manager_open_codec(
     s_codec_opened = true;
     xSemaphoreGive(s_lock);
 
-    ESP_LOGI(AUDIO_MANAGER_TAG,
+    ESP_LOGI(MEDIA_MANAGER_TAG,
              "Codec opened: sample_rate=%" PRIu32 ", channels=%u, bits=%u",
              info->sample_rate, (unsigned)info->channel,
              (unsigned)info->bits_per_sample);
@@ -500,7 +500,7 @@ static esp_err_t audio_manager_open_codec(
  * Waits while paused and observes stop requests between decoder/write calls.
  * The player task owns decoder and codec resources for the whole operation.
  */
-static bool audio_manager_process_control(void)
+static bool media_manager_process_control(void)
 {
     uint32_t commands = 0;
 
@@ -511,8 +511,8 @@ static bool audio_manager_process_control(void)
     }
 
     if ((commands & AUDIO_COMMAND_PAUSE) != 0) {
-        audio_manager_set_state(AUDIO_MANAGER_STATE_PAUSED);
-        audio_manager_emit_event(AUDIO_MANAGER_EVENT_PAUSED, ESP_OK);
+        media_manager_set_state(MEDIA_MANAGER_STATE_PAUSED);
+        media_manager_emit_event(MEDIA_MANAGER_EVENT_PAUSED, ESP_OK);
 
         while (true) {
             commands = 0;
@@ -521,8 +521,8 @@ static bool audio_manager_process_control(void)
                 return false;
             }
             if ((commands & AUDIO_COMMAND_RESUME) != 0) {
-                audio_manager_set_state(AUDIO_MANAGER_STATE_PLAYING);
-                audio_manager_emit_event(AUDIO_MANAGER_EVENT_RESUMED, ESP_OK);
+                media_manager_set_state(MEDIA_MANAGER_STATE_PLAYING);
+                media_manager_emit_event(MEDIA_MANAGER_EVENT_RESUMED, ESP_OK);
                 break;
             }
         }
@@ -531,7 +531,7 @@ static bool audio_manager_process_control(void)
     return true;
 }
 
-static esp_err_t audio_manager_play_file_internal(
+static esp_err_t media_manager_play_file_internal(
     const char *path,
     esp_audio_simple_dec_type_t decoder_type,
     bool *stopped)
@@ -539,7 +539,7 @@ static esp_err_t audio_manager_play_file_internal(
     FILE *file = NULL;
     uint8_t *input_buffer = NULL;
     uint8_t *output_buffer = NULL;
-    size_t output_buffer_size = AUDIO_MANAGER_OUTPUT_BUFFER_SIZE;
+    size_t output_buffer_size = MEDIA_MANAGER_OUTPUT_BUFFER_SIZE;
     esp_audio_simple_dec_handle_t decoder = NULL;
     bool decoder_registered = false;
     bool simple_decoder_registered = false;
@@ -554,12 +554,12 @@ static esp_err_t audio_manager_play_file_internal(
     *stopped = false;
     file = fopen(path, "rb");
     if (file == NULL) {
-        ESP_LOGE(AUDIO_MANAGER_TAG, "Open audio file failed: %s", path);
+        ESP_LOGE(MEDIA_MANAGER_TAG, "Open audio file failed: %s", path);
         return ESP_ERR_NOT_FOUND;
     }
 
     do {
-        input_buffer = malloc(AUDIO_MANAGER_INPUT_BUFFER_SIZE);
+        input_buffer = malloc(MEDIA_MANAGER_INPUT_BUFFER_SIZE);
         output_buffer = malloc(output_buffer_size);
         if (input_buffer == NULL || output_buffer == NULL) {
             result = ESP_ERR_NO_MEM;
@@ -579,7 +579,7 @@ static esp_err_t audio_manager_play_file_internal(
         simple_decoder_registered = true;
 
         if (esp_audio_simple_check_audio_type(decoder_type) != ESP_AUDIO_ERR_OK) {
-            ESP_LOGE(AUDIO_MANAGER_TAG, "Decoder is not enabled for %s", path);
+            ESP_LOGE(MEDIA_MANAGER_TAG, "Decoder is not enabled for %s", path);
             result = ESP_ERR_NOT_SUPPORTED;
             break;
         }
@@ -592,23 +592,23 @@ static esp_err_t audio_manager_play_file_internal(
         };
         if (esp_audio_simple_dec_open(&decoder_config, &decoder) !=
             ESP_AUDIO_ERR_OK) {
-            ESP_LOGE(AUDIO_MANAGER_TAG, "Open decoder failed for %s", path);
+            ESP_LOGE(MEDIA_MANAGER_TAG, "Open decoder failed for %s", path);
             result = ESP_FAIL;
             break;
         }
 
-        ESP_LOGI(AUDIO_MANAGER_TAG, "Playback started: %s", path);
-        audio_manager_set_state(AUDIO_MANAGER_STATE_PLAYING);
-        audio_manager_emit_event(AUDIO_MANAGER_EVENT_STARTED, ESP_OK);
+        ESP_LOGI(MEDIA_MANAGER_TAG, "Playback started: %s", path);
+        media_manager_set_state(MEDIA_MANAGER_STATE_PLAYING);
+        media_manager_emit_event(MEDIA_MANAGER_EVENT_STARTED, ESP_OK);
 
         while (result == ESP_OK) {
-            if (!audio_manager_process_control()) {
+            if (!media_manager_process_control()) {
                 *stopped = true;
                 break;
             }
 
             size_t bytes_read = fread(
-                input_buffer, 1, AUDIO_MANAGER_INPUT_BUFFER_SIZE, file);
+                input_buffer, 1, MEDIA_MANAGER_INPUT_BUFFER_SIZE, file);
             if (bytes_read == 0) {
                 if (ferror(file)) {
                     result = ESP_FAIL;
@@ -619,11 +619,11 @@ static esp_err_t audio_manager_play_file_internal(
             esp_audio_simple_dec_raw_t raw = {
                 .buffer = input_buffer,
                 .len = (uint32_t)bytes_read,
-                .eos = bytes_read < AUDIO_MANAGER_INPUT_BUFFER_SIZE,
+                .eos = bytes_read < MEDIA_MANAGER_INPUT_BUFFER_SIZE,
             };
 
             while (raw.len > 0) {
-                if (!audio_manager_process_control()) {
+                if (!media_manager_process_control()) {
                     *stopped = true;
                     break;
                 }
@@ -648,7 +648,7 @@ static esp_err_t audio_manager_play_file_internal(
                 }
 
                 if (decode_err != ESP_AUDIO_ERR_OK) {
-                    ESP_LOGE(AUDIO_MANAGER_TAG, "Audio decode failed: %d",
+                    ESP_LOGE(MEDIA_MANAGER_TAG, "Audio decode failed: %d",
                              (int)decode_err);
                     result = ESP_FAIL;
                     break;
@@ -661,7 +661,7 @@ static esp_err_t audio_manager_play_file_internal(
                             result = ESP_FAIL;
                             break;
                         }
-                        result = audio_manager_open_codec(&decoder_info);
+                        result = media_manager_open_codec(&decoder_info);
                         if (result != ESP_OK) {
                             break;
                         }
@@ -671,7 +671,7 @@ static esp_err_t audio_manager_play_file_internal(
 
                     if (!output_task_started) {
                         output_ctx.queue = xQueueCreate(
-                            AUDIO_MANAGER_PCM_QUEUE_LENGTH,
+                            MEDIA_MANAGER_PCM_QUEUE_LENGTH,
                             sizeof(audio_pcm_block_t *));
                         output_ctx.done = xSemaphoreCreateBinary();
                         output_ctx.error = ESP_OK;
@@ -682,11 +682,11 @@ static esp_err_t audio_manager_play_file_internal(
                         }
 
                         if (xTaskCreate(
-                                audio_manager_output_task,
+                                media_manager_output_task,
                                 "audio_output",
-                                AUDIO_MANAGER_OUTPUT_TASK_STACK_SIZE,
+                                MEDIA_MANAGER_OUTPUT_TASK_STACK_SIZE,
                                 &output_ctx,
-                                AUDIO_MANAGER_OUTPUT_TASK_PRIORITY,
+                                MEDIA_MANAGER_OUTPUT_TASK_PRIORITY,
                                 &output_task) != pdPASS) {
                             result = ESP_ERR_NO_MEM;
                             break;
@@ -719,7 +719,7 @@ static esp_err_t audio_manager_play_file_internal(
                     }
                     if (output_ctx.error != ESP_OK) {
                         result = output_ctx.error;
-                        ESP_LOGE(AUDIO_MANAGER_TAG, "PCM output failed: %s",
+                        ESP_LOGE(MEDIA_MANAGER_TAG, "PCM output failed: %s",
                                  esp_err_to_name(result));
                         break;
                     }
@@ -745,12 +745,12 @@ static esp_err_t audio_manager_play_file_internal(
         }
 
         if (result == ESP_OK && !*stopped &&
-            !audio_manager_process_control()) {
+            !media_manager_process_control()) {
             *stopped = true;
         }
 
         if (result == ESP_OK && !*stopped && !codec_info_ready) {
-            ESP_LOGE(AUDIO_MANAGER_TAG, "No decodable audio data: %s", path);
+            ESP_LOGE(MEDIA_MANAGER_TAG, "No decodable audio data: %s", path);
             result = ESP_FAIL;
         }
     } while (0);
@@ -802,7 +802,7 @@ static esp_err_t audio_manager_play_file_internal(
     return result;
 }
 
-static void audio_manager_player_task(void *arg)
+static void media_manager_player_task(void *arg)
 {
     (void)arg;
 
@@ -819,36 +819,36 @@ static void audio_manager_player_task(void *arg)
             continue;
         }
 
-        char path[AUDIO_MANAGER_PATH_MAX];
+        char path[MEDIA_MANAGER_PATH_MAX];
         xSemaphoreTake(s_lock, portMAX_DELAY);
         memcpy(path, s_current_path, sizeof(path));
         xSemaphoreGive(s_lock);
 
         xSemaphoreTake(s_lock, portMAX_DELAY);
         bool cancelled_before_start =
-            (s_state == AUDIO_MANAGER_STATE_STOPPING);
+            (s_state == MEDIA_MANAGER_STATE_STOPPING);
         xSemaphoreGive(s_lock);
 
         bool stopped = cancelled_before_start;
         esp_err_t err = ESP_OK;
         if (!cancelled_before_start) {
             esp_audio_simple_dec_type_t decoder_type =
-                audio_manager_get_decoder_type(path);
-            err = audio_manager_play_file_internal(
+                media_manager_get_decoder_type(path);
+            err = media_manager_play_file_internal(
                 path, decoder_type, &stopped);
         }
 
         if (stopped) {
-            audio_manager_set_state(AUDIO_MANAGER_STATE_STOPPED);
-            audio_manager_emit_event(AUDIO_MANAGER_EVENT_STOPPED, ESP_OK);
+            media_manager_set_state(MEDIA_MANAGER_STATE_STOPPED);
+            media_manager_emit_event(MEDIA_MANAGER_EVENT_STOPPED, ESP_OK);
         } else if (err == ESP_OK) {
-            audio_manager_set_state(AUDIO_MANAGER_STATE_FINISHED);
-            audio_manager_emit_event(AUDIO_MANAGER_EVENT_FINISHED, ESP_OK);
-            ESP_LOGI(AUDIO_MANAGER_TAG, "Playback finished: %s", path);
+            media_manager_set_state(MEDIA_MANAGER_STATE_FINISHED);
+            media_manager_emit_event(MEDIA_MANAGER_EVENT_FINISHED, ESP_OK);
+            ESP_LOGI(MEDIA_MANAGER_TAG, "Playback finished: %s", path);
         } else {
-            audio_manager_set_state(AUDIO_MANAGER_STATE_ERROR);
-            audio_manager_emit_event(AUDIO_MANAGER_EVENT_ERROR, err);
-            ESP_LOGE(AUDIO_MANAGER_TAG, "Playback failed: %s",
+            media_manager_set_state(MEDIA_MANAGER_STATE_ERROR);
+            media_manager_emit_event(MEDIA_MANAGER_EVENT_ERROR, err);
+            ESP_LOGE(MEDIA_MANAGER_TAG, "Playback failed: %s",
                      esp_err_to_name(err));
         }
     }

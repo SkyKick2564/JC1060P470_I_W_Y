@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS
-        "audio_manager.c"
+        "media_manager.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
