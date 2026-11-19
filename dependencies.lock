@@ -706,8 +706,7 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 9.5.0
-  openh264:
-    component_hash: 25f7ea87e189640d7b7c03482e48659f29870de54c986af5c104543a00c9c455
+
     dependencies: []
     source:
       git: https://github.com/jonasborn/openh264-esp32.git
@@ -737,7 +736,5 @@ direct_dependencies:
 - espressif/media_lib_sal
 - guition-jc/guition_boards
 - lvgl/lvgl
-- openh264
-manifest_hash: c0d27c02ce7a81ff163000775700eb758e5fc85390e43955e2371ed4ba030853
 target: esp32p4
 version: 3.0.0
