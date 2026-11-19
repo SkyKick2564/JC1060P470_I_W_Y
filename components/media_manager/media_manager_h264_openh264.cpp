@@ -386,9 +386,6 @@ static esp_vc_err_t media_openh264_decode(
             if (nal_end + 3 >= input->size) {
                 nal_end = input->size;
             }
-            while (nal_end > nal_start && input->data[nal_end - 1] == 0) {
-                nal_end--;
-            }
             if (nal_end <= nal_start) {
                 heap_caps_free(ctx->annexb);
                 ctx->annexb = NULL;
