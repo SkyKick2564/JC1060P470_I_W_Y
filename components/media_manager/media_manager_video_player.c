@@ -11,6 +11,7 @@
 #include "esp_heap_caps.h"
 #include "esp_codec_dev.h"
 #include "esp_player.h"
+#include "esp_player_advance.h"
 #include "esp_audio_render.h"
 #include "esp_video_render.h"
 #include "esp_extractor_defaults.h"
@@ -596,6 +597,57 @@ esp_err_t media_manager_video_play_file(
             result = ESP_FAIL;
             break;
         }
+
+        /*
+         * OpenH264 Main/High profile decoding uses substantially more stack
+         * than the default software decoder. The default ESP Player video
+         * decoder task stack is 5 KB, which overflows inside
+         * WelsDec::DecodeCurrentAccessUnit() on ESP32-P4.
+         *
+         * Keep the other ESP Player task settings at their built-in defaults
+         * and give the video decoder a 16 KB stack in PSRAM.
+         */
+        const esp_player_task_config_t task_cfg = {
+            .extractor = {
+                .stack = 5 * 1024,
+                .prio = 5,
+                .core = 0,
+                .stack_in_ext = 1,
+            },
+            .audio_decoder = {
+                .stack = 5 * 1024,
+                .prio = 5,
+                .core = 1,
+                .stack_in_ext = 1,
+            },
+            .audio_render = {
+                .stack = 5 * 1024,
+                .prio = 5,
+                .core = 0,
+                .stack_in_ext = 1,
+            },
+            .video_decoder = {
+                .stack = 16 * 1024,
+                .prio = 5,
+                .core = 0,
+                .stack_in_ext = 1,
+            },
+            .video_render = {
+                .stack = 5 * 1024,
+                .prio = 5,
+                .core = 1,
+                .stack_in_ext = 1,
+            },
+        };
+        esp_player_err_t task_cfg_ret =
+            esp_player_set_task_config(player, &task_cfg);
+        if (task_cfg_ret != ESP_PLAYER_ERR_OK) {
+            ESP_LOGE(TAG, "Could not configure OpenH264 decoder task stack: %d",
+                     (int)task_cfg_ret);
+            result = ESP_FAIL;
+            break;
+        }
+        ESP_LOGI(TAG, "Video decoder task stack configured: 16384 bytes (PSRAM)");
 
         if (esp_player_set_event_cb(
                 player, media_video_player_event, &event_ctx) != ESP_PLAYER_ERR_OK) {
