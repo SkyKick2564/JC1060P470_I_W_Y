@@ -1,6 +1,5 @@
 #include <inttypes.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -17,7 +16,6 @@
 #include "esp_extractor_defaults.h"
 #include "esp_audio_dec_default.h"
 #include "esp_video_dec_default.h"
-#include "media_manager_h264_openh264.h"
 #include "media_lib_adapter.h"
 
 #include "esp_gmf_pool.h"
@@ -319,108 +317,13 @@ static esp_err_t media_video_set_source_info(esp_player_handle_t player)
     return ESP_FAIL;
 }
 
-static esp_err_t media_video_load_mp4_avcc(const char *path)
+static void media_video_register_defaults(void)
 {
-    if (path == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    FILE *file = fopen(path, "rb");
-    if (file == NULL) {
-        ESP_LOGW(TAG, "Could not open media file to inspect H.264 configuration");
-        return ESP_FAIL;
-    }
-
-    if (fseek(file, 0, SEEK_END) != 0) {
-        fclose(file);
-        return ESP_FAIL;
-    }
-    long file_size = ftell(file);
-    if (file_size < 16 || fseek(file, 0, SEEK_SET) != 0) {
-        fclose(file);
-        return ESP_FAIL;
-    }
-
-    uint8_t buffer[4096 + 8];
-    size_t carry = 0;
-    long scanned = 0;
-    esp_err_t result = ESP_ERR_NOT_FOUND;
-
-    while (scanned < file_size) {
-        size_t count = fread(buffer + carry, 1, sizeof(buffer) - carry - 8, file);
-        if (count == 0) {
-            break;
-        }
-        size_t total = carry + count;
-        for (size_t i = 4; i + 4 <= total; i++) {
-            if (memcmp(buffer + i, "avcC", 4) != 0) {
-                continue;
-            }
-
-            uint32_t box_size = ((uint32_t)buffer[i - 4] << 24) |
-                                ((uint32_t)buffer[i - 3] << 16) |
-                                ((uint32_t)buffer[i - 2] << 8) |
-                                buffer[i - 1];
-            if (box_size < 15 || box_size > 65536) {
-                continue;
-            }
-
-            uint8_t *record = malloc(box_size - 8);
-            if (record == NULL) {
-                result = ESP_ERR_NO_MEM;
-                break;
-            }
-
-            long box_offset = scanned - (long)carry + (long)i - 4;
-            if (fseek(file, box_offset + 8, SEEK_SET) == 0 &&
-                fread(record, 1, box_size - 8, file) == box_size - 8 &&
-                record[0] == 1) {
-                result = media_manager_h264_openh264_set_avcc(record, box_size - 8);
-                free(record);
-                if (result == ESP_OK) {
-                    ESP_LOGI(TAG, "Loaded H.264 avcC configuration (%u bytes)",
-                             (unsigned)(box_size - 8));
-                }
-                fclose(file);
-                return result;
-            }
-            free(record);
-            (void)fseek(file, scanned + (long)total - (long)carry, SEEK_SET);
-        }
-
-        scanned += (long)count;
-        carry = total < 8 ? total : 8;
-        memmove(buffer, buffer + total - carry, carry);
-    }
-
-    fclose(file);
-    return result;
-}
-
-static void media_video_register_defaults(const char *path)
-{
-    (void)media_video_load_mp4_avcc(path);
     media_lib_add_default_adapter();
     esp_extractor_register_default();
     esp_audio_dec_register_default();
     esp_video_dec_register_default();
-
-#if CONFIG_VIDEO_DECODER_SW_H264_SUPPORT
-    esp_vc_err_t unregister_ret = esp_video_dec_unregister_sw_h264();
-    if (unregister_ret != ESP_VC_ERR_OK) {
-        ESP_LOGE(TAG, "Could not replace default H.264 decoder: %d",
-                 (int)unregister_ret);
-        return;
-    }
-
-    esp_vc_err_t register_ret = media_manager_h264_openh264_register();
-    if (register_ret != ESP_VC_ERR_OK) {
-        ESP_LOGE(TAG, "Could not register OpenH264 decoder: %d",
-                 (int)register_ret);
-    } else {
-        ESP_LOGI(TAG, "OpenH264 Main/High profile decoder registered");
-    }
-#endif
+    ESP_LOGI(TAG, "Espressif default H.264 decoder registered");
 }
 
 static void media_video_unregister_defaults(void)
@@ -475,7 +378,7 @@ esp_err_t media_manager_video_play_file(
     event_ctx.events = events;
 
     do {
-        media_video_register_defaults(path);
+        media_video_register_defaults();
         media_defaults_registered = true;
 
         esp_codec_dev_sample_info_t output_info = {
@@ -597,57 +500,6 @@ esp_err_t media_manager_video_play_file(
             result = ESP_FAIL;
             break;
         }
-
-        /*
-         * OpenH264 Main/High profile decoding uses substantially more stack
-         * than the default software decoder. The default ESP Player video
-         * decoder task stack is 5 KB, which overflows inside
-         * WelsDec::DecodeCurrentAccessUnit() on ESP32-P4.
-         *
-         * Keep the other ESP Player task settings at their built-in defaults
-         * and give the video decoder a 16 KB stack in PSRAM.
-         */
-        const esp_player_task_config_t task_cfg = {
-            .extractor = {
-                .stack = 5 * 1024,
-                .prio = 5,
-                .core = 0,
-                .stack_in_ext = 1,
-            },
-            .audio_decoder = {
-                .stack = 5 * 1024,
-                .prio = 5,
-                .core = 1,
-                .stack_in_ext = 1,
-            },
-            .audio_render = {
-                .stack = 5 * 1024,
-                .prio = 5,
-                .core = 0,
-                .stack_in_ext = 1,
-            },
-            .video_decoder = {
-                .stack = 16 * 1024,
-                .prio = 5,
-                .core = 0,
-                .stack_in_ext = 1,
-            },
-            .video_render = {
-                .stack = 5 * 1024,
-                .prio = 5,
-                .core = 1,
-                .stack_in_ext = 1,
-            },
-        };
-        esp_player_err_t task_cfg_ret =
-            esp_player_set_task_config(player, &task_cfg);
-        if (task_cfg_ret != ESP_PLAYER_ERR_OK) {
-            ESP_LOGE(TAG, "Could not configure OpenH264 decoder task stack: %d",
-                     (int)task_cfg_ret);
-            result = ESP_FAIL;
-            break;
-        }
-        ESP_LOGI(TAG, "Video decoder task stack configured: 16384 bytes (PSRAM)");
 
         if (esp_player_set_event_cb(
                 player, media_video_player_event, &event_ctx) != ESP_PLAYER_ERR_OK) {
