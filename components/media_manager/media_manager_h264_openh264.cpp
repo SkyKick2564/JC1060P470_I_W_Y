@@ -17,7 +17,7 @@ typedef struct {
     ISVCDecoder *decoder;
     uint8_t *annexb;
     uint8_t *pending_frame;
-    uint32_t pending_size;
+    uint32_t pending_size;\n    uint32_t pending_consumed;
     uint32_t width;
     uint32_t height;
     int frame_type;
@@ -242,7 +242,7 @@ static esp_vc_err_t media_openh264_decode(
 
             heap_caps_free(ctx->pending_frame);
             ctx->pending_frame = frame;
-            ctx->pending_size = required;
+            ctx->pending_size = required;\n            ctx->pending_consumed = input->size;
             ctx->width = width;
             ctx->height = height;
             ctx->pending_pts = input->pts;
