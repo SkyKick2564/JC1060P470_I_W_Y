@@ -159,7 +159,20 @@ static void media_h264_copy_output(
     output->pts = decoder->decoded.pts;
     output->dts = decoder->decoded.dts;
     output->decoded_size = decoder->decoded.out_size;
-    output->frame_type = ESP_VIDEO_CODEC_FRAME_TYPE_NONE;
+    switch (decoder->decoded.frame_type) {
+    case ESP_H264_FRAME_TYPE_IDR:
+        output->frame_type = ESP_VIDEO_CODEC_FRAME_TYPE_IDR;
+        break;
+    case ESP_H264_FRAME_TYPE_I:
+        output->frame_type = ESP_VIDEO_CODEC_FRAME_TYPE_I;
+        break;
+    case ESP_H264_FRAME_TYPE_P:
+        output->frame_type = ESP_VIDEO_CODEC_FRAME_TYPE_P;
+        break;
+    default:
+        output->frame_type = ESP_VIDEO_CODEC_FRAME_TYPE_NONE;
+        break;
+    }
     decoder->decoded.out_size = 0;
 }
 
@@ -206,6 +219,7 @@ static esp_vc_err_t media_h264_decode(
 
     esp_h264_dec_in_frame_t h264_input = {
         .pts = input->pts,
+        .dts = input->dts,
         .raw_data = {
             .buffer = (uint8_t *)decode_data,
             .len = input->size,
