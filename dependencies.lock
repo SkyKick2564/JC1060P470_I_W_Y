@@ -190,7 +190,7 @@ dependencies:
       require: private
       version: '>=4.4'
     source:
-      registry_url: https://components.espressif.com
+      registry_url: https://components.espressif.com/
       type: service
     targets:
     - esp32s3
@@ -707,11 +707,11 @@ dependencies:
       type: service
     version: 9.5.0
 direct_dependencies:
-- espressif/esp_h264
 - espressif/cjson
 - espressif/esp_audio_codec
 - espressif/esp_audio_render
 - espressif/esp_extractor
+- espressif/esp_h264
 - espressif/esp_hosted
 - espressif/esp_lcd_jd9165
 - espressif/esp_lcd_touch_gt911
@@ -725,6 +725,6 @@ direct_dependencies:
 - espressif/media_lib_sal
 - guition-jc/guition_boards
 - lvgl/lvgl
-manifest_hash: 10a7f1c25e9441897e25af5e06b660bfc8494e0467e73b7f9ff5cb5fd2e3b50a
+manifest_hash: dd9d5277a8eb74631a689620e953915735179f5f3870d204be9513f7fd83eb1f
 target: esp32p4
 version: 3.0.0
