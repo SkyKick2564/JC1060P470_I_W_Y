@@ -3,7 +3,6 @@ idf_component_register(
         "media_manager.c"
         "media_manager_video_backend.c"
         "media_manager_video_player.c"
-        "media_manager_h264_openh264.cpp"
     INCLUDE_DIRS
         "include"
     PRIV_INCLUDE_DIRS
@@ -18,7 +17,6 @@ idf_component_register(
         esp_extractor
         esp_video_codec
         esp_h264
-        openh264
         media_lib_sal
         gmf_core
         gmf_audio
