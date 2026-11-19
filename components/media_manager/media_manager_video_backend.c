@@ -26,7 +26,8 @@ typedef struct {
 typedef struct {
     lv_obj_t *widget;
     const void *previous_src;
-    uint8_t *buffer;
+    uint8_t *buffers[2];
+    int display_buffer_index;
     esp_video_render_fb_t fb;
     lv_image_dsc_t image;
     EventGroupHandle_t events;
@@ -94,6 +95,7 @@ static esp_video_render_err_t video_backend_init(
     ctx->previous_src = lv_image_get_src(ctx->widget);
     lvgl_port_unlock();
 
+    ctx->display_buffer_index = -1;
     ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB565;
     ctx->fb.info.width = MEDIA_MANAGER_VIDEO_MAX_WIDTH;
     ctx->fb.info.height = MEDIA_MANAGER_VIDEO_MAX_HEIGHT;
@@ -140,23 +142,26 @@ static esp_video_render_err_t video_backend_get_fb(
     }
 
     video_backend_context_t *ctx = backend;
-    if (ctx->buffer == NULL) {
-        ctx->buffer = heap_caps_aligned_calloc(
-            64, 1, ctx->fb.size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (ctx->buffer == NULL) {
-            ctx->buffer = heap_caps_aligned_calloc(
-                64, 1, ctx->fb.size, MALLOC_CAP_8BIT);
+    if (ctx->buffers[0] == NULL) {
+        for (int i = 0; i < 2; i++) {
+            ctx->buffers[i] = heap_caps_aligned_calloc(
+                64, 1, ctx->fb.size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (ctx->buffers[i] == NULL) {
+                ESP_LOGE(TAG, "Cannot allocate double video frame buffers (%u bytes each)",
+                         (unsigned)ctx->fb.size);
+                for (int j = 0; j < 2; j++) {
+                    if (ctx->buffers[j] != NULL) {
+                        heap_caps_free(ctx->buffers[j]);
+                        ctx->buffers[j] = NULL;
+                    }
+                }
+                return ESP_VIDEO_RENDER_ERR_NO_MEM;
+            }
         }
-        if (ctx->buffer == NULL) {
-            ESP_LOGE(TAG, "Cannot allocate %u-byte video frame buffer",
-                     (unsigned)ctx->fb.size);
-            return ESP_VIDEO_RENDER_ERR_NO_MEM;
-        }
-
-        ctx->fb.data = ctx->buffer;
     }
 
     *fb = ctx->fb;
+    fb->data = ctx->buffers[ctx->display_buffer_index == 0 ? 1 : 0];
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
@@ -165,15 +170,18 @@ static esp_video_render_err_t video_backend_lock_fb(
     esp_video_render_fb_t *fb,
     bool lock)
 {
-    (void)backend;
     (void)fb;
+    if (backend == NULL) {
+        return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
+    }
 
+    video_backend_context_t *ctx = backend;
     if (lock) {
-        return lvgl_port_lock(0) ?
+        return xSemaphoreTake(ctx->lock, pdMS_TO_TICKS(1000)) == pdTRUE ?
             ESP_VIDEO_RENDER_ERR_OK : ESP_VIDEO_RENDER_ERR_TIMEOUT;
     }
 
-    lvgl_port_unlock();
+    xSemaphoreGive(ctx->lock);
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
@@ -213,7 +221,23 @@ static esp_video_render_err_t video_backend_write_fb(
         return ESP_VIDEO_RENDER_ERR_NOT_SUPPORTED;
     }
 
-    if (!lvgl_port_lock(0)) {
+    int display_index = -1;
+    for (int i = 0; i < 2; i++) {
+        if (fb->data == ctx->buffers[i]) {
+            display_index = i;
+            break;
+        }
+    }
+    if (display_index < 0) {
+        ESP_LOGE(TAG, "Renderer returned an unknown frame buffer");
+        return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
+    }
+
+    /*
+     * Wait briefly for LVGL rather than dropping a video frame whenever
+     * the LVGL task is processing touch input or refreshing the display.
+     */
+    if (!lvgl_port_lock(pdMS_TO_TICKS(100))) {
         return ESP_VIDEO_RENDER_ERR_TIMEOUT;
     }
 
@@ -235,11 +259,8 @@ static esp_video_render_err_t video_backend_write_fb(
     ctx->image.header.h = ctx->source_height;
     ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
     ctx->image.data_size = ctx->fb.size;
-    ctx->image.data = ctx->buffer;
-
-    if (fb->data != ctx->buffer) {
-        memcpy(ctx->buffer, fb->data, ctx->fb.size);
-    }
+    ctx->image.data = ctx->buffers[display_index];
+    ctx->display_buffer_index = display_index;
 
     if (!ctx->source_bound) {
         lv_image_set_src(ctx->widget, &ctx->image);
@@ -275,8 +296,10 @@ static esp_video_render_err_t video_backend_deinit(
         lvgl_port_unlock();
     }
 
-    if (ctx->buffer != NULL) {
-        heap_caps_free(ctx->buffer);
+    for (int i = 0; i < 2; i++) {
+        if (ctx->buffers[i] != NULL) {
+            heap_caps_free(ctx->buffers[i]);
+        }
     }
     vEventGroupDelete(ctx->events);
     vSemaphoreDelete(ctx->lock);
