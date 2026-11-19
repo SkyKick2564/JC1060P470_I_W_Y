@@ -706,7 +706,6 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 9.5.0
-
 direct_dependencies:
 - espressif/cjson
 - espressif/esp_audio_codec
@@ -726,5 +725,6 @@ direct_dependencies:
 - espressif/media_lib_sal
 - guition-jc/guition_boards
 - lvgl/lvgl
+manifest_hash: dd9d5277a8eb74631a689620e953915735179f5f3870d204be9513f7fd83eb1f
 target: esp32p4
 version: 3.0.0
