@@ -315,6 +315,7 @@ esp_err_t media_manager_deinit(void)
     vSemaphoreDelete(s_lock);
     s_lock = NULL;
     s_audio_dac = NULL;
+    s_codec_opened = false;
     s_event_callback = NULL;
     s_event_user_ctx = NULL;
     s_current_path[0] = '\0';

@@ -191,6 +191,7 @@ static esp_video_render_err_t video_backend_write_fb(
 
     video_backend_context_t *ctx = backend;
     if (fb->size != ctx->fb.size ||
+        fb->info.format != ESP_VIDEO_RENDER_FORMAT_RGB565 ||
         fb->info.width != ctx->fb.info.width ||
         fb->info.height != ctx->fb.info.height) {
         return ESP_VIDEO_RENDER_ERR_INVALID_ARG;

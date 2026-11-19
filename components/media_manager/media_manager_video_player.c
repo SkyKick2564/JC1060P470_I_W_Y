@@ -198,6 +198,11 @@ static esp_err_t media_video_set_source_info(esp_player_handle_t player)
         esp_player_err_t player_err = esp_player_get_track_num(
             player, ESP_PLAYER_TRACK_TYPE_VIDEO, &track_count);
 
+        if (player_err == ESP_PLAYER_ERR_OK && track_count == 0) {
+            (void)media_manager_video_backend_set_source_info(0, 0);
+            return ESP_OK;
+        }
+
         if (player_err == ESP_PLAYER_ERR_OK && track_count > 0) {
             esp_player_track_info_t track_info = {0};
             player_err = esp_player_get_track_info(
