@@ -20,6 +20,8 @@ idf_component_register(
         gmf_core
         gmf_audio
         gmf_video
+        esp_audio_effects
+        esp_image_effects
         lvgl
         esp_lvgl_port
         freertos
