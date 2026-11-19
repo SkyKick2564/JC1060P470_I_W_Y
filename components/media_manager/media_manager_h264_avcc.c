@@ -234,7 +234,7 @@ static esp_vc_err_t media_h264_decode(
     memset(&decoder->decoded, 0, sizeof(decoder->decoded));
     ret = (esp_vc_err_t)esp_h264_dec_process(
         decoder->decoder, &h264_input, &decoder->decoded);
-    if (ret != ESP_H264_ERR_OK) {
+    if ((int)ret != (int)ESP_H264_ERR_OK) {
         ESP_LOGE(TAG, "TinyH264 decode failed: %d", (int)ret);
         heap_caps_free(decoder->annexb);
         decoder->annexb = NULL;
