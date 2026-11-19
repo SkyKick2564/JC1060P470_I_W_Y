@@ -1,4 +1,5 @@
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,7 @@
 #include "freertos/semphr.h"
 
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
 #include "sdkconfig.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -246,9 +248,28 @@ static esp_video_render_err_t video_backend_write_fb(
      * discarding decoded video frames. The lock wait is bounded so a genuine
      * LVGL stall is reported to the caller instead of deadlocking playback.
      */
+    const int64_t lock_start_us = esp_timer_get_time();
     if (!lvgl_port_lock(pdMS_TO_TICKS(100))) {
-        ESP_LOGW(TAG, "LVGL port lock timed out while publishing video frame");
+        ESP_LOGW(TAG, "LVGL lock timeout after %" PRId64 " us",
+                 esp_timer_get_time() - lock_start_us);
         return ESP_VIDEO_RENDER_ERR_TIMEOUT;
+    }
+    const uint32_t lock_wait_us =
+        (uint32_t)(esp_timer_get_time() - lock_start_us);
+    static uint32_t publish_count;
+    static uint32_t publish_lock_max_us;
+    static uint64_t publish_lock_total_us;
+    publish_count++;
+    publish_lock_total_us += lock_wait_us;
+    if (lock_wait_us > publish_lock_max_us) {
+        publish_lock_max_us = lock_wait_us;
+    }
+    if ((publish_count % 25U) == 0U) {
+        ESP_LOGI(TAG, "LVGL publish lock: 25 frames avg=%u us max=%u us",
+                 (unsigned)(publish_lock_total_us / 25U),
+                 (unsigned)publish_lock_max_us);
+        publish_lock_total_us = 0;
+        publish_lock_max_us = 0;
     }
 
     if (!lv_obj_is_valid(ctx->widget) ||
