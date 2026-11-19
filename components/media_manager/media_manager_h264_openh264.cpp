@@ -377,13 +377,24 @@ static esp_vc_err_t media_openh264_decode(
 
             uint32_t nal_start = src_offset + prefix_size;
             uint32_t nal_end = nal_start;
-            while (nal_end + 3 < input->size &&
-                   !(input->data[nal_end] == 0 && input->data[nal_end + 1] == 0 &&
-                     (input->data[nal_end + 2] == 1 ||
-                      (input->data[nal_end + 2] == 0 && input->data[nal_end + 3] == 1)))) {
+            while (nal_end + 2 < input->size) {
+                bool next_start_code =
+                    input->data[nal_end] == 0 &&
+                    input->data[nal_end + 1] == 0 &&
+                    input->data[nal_end + 2] == 1;
+                if (!next_start_code && nal_end + 3 < input->size) {
+                    next_start_code =
+                        input->data[nal_end] == 0 &&
+                        input->data[nal_end + 1] == 0 &&
+                        input->data[nal_end + 2] == 0 &&
+                        input->data[nal_end + 3] == 1;
+                }
+                if (next_start_code) {
+                    break;
+                }
                 nal_end++;
             }
-            if (nal_end + 3 >= input->size) {
+            if (nal_end + 2 >= input->size) {
                 nal_end = input->size;
             }
             if (nal_end <= nal_start) {
