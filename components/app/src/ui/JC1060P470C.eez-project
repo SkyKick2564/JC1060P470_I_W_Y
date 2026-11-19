@@ -1740,7 +1740,7 @@
                           "pivotY": 0,
                           "zoom": 256,
                           "angle": 0,
-                          "innerAlign": "CENTER",
+                          "innerAlign": "STRETCH",
                           "sizeMode": "VIRTUAL",
                           "value": 0,
                           "valueType": "literal",
