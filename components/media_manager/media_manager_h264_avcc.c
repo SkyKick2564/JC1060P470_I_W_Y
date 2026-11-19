@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "esp_video_dec.h"
 #include "esp_video_dec_reg.h"
 #include "esp_video_dec_h264.h"
@@ -124,8 +125,12 @@ static esp_vc_err_t media_h264_make_annexb(
         return ESP_VC_ERR_WRONG_DATA;
     }
 
-    free(decoder->annexb);
-    decoder->annexb = malloc(input_size);
+    heap_caps_free(decoder->annexb);
+    decoder->annexb = heap_caps_malloc(
+        input_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (decoder->annexb == NULL) {
+        decoder->annexb = heap_caps_malloc(input_size, MALLOC_CAP_8BIT);
+    }
     if (decoder->annexb == NULL) {
         return ESP_VC_ERR_NO_MEMORY;
     }
@@ -196,7 +201,7 @@ static esp_vc_err_t media_h264_decode(
         media_h264_copy_output(decoder, output);
         input->consumed = decoder->last_consumed;
         decoder->last_input = NULL;
-        free(decoder->annexb);
+        heap_caps_free(decoder->annexb);
         decoder->annexb = NULL;
         return ESP_VC_ERR_OK;
     }
@@ -212,7 +217,7 @@ static esp_vc_err_t media_h264_decode(
     if (ret != ESP_VC_ERR_OK) {
         ESP_LOGE(TAG, "Invalid H.264 packet framing (size=%u): %d",
                  (unsigned)input->size, (int)ret);
-        free(decoder->annexb);
+        heap_caps_free(decoder->annexb);
         decoder->annexb = NULL;
         return ret;
     }
@@ -231,7 +236,7 @@ static esp_vc_err_t media_h264_decode(
         decoder->decoder, &h264_input, &decoder->decoded);
     if (ret != ESP_H264_ERR_OK) {
         ESP_LOGE(TAG, "TinyH264 decode failed: %d", (int)ret);
-        free(decoder->annexb);
+        heap_caps_free(decoder->annexb);
         decoder->annexb = NULL;
         return ESP_VC_ERR_FAIL;
     }
@@ -249,7 +254,7 @@ static esp_vc_err_t media_h264_decode(
         output->decoded_size = 0;
     }
 
-    free(decoder->annexb);
+    heap_caps_free(decoder->annexb);
     decoder->annexb = NULL;
     return ESP_VC_ERR_OK;
 }
@@ -296,7 +301,7 @@ static esp_vc_err_t media_h264_close(esp_video_dec_handle_t handle)
         return ESP_VC_ERR_INVALID_ARG;
     }
 
-    free(decoder->annexb);
+    heap_caps_free(decoder->annexb);
     decoder->annexb = NULL;
     if (decoder->decoder != NULL) {
         esp_h264_dec_close(decoder->decoder);
