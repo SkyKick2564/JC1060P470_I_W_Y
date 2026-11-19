@@ -1,3 +1,5 @@
+#include "media_manager_h264_openh264.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
