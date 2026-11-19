@@ -114,7 +114,9 @@ esp_err_t app_init(void)
     ESP_LOGI(TAG, "LCD subtype: %s", lcd_cfg->sub_type);
 
     /* Initialize LVGL port */
-    const lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    /* Keep LVGL rendering on core 1 so CPU-bound media decode can run on core 0. */
+    lvgl_cfg.task_affinity = 1;
     err = lvgl_port_init(&lvgl_cfg);
     if(err != ESP_OK)
     {
