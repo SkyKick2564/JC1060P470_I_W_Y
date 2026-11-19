@@ -8,6 +8,7 @@
 #include "freertos/semphr.h"
 
 #include "esp_heap_caps.h"
+#include "sdkconfig.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "esp_video_render_backend.h"
@@ -18,6 +19,9 @@
 #define TAG "MEDIA_VIDEO_BACKEND"
 
 #define MEDIA_VIDEO_SOURCE_INFO_READY BIT(0)
+
+/* PPA output buffers in PSRAM must satisfy both L1 and L2 cache alignment. */
+#define MEDIA_VIDEO_PPA_BUFFER_ALIGNMENT CONFIG_CACHE_L2_CACHE_LINE_SIZE
 
 typedef struct {
     lv_obj_t *widget;
@@ -145,7 +149,8 @@ static esp_video_render_err_t video_backend_get_fb(
     if (ctx->buffers[0] == NULL) {
         for (int i = 0; i < 2; i++) {
             ctx->buffers[i] = heap_caps_aligned_calloc(
-                64, 1, ctx->fb.size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                MEDIA_VIDEO_PPA_BUFFER_ALIGNMENT, 1, ctx->fb.size,
+                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
             if (ctx->buffers[i] == NULL) {
                 ESP_LOGE(TAG, "Cannot allocate double video frame buffers (%u bytes each)",
                          (unsigned)ctx->fb.size);
