@@ -67,11 +67,12 @@ esp_err_t media_manager_register_event_callback(
 );
 
 /**
- * @brief Set the EEZ/LVGL Image widget that will display decoded video frames.
+ * @brief Optionally set the EEZ/LVGL Image widget for decoded video frames.
  *
  * Call after app_init()/ui_init(), when the EEZ Image widget exists. Pass NULL
- * to detach the target. The widget must remain alive until video playback has
- * stopped and the video renderer is destroyed.
+ * to detach the target. Without a registered target, video containers are
+ * played in audio-only mode. The widget must remain alive until video playback
+ * has stopped and the video renderer is destroyed.
  *
  * Configure the EEZ Image widget's image alignment to Stretch if the video
  * should fill the widget while preserving the widget's layout and position.
@@ -83,8 +84,9 @@ esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget);
  * @brief Queue a file from the SD card for playback and return immediately.
  *
  * Audio: .wav and .mp3.
- * Video containers: .mp4, .avi and .ts (audio/video tracks are synchronized).
- * Video playback requires a target registered with media_manager_set_video_widget().
+ * Video containers: .mp4, .avi and .ts. With a registered video widget,
+ * audio/video tracks are played together; without one, only the audio track
+ * is played.
  * Example: "/sdcard/media/movie.mp4".
  */
 esp_err_t media_manager_play_file(const char *path);

@@ -324,6 +324,17 @@ esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget)
     return ESP_OK;
 }
 
+bool media_manager_video_backend_has_target(void)
+{
+    bool has_target;
+
+    portENTER_CRITICAL(&s_target_mux);
+    has_target = s_target_widget != NULL;
+    portEXIT_CRITICAL(&s_target_mux);
+
+    return has_target;
+}
+
 esp_err_t media_manager_video_backend_set_source_info(
     uint16_t width,
     uint16_t height)

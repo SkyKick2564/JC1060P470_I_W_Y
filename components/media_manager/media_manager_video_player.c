@@ -171,6 +171,7 @@ static esp_player_err_t media_video_player_event(
         xEventGroupSetBits(ctx->events, VIDEO_EVENT_PAUSED);
         break;
     case ESP_PLAYER_EVENT_TRACK_INFO_PARSED:
+        break;
     case ESP_PLAYER_EVENT_VIDEO_INFO_PARSED:
         xEventGroupSetBits(ctx->events, VIDEO_EVENT_INFO_PARSED);
         break;
@@ -249,6 +250,7 @@ esp_err_t media_manager_video_play_file(
     bool codec_opened = false;
     bool media_defaults_registered = false;
     bool player_started = false;
+    bool video_enabled = false;
     bool started_event_sent = false;
     bool finished = false;
 
@@ -326,29 +328,35 @@ esp_err_t media_manager_video_play_file(
             break;
         }
 
-        result = media_video_register_video_pool(&video_pool);
-        if (result != ESP_OK) {
-            break;
-        }
+        video_enabled = media_manager_video_backend_has_target();
+        if (video_enabled) {
+            result = media_video_register_video_pool(&video_pool);
+            if (result != ESP_OK) {
+                break;
+            }
 
-        esp_video_render_cfg_t video_cfg = {
-            .pool = video_pool,
-            .fps = VIDEO_RENDER_FPS,
-        };
-        if (esp_video_render_create(&video_cfg, &video_render) !=
-            ESP_VIDEO_RENDER_ERR_OK) {
-            result = ESP_FAIL;
-            break;
-        }
+            esp_video_render_cfg_t video_cfg = {
+                .pool = video_pool,
+                .fps = VIDEO_RENDER_FPS,
+            };
+            if (esp_video_render_create(&video_cfg, &video_render) !=
+                ESP_VIDEO_RENDER_ERR_OK) {
+                result = ESP_FAIL;
+                break;
+            }
 
-        result = media_manager_video_backend_attach(video_render);
-        if (result != ESP_OK) {
-            break;
+            result = media_manager_video_backend_attach(video_render);
+            if (result != ESP_OK) {
+                break;
+            }
+            ESP_LOGI(TAG, "Video output enabled; EEZ Image target is ready");
+        } else {
+            ESP_LOGI(TAG, "No EEZ Image target; playing MP4 audio track only");
         }
 
         esp_player_config_t player_cfg = ESP_PLAYER_CONFIG_DEFAULT();
         player_cfg.audio_render_hd = audio_stream;
-        player_cfg.video_render_hd = video_render;
+        player_cfg.video_render_hd = video_enabled ? video_render : NULL;
         if (esp_player_init(&player_cfg, &player) != ESP_PLAYER_ERR_OK) {
             result = ESP_FAIL;
             break;
@@ -368,7 +376,7 @@ esp_err_t media_manager_video_play_file(
 
         esp_player_data_src_t source = {
             .url = url,
-            .av_mask = ESP_PLAYER_MASK_AV,
+            .av_mask = video_enabled ? ESP_PLAYER_MASK_AV : ESP_PLAYER_MASK_AUDIO,
             .sync_mode = ESP_PLAYER_SYNC_MODE_AUDIO,
         };
         if (esp_player_set_data_src(player, &source) != ESP_PLAYER_ERR_OK ||

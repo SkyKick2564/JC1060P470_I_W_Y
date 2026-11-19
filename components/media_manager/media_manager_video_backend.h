@@ -19,6 +19,7 @@ typedef void (*media_manager_video_event_callback_t)(
     void *user_ctx
 );
 
+bool media_manager_video_backend_has_target(void);
 esp_err_t media_manager_video_backend_attach(esp_video_render_handle_t render);
 esp_err_t media_manager_video_backend_set_source_info(uint16_t width, uint16_t height);
 
