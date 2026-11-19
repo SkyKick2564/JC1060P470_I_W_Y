@@ -16,7 +16,7 @@
 #include "esp_extractor_defaults.h"
 #include "esp_audio_dec_default.h"
 #include "esp_video_dec_default.h"
-#include "media_manager_h264_avcc.h"
+#include "media_manager_h264_openh264.h"
 #include "media_lib_adapter.h"
 
 #include "esp_gmf_pool.h"
@@ -318,9 +318,87 @@ static esp_err_t media_video_set_source_info(esp_player_handle_t player)
     return ESP_FAIL;
 }
 
-static void media_video_register_defaults(void)
+static esp_err_t media_video_load_mp4_avcc(const char *path)
 {
-    media_lib_add_default_adapter();
+    if (path == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) {
+        ESP_LOGW(TAG, "Could not open media file to inspect H.264 configuration");
+        return ESP_FAIL;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return ESP_FAIL;
+    }
+    long file_size = ftell(file);
+    if (file_size < 16 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return ESP_FAIL;
+    }
+
+    uint8_t buffer[4096 + 8];
+    size_t carry = 0;
+    long scanned = 0;
+    esp_err_t result = ESP_ERR_NOT_FOUND;
+
+    while (scanned < file_size) {
+        size_t count = fread(buffer + carry, 1, sizeof(buffer) - carry - 8, file);
+        if (count == 0) {
+            break;
+        }
+        size_t total = carry + count;
+        for (size_t i = 4; i + 4 <= total; i++) {
+            if (memcmp(buffer + i, "avcC", 4) != 0) {
+                continue;
+            }
+
+            uint32_t box_size = ((uint32_t)buffer[i - 4] << 24) |
+                                ((uint32_t)buffer[i - 3] << 16) |
+                                ((uint32_t)buffer[i - 2] << 8) |
+                                buffer[i - 1];
+            if (box_size < 15 || box_size > 65536) {
+                continue;
+            }
+
+            uint8_t *record = malloc(box_size - 8);
+            if (record == NULL) {
+                result = ESP_ERR_NO_MEM;
+                break;
+            }
+
+            long box_offset = scanned - (long)carry + (long)i - 4;
+            if (fseek(file, box_offset + 8, SEEK_SET) == 0 &&
+                fread(record, 1, box_size - 8, file) == box_size - 8 &&
+                record[0] == 1) {
+                result = media_manager_h264_openh264_set_avcc(record, box_size - 8);
+                free(record);
+                if (result == ESP_OK) {
+                    ESP_LOGI(TAG, "Loaded H.264 avcC configuration (%u bytes)",
+                             (unsigned)(box_size - 8));
+                }
+                fclose(file);
+                return result;
+            }
+            free(record);
+            (void)fseek(file, scanned + (long)total - (long)carry, SEEK_SET);
+        }
+
+        scanned += (long)count;
+        carry = total < 8 ? total : 8;
+        memmove(buffer, buffer + total - carry, carry);
+    }
+
+    fclose(file);
+    return result;
+}
+
+static void media_video_register_defaults(const char *path)
+{
+    (void)media_video_load_mp4_avcc(path);\n    media_lib_add_default_adapter();
     esp_extractor_register_default();
     esp_audio_dec_register_default();
     esp_video_dec_register_default();
@@ -333,12 +411,12 @@ static void media_video_register_defaults(void)
         return;
     }
 
-    esp_vc_err_t register_ret = media_manager_h264_avcc_register();
+    esp_vc_err_t register_ret = media_manager_h264_openh264_register();
     if (register_ret != ESP_VC_ERR_OK) {
-        ESP_LOGE(TAG, "Could not register AVCC-aware H.264 decoder: %d",
+        ESP_LOGE(TAG, "Could not register OpenH264 decoder: %d",
                  (int)register_ret);
     } else {
-        ESP_LOGI(TAG, "AVCC-to-Annex-B H.264 decoder registered");
+        ESP_LOGI(TAG, "OpenH264 Main/High profile decoder registered");
     }
 #endif
 }
@@ -395,7 +473,7 @@ esp_err_t media_manager_video_play_file(
     event_ctx.events = events;
 
     do {
-        media_video_register_defaults();
+        media_video_register_defaults(path);
         media_defaults_registered = true;
 
         esp_codec_dev_sample_info_t output_info = {
