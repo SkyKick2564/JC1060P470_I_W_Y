@@ -390,7 +390,7 @@ void app_main(void)
         return;
     }
 
-    err = media_manager_play_file("/sdcard/test.mp3");
+    err = media_manager_play_file("/sdcard/test.mp4");
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Play file failed: %s",
                 esp_err_to_name(err));
