@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_video_dec.h"
@@ -37,9 +40,10 @@ static const esp_video_codec_pixel_fmt_t s_output_formats[] = {
 
 static void *media_openh264_alloc(size_t size)
 {
-    void *ptr = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    void *ptr = heap_caps_aligned_alloc(
+        64, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (ptr == NULL) {
-        ptr = heap_caps_malloc(size, MALLOC_CAP_8BIT);
+        ptr = heap_caps_aligned_alloc(64, size, MALLOC_CAP_8BIT);
     }
     return ptr;
 }
@@ -124,8 +128,9 @@ static esp_vc_err_t media_openh264_get_caps(esp_video_dec_caps_t *caps)
     }
 
     memset(caps, 0, sizeof(*caps));
-    caps->in_frame_align = 1;
-    caps->out_frame_align = 1;
+    /* PPA and cache-maintenance paths require cache-line aligned frames. */
+    caps->in_frame_align = 64;
+    caps->out_frame_align = 64;
     caps->out_fmts = s_output_formats;
     caps->out_fmt_num = sizeof(s_output_formats) / sizeof(s_output_formats[0]);
     return ESP_VC_ERR_OK;
@@ -400,6 +405,13 @@ static esp_vc_err_t media_openh264_decode(
     input->consumed = input->size;
     heap_caps_free(ctx->annexb);
     ctx->annexb = NULL;
+
+    /*
+     * OpenH264 is a CPU-bound software decoder. Yield for one tick after
+     * each compressed access unit so the idle task, LVGL and system services
+     * can run instead of starving CPU 0 during continuous playback.
+     */
+    vTaskDelay(1);
 
     if (!produced) {
         output->decoded_size = 0;
