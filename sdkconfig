@@ -4430,6 +4430,17 @@ CONFIG_AUDIO_ENCODER_G722_SUPPORT=y
 # end of Audio Codec Configuration
 
 #
+# Espressif Audio Render Configuration
+#
+# default:
+CONFIG_ESP_AUDIO_RENDER_MIXER_THREAD_STACK_SIZE=4096
+# default:
+CONFIG_ESP_AUDIO_RENDER_MIXER_THREAD_CORE_ID=0
+# default:
+CONFIG_ESP_AUDIO_RENDER_MIXER_THREAD_PRIORITY=20
+# end of Espressif Audio Render Configuration
+
+#
 # Espressif Camera Sensors Configurations
 #
 
@@ -4608,6 +4619,33 @@ CONFIG_CODEC_DUMMY_SUPPORT=y
 # default:
 # CONFIG_CODEC_DATA_ADC_SUPPORT is not set
 # end of Audio Codec Device Configuration
+
+#
+# Espressif Extractor Configuration
+#
+# default:
+CONFIG_EXTRACTOR_CUSTOM_SUPPORT=y
+# default:
+CONFIG_WAV_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_MP4_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_TS_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_OGG_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_AVI_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_AUDIO_ES_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_CAF_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_FLV_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_MJPEG_EXTRACTOR_SUPPORT=y
+# default:
+CONFIG_EXTRACTOR_HELPER_FILE_IO_CACHE_SIZE=1024
+# end of Espressif Extractor Configuration
 
 #
 # ESP H264 Configuration
@@ -5102,6 +5140,46 @@ CONFIG_ESP_LCD_TOUCH_MAX_BUTTONS=1
 # end of ESP LVGL PORT
 
 #
+# ESP_Muxer Configuration
+#
+# default:
+CONFIG_ESP_MUXER_MP4_SUPPORT=y
+# default:
+CONFIG_ESP_MUXER_TS_SUPPORT=y
+# default:
+CONFIG_ESP_MUXER_OGG_SUPPORT=y
+# default:
+CONFIG_ESP_MUXER_WAV_SUPPORT=y
+# default:
+CONFIG_ESP_MUXER_FLV_SUPPORT=y
+# default:
+CONFIG_ESP_MUXER_CAF_SUPPORT=y
+# default:
+CONFIG_ESP_MUXER_AVI_SUPPORT=y
+# end of ESP_Muxer Configuration
+
+#
+# ESP Player
+#
+# default:
+CONFIG_ESP_PLAYER_ENABLE_AUDIO=y
+# default:
+CONFIG_ESP_PLAYER_ENABLE_VIDEO=y
+
+#
+# At least one of the two options above must stay enabled for a usable player.
+#
+
+#
+# Input IO sources
+#
+CONFIG_ESP_PLAYER_ENABLE_FILE_IO=y
+# CONFIG_ESP_PLAYER_ENABLE_HTTP_IO is not set
+# CONFIG_ESP_PLAYER_ENABLE_HLS_IO is not set
+# end of Input IO sources
+# end of ESP Player
+
+#
 # Espressif SCCB Configurations
 #
 # default:
@@ -5169,6 +5247,71 @@ CONFIG_ESP_VIDEO_ENABLE_SWAP_BYTE_RISCV=y
 # CONFIG_ESP_VIDEO_ENABLE_SWAP_BYTE_BITSCRAMBLER is not set
 # end of Video Data Preprocessing
 # end of Espressif Video Configuration
+
+#
+# Video Codec Configuration
+#
+
+#
+# Video Decoder Configuration
+#
+# default:
+CONFIG_VIDEO_DECODER_SW_H264_SUPPORT=y
+# default:
+CONFIG_VIDEO_DECODER_SW_MJPEG_SUPPORT=y
+# default:
+CONFIG_VIDEO_DECODER_HW_MJPEG_SUPPORT=y
+# end of Video Decoder Configuration
+
+#
+# Video Encoder Configuration
+#
+# default:
+CONFIG_VIDEO_ENCODER_HW_H264_SUPPORT=y
+# default:
+CONFIG_VIDEO_ENCODER_HW_H264_DUAL_SUPPORT=y
+# default:
+CONFIG_VIDEO_ENCODER_SW_H264_SUPPORT=y
+# default:
+CONFIG_VIDEO_ENCODER_HW_MJPEG_SUPPORT=y
+# default:
+CONFIG_VIDEO_ENCODER_SW_MJPEG_SUPPORT=y
+# end of Video Encoder Configuration
+# end of Video Codec Configuration
+
+#
+# Video Render Configuration
+#
+# default:
+# CONFIG_ESP_VIDEO_RENDER_LVGL_BACKEND_SUPPORT is not set
+# default:
+CONFIG_ESP_VIDEO_RENDER_WIDGET_SUPPORT=y
+# default:
+# CONFIG_ESP_VIDEO_RENDER_TEXT_WIDGET_SUPPORT is not set
+# default:
+CONFIG_ESP_VIDEO_RENDER_BLEND_THREAD_STACK_SIZE=20480
+# default:
+CONFIG_ESP_VIDEO_RENDER_BLEND_THREAD_CORE_ID=0
+# default:
+CONFIG_ESP_VIDEO_RENDER_BLEND_THREAD_PRIORITY=8
+# default:
+# CONFIG_VIDEO_RENDER_MEASURE_ENABLE is not set
+# end of Video Render Configuration
+
+#
+# Media Library System Abstraction Layer Configuration
+#
+# default:
+CONFIG_MEDIA_LIB_CRYPT_ENABLE=y
+# default:
+CONFIG_MEDIA_LIB_SOCKET_ENABLE=y
+# default:
+CONFIG_MEDIA_LIB_TLS_ENABLE=y
+# default:
+CONFIG_MEDIA_LIB_NETIF_ENABLE=y
+# default:
+# CONFIG_MEDIA_LIB_MEM_AUTO_TRACE is not set
+# end of Media Library System Abstraction Layer Configuration
 
 #
 # USB-OTG
