@@ -68,11 +68,13 @@ esp_err_t media_manager_register_event_callback(
 /**
  * @brief Set the EEZ/LVGL Image widget that will display decoded video frames.
  *
- * Call after app_init()/ui_init(), when the EEZ Image widget exists and has
- * its final dimensions. Pass NULL to detach the target. The widget must remain
- * alive until video playback has stopped and the video renderer is destroyed.
+ * Call after app_init()/ui_init(), when the EEZ Image widget exists. Pass NULL
+ * to detach the target. The widget must remain alive until video playback has
+ * stopped and the video renderer is destroyed.
  *
- * This only registers the target; it does not create or modify the UI layout.
+ * Configure the EEZ Image widget's image alignment to Stretch if the video
+ * should fill the widget while preserving the widget's layout and position.
+ * This function does not create or modify the UI layout.
  */
 esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget);
 

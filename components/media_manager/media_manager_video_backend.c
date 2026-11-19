@@ -1,8 +1,12 @@
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
+#include "freertos/semphr.h"
+
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -13,10 +17,12 @@
 
 #define TAG "MEDIA_VIDEO_BACKEND"
 
+#define MEDIA_VIDEO_MAX_WIDTH  1280
+#define MEDIA_VIDEO_MAX_HEIGHT 720
+#define MEDIA_VIDEO_SOURCE_INFO_READY BIT(0)
+
 typedef struct {
     lv_obj_t *widget;
-    uint16_t width;
-    uint16_t height;
 } video_target_config_t;
 
 typedef struct {
@@ -25,11 +31,17 @@ typedef struct {
     uint8_t *buffer;
     esp_video_render_fb_t fb;
     lv_image_dsc_t image;
+    EventGroupHandle_t events;
+    SemaphoreHandle_t lock;
+    uint16_t source_width;
+    uint16_t source_height;
+    bool source_info_valid;
     bool source_bound;
 } video_backend_context_t;
 
 static portMUX_TYPE s_target_mux = portMUX_INITIALIZER_UNLOCKED;
-static video_target_config_t s_target;
+static lv_obj_t *s_target_widget;
+static video_backend_context_t *s_active_backend;
 
 static esp_video_render_err_t video_backend_init(
     void *cfg,
@@ -42,7 +54,7 @@ static esp_video_render_err_t video_backend_init(
     }
 
     const video_target_config_t *target = (const video_target_config_t *)cfg;
-    if (target->widget == NULL || target->width == 0 || target->height == 0) {
+    if (target->widget == NULL) {
         return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
     }
 
@@ -51,7 +63,22 @@ static esp_video_render_err_t video_backend_init(
         return ESP_VIDEO_RENDER_ERR_NO_MEM;
     }
 
+    ctx->events = xEventGroupCreate();
+    ctx->lock = xSemaphoreCreateMutex();
+    if (ctx->events == NULL || ctx->lock == NULL) {
+        if (ctx->events != NULL) {
+            vEventGroupDelete(ctx->events);
+        }
+        if (ctx->lock != NULL) {
+            vSemaphoreDelete(ctx->lock);
+        }
+        free(ctx);
+        return ESP_VIDEO_RENDER_ERR_NO_MEM;
+    }
+
     if (!lvgl_port_lock(0)) {
+        vEventGroupDelete(ctx->events);
+        vSemaphoreDelete(ctx->lock);
         free(ctx);
         return ESP_VIDEO_RENDER_ERR_TIMEOUT;
     }
@@ -59,31 +86,29 @@ static esp_video_render_err_t video_backend_init(
     if (!lv_obj_is_valid(target->widget) ||
         !lv_obj_check_type(target->widget, &lv_image_class)) {
         lvgl_port_unlock();
+        vEventGroupDelete(ctx->events);
+        vSemaphoreDelete(ctx->lock);
         free(ctx);
         return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
     }
 
     ctx->widget = target->widget;
     ctx->previous_src = lv_image_get_src(ctx->widget);
-
     lvgl_port_unlock();
 
     ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB565;
-    ctx->fb.info.width = target->width;
-    ctx->fb.info.height = target->height;
-    ctx->fb.size = (uint32_t)target->width * target->height * 2U;
+    ctx->fb.info.width = MEDIA_VIDEO_MAX_WIDTH;
+    ctx->fb.info.height = MEDIA_VIDEO_MAX_HEIGHT;
+    ctx->fb.size = (uint32_t)MEDIA_VIDEO_MAX_WIDTH *
+                   MEDIA_VIDEO_MAX_HEIGHT * 2U;
 
-    ctx->image.header.magic = LV_IMAGE_HEADER_MAGIC;
-    ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
-    ctx->image.header.w = target->width;
-    ctx->image.header.h = target->height;
-    ctx->image.header.stride = (uint16_t)(target->width * 2U);
-    ctx->image.data_size = ctx->fb.size;
-    ctx->image.data = NULL;
+    portENTER_CRITICAL(&s_target_mux);
+    s_active_backend = ctx;
+    portEXIT_CRITICAL(&s_target_mux);
 
     *out_backend = (esp_video_render_backend_handle_t)ctx;
-    ESP_LOGI(TAG, "EEZ Image target attached: %ux%u",
-             (unsigned)target->width, (unsigned)target->height);
+    ESP_LOGI(TAG, "EEZ Image target attached; render canvas %ux%u",
+             MEDIA_VIDEO_MAX_WIDTH, MEDIA_VIDEO_MAX_HEIGHT);
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
@@ -118,10 +143,10 @@ static esp_video_render_err_t video_backend_get_fb(
 
     video_backend_context_t *ctx = backend;
     if (ctx->buffer == NULL) {
-        ctx->buffer = heap_caps_malloc(
-            ctx->fb.size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        ctx->buffer = heap_caps_calloc(
+            1, ctx->fb.size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (ctx->buffer == NULL) {
-            ctx->buffer = heap_caps_malloc(ctx->fb.size, MALLOC_CAP_8BIT);
+            ctx->buffer = heap_caps_calloc(1, ctx->fb.size, MALLOC_CAP_8BIT);
         }
         if (ctx->buffer == NULL) {
             ESP_LOGE(TAG, "Cannot allocate %u-byte video frame buffer",
@@ -130,7 +155,6 @@ static esp_video_render_err_t video_backend_get_fb(
         }
 
         ctx->fb.data = ctx->buffer;
-        ctx->image.data = ctx->buffer;
     }
 
     *fb = ctx->fb;
@@ -174,6 +198,21 @@ static esp_video_render_err_t video_backend_write_fb(
         return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
     }
 
+    EventBits_t bits = xEventGroupWaitBits(
+        ctx->events,
+        MEDIA_VIDEO_SOURCE_INFO_READY,
+        pdFALSE,
+        pdTRUE,
+        pdMS_TO_TICKS(5000));
+    if ((bits & MEDIA_VIDEO_SOURCE_INFO_READY) == 0) {
+        ESP_LOGE(TAG, "Timed out waiting for parsed video dimensions");
+        return ESP_VIDEO_RENDER_ERR_TIMEOUT;
+    }
+
+    if (!ctx->source_info_valid) {
+        return ESP_VIDEO_RENDER_ERR_NOT_SUPPORTED;
+    }
+
     if (!lvgl_port_lock(0)) {
         return ESP_VIDEO_RENDER_ERR_TIMEOUT;
     }
@@ -183,6 +222,20 @@ static esp_video_render_err_t video_backend_write_fb(
         lvgl_port_unlock();
         return ESP_VIDEO_RENDER_ERR_INVALID_STATE;
     }
+
+    /*
+     * The render canvas uses a fixed maximum stride. The image descriptor
+     * exposes only the source video's visible width/height while retaining
+     * that stride, allowing LVGL to scale the source image inside the EEZ
+     * Image widget without changing the widget's layout.
+     */
+    ctx->image.header.magic = LV_IMAGE_HEADER_MAGIC;
+    ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
+    ctx->image.header.w = ctx->source_width;
+    ctx->image.header.h = ctx->source_height;
+    ctx->image.header.stride = MEDIA_VIDEO_MAX_WIDTH * 2U;
+    ctx->image.data_size = ctx->fb.size;
+    ctx->image.data = ctx->buffer;
 
     if (fb->data != ctx->buffer) {
         memcpy(ctx->buffer, fb->data, ctx->fb.size);
@@ -207,6 +260,12 @@ static esp_video_render_err_t video_backend_deinit(
 
     video_backend_context_t *ctx = backend;
 
+    portENTER_CRITICAL(&s_target_mux);
+    if (s_active_backend == ctx) {
+        s_active_backend = NULL;
+    }
+    portEXIT_CRITICAL(&s_target_mux);
+
     if (lvgl_port_lock(0)) {
         if (lv_obj_is_valid(ctx->widget) &&
             lv_obj_check_type(ctx->widget, &lv_image_class) &&
@@ -219,6 +278,8 @@ static esp_video_render_err_t video_backend_deinit(
     if (ctx->buffer != NULL) {
         heap_caps_free(ctx->buffer);
     }
+    vEventGroupDelete(ctx->events);
+    vSemaphoreDelete(ctx->lock);
     free(ctx);
     return ESP_VIDEO_RENDER_ERR_OK;
 }
@@ -235,8 +296,6 @@ static const esp_video_render_backend_ops_t s_video_backend_ops = {
 
 esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget)
 {
-    video_target_config_t target = {0};
-
     if (image_widget != NULL) {
         if (!lvgl_port_lock(0)) {
             return ESP_ERR_TIMEOUT;
@@ -244,28 +303,62 @@ esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget)
 
         bool valid = lv_obj_is_valid(image_widget) &&
                      lv_obj_check_type(image_widget, &lv_image_class);
-        int32_t width = valid ? lv_obj_get_width(image_widget) : 0;
-        int32_t height = valid ? lv_obj_get_height(image_widget) : 0;
 
         lvgl_port_unlock();
 
-        if (!valid || width <= 0 || height <= 0 ||
-            width > UINT16_MAX || height > UINT16_MAX) {
-            ESP_LOGE(TAG, "Video target must be a sized LVGL Image widget");
+        if (!valid) {
+            ESP_LOGE(TAG, "Video target must be an LVGL Image widget");
             return ESP_ERR_INVALID_ARG;
         }
-
-        target.widget = image_widget;
-        target.width = (uint16_t)width;
-        target.height = (uint16_t)height;
     }
 
     portENTER_CRITICAL(&s_target_mux);
-    s_target = target;
+    s_target_widget = image_widget;
     portEXIT_CRITICAL(&s_target_mux);
 
     ESP_LOGI(TAG, image_widget == NULL ?
              "EEZ Image target cleared" : "EEZ Image target registered");
+    return ESP_OK;
+}
+
+esp_err_t media_manager_video_backend_set_source_info(
+    uint16_t width,
+    uint16_t height)
+{
+    video_backend_context_t *ctx;
+
+    portENTER_CRITICAL(&s_target_mux);
+    ctx = s_active_backend;
+    portEXIT_CRITICAL(&s_target_mux);
+
+    if (ctx == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    bool valid = width > 0 && height > 0 &&
+                 width <= MEDIA_VIDEO_MAX_WIDTH &&
+                 height <= MEDIA_VIDEO_MAX_HEIGHT;
+
+    if (xSemaphoreTake(ctx->lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    ctx->source_width = valid ? width : 0;
+    ctx->source_height = valid ? height : 0;
+    ctx->source_info_valid = valid;
+    xSemaphoreGive(ctx->lock);
+
+    xEventGroupSetBits(ctx->events, MEDIA_VIDEO_SOURCE_INFO_READY);
+
+    if (!valid) {
+        ESP_LOGE(TAG, "Video resolution %ux%u exceeds supported maximum %ux%u",
+                 (unsigned)width, (unsigned)height,
+                 MEDIA_VIDEO_MAX_WIDTH, MEDIA_VIDEO_MAX_HEIGHT);
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    ESP_LOGI(TAG, "Video source resolution: %ux%u",
+             (unsigned)width, (unsigned)height);
     return ESP_OK;
 }
 
@@ -275,15 +368,19 @@ esp_err_t media_manager_video_backend_attach(esp_video_render_handle_t render)
         return ESP_ERR_INVALID_ARG;
     }
 
-    video_target_config_t target;
+    lv_obj_t *widget;
     portENTER_CRITICAL(&s_target_mux);
-    target = s_target;
+    widget = s_target_widget;
     portEXIT_CRITICAL(&s_target_mux);
 
-    if (target.widget == NULL || target.width == 0 || target.height == 0) {
+    if (widget == NULL) {
         ESP_LOGE(TAG, "No EEZ Image target registered");
         return ESP_ERR_INVALID_STATE;
     }
+
+    video_target_config_t target = {
+        .widget = widget,
+    };
 
     esp_video_render_backend_cfg_t backend_cfg = {
         .ops = &s_video_backend_ops,
