@@ -479,16 +479,36 @@ static esp_vc_err_t media_openh264_decode(
 
     heap_caps_free(ctx->annexb);
     ctx->annexb = NULL;
-
     input->consumed = input->size;
+
+    /*
+     * Include frame copying in the AU total. The previous instrumentation
+     * logged and reset counters before this copy, so "store" belonged to the
+     * next reporting window and "total" did not actually include it.
+     */
+    int64_t store_start_us = esp_timer_get_time();
+    esp_vc_err_t store_ret = ESP_VC_ERR_NO_MORE_DATA;
+    uint32_t store_elapsed_us = 0;
+    if (info.iBufferStatus == 1) {
+        store_ret = media_openh264_store_frame(
+            ctx, planes, &info, input->pts, input->dts,
+            frame_type_nal, input->size);
+        store_elapsed_us =
+            (uint32_t)(esp_timer_get_time() - store_start_us);
+    }
+
     const uint32_t decode_elapsed_us =
         (uint32_t)(esp_timer_get_time() - decode_start_us);
 
     ctx->timing_access_units++;
     ctx->timing_decode_us += decode_elapsed_us;
     ctx->timing_codec_us += codec_elapsed_us;
+    ctx->timing_store_us += store_elapsed_us;
     if (codec_elapsed_us > ctx->timing_codec_max_us) {
         ctx->timing_codec_max_us = codec_elapsed_us;
+    }
+    if (store_elapsed_us > ctx->timing_store_max_us) {
+        ctx->timing_store_max_us = store_elapsed_us;
     }
     if (decode_elapsed_us > ctx->timing_decode_max_us) {
         ctx->timing_decode_max_us = decode_elapsed_us;
@@ -511,20 +531,11 @@ static esp_vc_err_t media_openh264_decode(
         ctx->timing_store_max_us = 0;
     }
 
+    if (store_ret != ESP_VC_ERR_OK &&
+        store_ret != ESP_VC_ERR_NO_MORE_DATA) {
+        return store_ret;
+    }
     if (info.iBufferStatus == 1) {
-        int64_t store_start_us = esp_timer_get_time();
-        esp_vc_err_t store_ret = media_openh264_store_frame(
-            ctx, planes, &info, input->pts, input->dts,
-            frame_type_nal, input->size);
-        uint32_t store_elapsed_us =
-            (uint32_t)(esp_timer_get_time() - store_start_us);
-        ctx->timing_store_us += store_elapsed_us;
-        if (store_elapsed_us > ctx->timing_store_max_us) {
-            ctx->timing_store_max_us = store_elapsed_us;
-        }
-        if (store_ret != ESP_VC_ERR_OK) {
-            return store_ret;
-        }
         return media_openh264_copy_pending(ctx, input, output);
     }
 
