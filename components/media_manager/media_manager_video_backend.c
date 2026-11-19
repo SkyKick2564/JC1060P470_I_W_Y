@@ -244,14 +244,14 @@ static esp_video_render_err_t video_backend_write_fb(
     }
 
     /*
-     * Keep frame delivery lossless: wait for LVGL rather than silently
-     * discarding decoded video frames. The lock wait is bounded so a genuine
-     * LVGL stall is reported to the caller instead of deadlocking playback.
+     * Keep frame delivery lossless. The renderer owns this framebuffer until
+     * write_fb returns, so waiting for LVGL is the backpressure mechanism:
+     * do not turn a temporarily busy LVGL timer/render pass into a failed
+     * video frame after an arbitrary 100 ms timeout. A zero timeout means
+     * wait indefinitely in esp_lvgl_port.
      */
     const int64_t lock_start_us = esp_timer_get_time();
-    if (!lvgl_port_lock(100)) {
-        ESP_LOGW(TAG, "LVGL lock timeout after %" PRId64 " us",
-                 esp_timer_get_time() - lock_start_us);
+    if (!lvgl_port_lock(0)) {
         return ESP_VIDEO_RENDER_ERR_TIMEOUT;
     }
     const uint32_t lock_wait_us =
