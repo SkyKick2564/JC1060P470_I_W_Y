@@ -14,6 +14,7 @@
 #include "esp_board_manager.h"
 #include "media_manager.h"
 #include "app.h"
+#include "ui.h"
 
 static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
@@ -390,16 +391,7 @@ void app_main(void)
         return;
     }
 
-    err = media_manager_play_file("/sdcard/test.mp4");
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Play file failed: %s",
-                esp_err_to_name(err));
-        return;
-    }
-
-    ESP_LOGI(TAG, "MP3 playback queued");
-
-    /* Initialize application and UI */
+    /* Initialize application and EEZ UI before registering the video target. */
     err = app_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Application initialization failed: %s",
@@ -408,6 +400,31 @@ void app_main(void)
     }
 
     ESP_LOGI(TAG, "Application started");
+
+    /*
+     * Bind the EEZ Image widget created by ui_init().
+     * The Media Manager will use it for decoded MP4 video frames.
+     */
+    if (objects.video_image == NULL) {
+        ESP_LOGE(TAG, "EEZ video_image widget was not created");
+        return;
+    }
+
+    err = media_manager_set_video_widget(objects.video_image);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Register video_image widget failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+
+    err = media_manager_play_file("/sdcard/test.mp4");
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Play MP4 file failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+
+    ESP_LOGI(TAG, "MP4 playback queued with video_image target");
 
     err = network_manager_init(&network);
     if (err != ESP_OK) {
