@@ -18,7 +18,7 @@
 static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
 
-static void on_audio_event(
+static void on_media_event(
     media_manager_event_t event,
     esp_err_t error,
     const char *path,
@@ -28,27 +28,27 @@ static void on_audio_event(
 
     switch (event) {
     case MEDIA_MANAGER_EVENT_STARTED:
-        ESP_LOGI(TAG, "Audio started: %s", path);
+        ESP_LOGI(TAG, "Media started: %s", path);
         break;
 
     case MEDIA_MANAGER_EVENT_PAUSED:
-        ESP_LOGI(TAG, "Audio paused");
+        ESP_LOGI(TAG, "Media paused");
         break;
 
     case MEDIA_MANAGER_EVENT_RESUMED:
-        ESP_LOGI(TAG, "Audio resumed");
+        ESP_LOGI(TAG, "Media resumed");
         break;
 
     case MEDIA_MANAGER_EVENT_STOPPED:
-        ESP_LOGI(TAG, "Audio stopped");
+        ESP_LOGI(TAG, "Media stopped");
         break;
 
     case MEDIA_MANAGER_EVENT_FINISHED:
-        ESP_LOGI(TAG, "Audio playback finished: %s", path);
+        ESP_LOGI(TAG, "Media playback finished: %s", path);
         break;
 
     case MEDIA_MANAGER_EVENT_ERROR:
-        ESP_LOGE(TAG, "Audio playback error: %s (%s)",
+        ESP_LOGE(TAG, "Media playback error: %s (%s)",
                  path, esp_err_to_name(error));
         break;
 
@@ -374,7 +374,7 @@ void app_main(void)
     }
 
     err = media_manager_register_event_callback(
-        on_audio_event,
+        on_media_event,
         NULL
     );
     if (err != ESP_OK) {

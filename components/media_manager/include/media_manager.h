@@ -41,7 +41,7 @@ typedef void (*media_manager_event_callback_t)(
 );
 
 /**
- * @brief Initialize Audio Manager after esp_board_manager_init().
+ * @brief Initialize Media Manager after esp_board_manager_init().
  *
  * Creates the background playback task and obtains the Board Manager
  * "audio_dac" device. WAV and MP3 decoders are provided by esp_audio_codec.
@@ -49,14 +49,14 @@ typedef void (*media_manager_event_callback_t)(
 esp_err_t media_manager_init(void);
 
 /**
- * @brief Deinitialize Audio Manager. Playback must be idle or completed.
+ * @brief Deinitialize Media Manager. Playback must be idle or completed.
  */
 esp_err_t media_manager_deinit(void);
 
 /**
  * @brief Register an optional playback event callback.
  *
- * The callback runs in the Audio Manager playback task. Keep it short and
+ * The callback runs in the Media Manager playback task. Keep it short and
  * do not perform blocking playback operations from the callback.
  */
 esp_err_t media_manager_register_event_callback(
@@ -93,7 +93,7 @@ esp_err_t media_manager_get_state(media_manager_state_t *state);
 /** Copy the path of the current or most recently queued file. */
 esp_err_t media_manager_get_current_file(char *path, size_t path_size);
 
-/** Check whether Audio Manager has been initialized. */
+/** Check whether Media Manager has been initialized. */
 bool media_manager_is_initialized(void);
 
 #ifdef __cplusplus
