@@ -15,6 +15,7 @@
 #include "esp_video_render.h"
 #include "esp_extractor_defaults.h"
 #include "esp_audio_dec_default.h"
+#include "esp_gmf_audio_dec.h"
 #include "esp_video_dec_default.h"
 #include "media_lib_adapter.h"
 
