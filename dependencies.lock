@@ -454,6 +454,6 @@ direct_dependencies:
 - espressif/esp_lvgl_port
 - guition-jc/guition_boards
 - lvgl/lvgl
-manifest_hash: a1ce5ece9fc09d15d656eb9d35eef270cb717179ba4bbf7029ee0ebcd86ff095
+manifest_hash: 00d8f29d328a44d90c96168cc7becdf84306d580043b00d0000d1e7e1099afe0
 target: esp32p4
 version: 3.0.0
