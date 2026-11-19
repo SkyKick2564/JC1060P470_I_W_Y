@@ -45,6 +45,11 @@
 #define VIDEO_OUTPUT_CHANNELS    2
 #define VIDEO_RENDER_FPS         30
 
+#define VIDEO_AUDIO_QUEUE_LENGTH       12
+#define VIDEO_AUDIO_OUTPUT_TASK_STACK  (4 * 1024)
+#define VIDEO_AUDIO_OUTPUT_TASK_PRIO   (configMAX_PRIORITIES - 3)
+#define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
+
 #define VIDEO_COMMAND_PAUSE  (1UL << 1)
 #define VIDEO_COMMAND_RESUME (1UL << 2)
 #define VIDEO_COMMAND_STOP   (1UL << 3)
@@ -53,6 +58,73 @@ typedef struct {
     EventGroupHandle_t events;
     esp_player_error_source_t error_source;
 } media_video_event_context_t;
+
+typedef struct {
+    size_t size;
+    uint8_t data[];
+} media_video_pcm_block_t;
+
+typedef struct {
+    QueueHandle_t queue;
+    SemaphoreHandle_t done;
+    esp_codec_dev_handle_t codec;
+    volatile esp_err_t error;
+} media_video_audio_output_t;
+
+static void media_video_audio_output_task(void *arg)
+{
+    media_video_audio_output_t *output = (media_video_audio_output_t *)arg;
+    media_video_pcm_block_t *block = NULL;
+
+    while (xQueueReceive(output->queue, &block, portMAX_DELAY) == pdTRUE) {
+        if (block == NULL) {
+            break;
+        }
+
+        if (output->error == ESP_OK) {
+            esp_err_t err = esp_codec_dev_write(
+                output->codec, block->data, (int)block->size);
+            if (err != ESP_CODEC_DEV_OK) {
+                output->error = err;
+                ESP_LOGE(TAG, "Audio output write failed: %s",
+                         esp_err_to_name(err));
+            }
+        }
+
+        free(block);
+    }
+
+    xSemaphoreGive(output->done);
+    vTaskDelete(NULL);
+}
+
+static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
+{
+    media_video_audio_output_t *output =
+        (media_video_audio_output_t *)ctx;
+    media_video_pcm_block_t *block;
+
+    if (output == NULL || output->queue == NULL ||
+        pcm == NULL || length == 0) {
+        return -1;
+    }
+
+    block = malloc(sizeof(*block) + length);
+    if (block == NULL) {
+        return -1;
+    }
+
+    block->size = length;
+    memcpy(block->data, pcm, length);
+
+    if (xQueueSend(output->queue, &block, VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE) {
+        free(block);
+        ESP_LOGW(TAG, "Audio output queue is full");
+        return -1;
+    }
+
+    return 0;
+}
 
 static esp_err_t media_video_register_audio_pool(esp_gmf_pool_handle_t *pool)
 {
@@ -143,15 +215,6 @@ static esp_err_t media_video_register_video_pool(esp_gmf_pool_handle_t *pool)
     }
 
     return ESP_OK;
-}
-
-static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
-{
-    esp_codec_dev_handle_t codec = (esp_codec_dev_handle_t)ctx;
-    if (codec == NULL || pcm == NULL || length == 0) {
-        return -1;
-    }
-    return esp_codec_dev_write(codec, pcm, (int)length) == ESP_CODEC_DEV_OK ? 0 : -1;
 }
 
 static esp_player_err_t media_video_player_event(
@@ -259,6 +322,9 @@ esp_err_t media_manager_video_play_file(
     esp_audio_render_handle_t audio_render = NULL;
     esp_audio_render_stream_handle_t audio_stream = NULL;
     esp_video_render_handle_t video_render = NULL;
+    media_video_audio_output_t audio_output = {0};
+    TaskHandle_t audio_output_task = NULL;
+    bool audio_output_task_started = false;
     esp_player_handle_t player = NULL;
     EventGroupHandle_t events = NULL;
     media_video_event_context_t event_ctx = {0};
@@ -294,6 +360,28 @@ esp_err_t media_manager_video_play_file(
         codec_opened = true;
         media_manager_notify_codec_opened(true);
 
+        audio_output.codec = codec;
+        audio_output.error = ESP_OK;
+        audio_output.queue = xQueueCreate(
+            VIDEO_AUDIO_QUEUE_LENGTH, sizeof(media_video_pcm_block_t *));
+        audio_output.done = xSemaphoreCreateBinary();
+        if (audio_output.queue == NULL || audio_output.done == NULL) {
+            result = ESP_ERR_NO_MEM;
+            break;
+        }
+
+        if (xTaskCreate(
+                media_video_audio_output_task,
+                "media_audio_out",
+                VIDEO_AUDIO_OUTPUT_TASK_STACK,
+                &audio_output,
+                VIDEO_AUDIO_OUTPUT_TASK_PRIO,
+                &audio_output_task) != pdPASS) {
+            result = ESP_ERR_NO_MEM;
+            break;
+        }
+        audio_output_task_started = true;
+
         if (esp_codec_dev_set_out_vol(codec, volume) != ESP_CODEC_DEV_OK) {
             ESP_LOGW(TAG, "Could not set initial video playback volume");
         }
@@ -306,7 +394,7 @@ esp_err_t media_manager_video_play_file(
         esp_audio_render_cfg_t audio_cfg = {
             .max_stream_num = 1,
             .out_writer = media_video_audio_writer,
-            .out_ctx = codec,
+            .out_ctx = &audio_output,
             .out_sample_info = {
                 .sample_rate = VIDEO_OUTPUT_SAMPLE_RATE,
                 .bits_per_sample = VIDEO_OUTPUT_BITS,
@@ -477,6 +565,29 @@ esp_err_t media_manager_video_play_file(
     }
     if (audio_pool != NULL) {
         (void)esp_gmf_pool_deinit(audio_pool);
+    }
+
+    /*
+     * The player and audio renderer are stopped before the output task is
+     * drained, so no more PCM blocks can be submitted after this marker.
+     */
+    if (audio_output_task_started) {
+        media_video_pcm_block_t *end_marker = NULL;
+        while (xQueueSend(audio_output.queue, &end_marker,
+                          pdMS_TO_TICKS(100)) != pdTRUE) {
+            /* Let the output task drain queued PCM before retrying. */
+        }
+        (void)xSemaphoreTake(audio_output.done, portMAX_DELAY);
+        if (audio_output.error != ESP_OK && result == ESP_OK) {
+            result = audio_output.error;
+        }
+    }
+
+    if (audio_output.queue != NULL) {
+        vQueueDelete(audio_output.queue);
+    }
+    if (audio_output.done != NULL) {
+        vSemaphoreDelete(audio_output.done);
     }
 
     if (codec_opened) {
