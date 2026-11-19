@@ -128,8 +128,14 @@ static esp_vc_err_t media_openh264_get_caps(esp_video_dec_caps_t *caps)
     }
 
     memset(caps, 0, sizeof(*caps));
-    /* PPA and cache-maintenance paths require cache-line aligned frames. */
-    caps->in_frame_align = 64;
+    /*
+     * Compressed MP4 access units arrive in extractor-owned buffers whose
+     * alignment is not guaranteed. OpenH264 copies each NAL into its own
+     * 64-byte-aligned Annex-B buffer before decoding, so input alignment
+     * must remain 1. Decoded YUV output is separately allocated at 64-byte
+     * alignment for the PPA/cache-maintenance path.
+     */
+    caps->in_frame_align = 1;
     caps->out_frame_align = 64;
     caps->out_fmts = s_output_formats;
     caps->out_fmt_num = sizeof(s_output_formats) / sizeof(s_output_formats[0]);
