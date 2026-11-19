@@ -16,6 +16,7 @@
 #include "esp_extractor_defaults.h"
 #include "esp_audio_dec_default.h"
 #include "esp_video_dec_default.h"
+#include "media_manager_h264_avcc.h"
 #include "media_lib_adapter.h"
 
 #include "esp_gmf_pool.h"
@@ -323,6 +324,23 @@ static void media_video_register_defaults(void)
     esp_extractor_register_default();
     esp_audio_dec_register_default();
     esp_video_dec_register_default();
+
+#if CONFIG_VIDEO_DECODER_SW_H264_SUPPORT
+    esp_vc_err_t unregister_ret = esp_video_dec_unregister_sw_h264();
+    if (unregister_ret != ESP_VC_ERR_OK) {
+        ESP_LOGE(TAG, "Could not replace default H.264 decoder: %d",
+                 (int)unregister_ret);
+        return;
+    }
+
+    esp_vc_err_t register_ret = media_manager_h264_avcc_register();
+    if (register_ret != ESP_VC_ERR_OK) {
+        ESP_LOGE(TAG, "Could not register AVCC-aware H.264 decoder: %d",
+                 (int)register_ret);
+    } else {
+        ESP_LOGI(TAG, "AVCC-to-Annex-B H.264 decoder registered");
+    }
+#endif
 }
 
 static void media_video_unregister_defaults(void)
