@@ -22,7 +22,7 @@ static void app_update_available(
 // };
 
 static const ota_manager_config_t APP_OTA_CONFIG = {
-    .manifest_url = "http://192.168.0.116:8080/manifest.json",
+    .manifest_url = "http://192.168.1.2:8080/manifest.json",
     .auth_token = "MyCustomOTAKey2026",
     .check_interval_sec = 15,
     .mode = OTA_MODE_AUTO, /* App must confirm before OTA starts. */
