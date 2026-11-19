@@ -141,10 +141,11 @@ static esp_video_render_err_t video_backend_get_fb(
 
     video_backend_context_t *ctx = backend;
     if (ctx->buffer == NULL) {
-        ctx->buffer = heap_caps_calloc(
-            1, ctx->fb.size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        ctx->buffer = heap_caps_aligned_calloc(
+            64, 1, ctx->fb.size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (ctx->buffer == NULL) {
-            ctx->buffer = heap_caps_calloc(1, ctx->fb.size, MALLOC_CAP_8BIT);
+            ctx->buffer = heap_caps_aligned_calloc(
+                64, 1, ctx->fb.size, MALLOC_CAP_8BIT);
         }
         if (ctx->buffer == NULL) {
             ESP_LOGE(TAG, "Cannot allocate %u-byte video frame buffer",
