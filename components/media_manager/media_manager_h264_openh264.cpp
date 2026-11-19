@@ -464,8 +464,11 @@ static esp_vc_err_t media_openh264_decode(
         return ESP_VC_ERR_WRONG_DATA;
     }
 
+    int64_t codec_start_us = esp_timer_get_time();
     (void)ctx->decoder->DecodeFrameNoDelay(
         ctx->annexb, (int)annexb_size, planes, &info);
+    const uint32_t codec_elapsed_us =
+        (uint32_t)(esp_timer_get_time() - codec_start_us);
 
     heap_caps_free(ctx->annexb);
     ctx->annexb = NULL;
@@ -476,9 +479,9 @@ static esp_vc_err_t media_openh264_decode(
 
     ctx->timing_access_units++;
     ctx->timing_decode_us += decode_elapsed_us;
-    ctx->timing_codec_us += decode_elapsed_us;
-    if (decode_elapsed_us > ctx->timing_codec_max_us) {
-        ctx->timing_codec_max_us = decode_elapsed_us;
+    ctx->timing_codec_us += codec_elapsed_us;
+    if (codec_elapsed_us > ctx->timing_codec_max_us) {
+        ctx->timing_codec_max_us = codec_elapsed_us;
     }
     if (decode_elapsed_us > ctx->timing_decode_max_us) {
         ctx->timing_decode_max_us = decode_elapsed_us;
