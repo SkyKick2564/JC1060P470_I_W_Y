@@ -470,6 +470,13 @@ static esp_vc_err_t media_openh264_decode(
     const uint32_t codec_elapsed_us =
         (uint32_t)(esp_timer_get_time() - codec_start_us);
 
+    /*
+     * OpenH264 can consume tens to hundreds of milliseconds in one call.
+     * Yield after each access unit so the pinned decoder task does not keep
+     * CPU0 continuously runnable and starve IDLE0 / system maintenance tasks.
+     */
+    vTaskDelay(1);
+
     heap_caps_free(ctx->annexb);
     ctx->annexb = NULL;
 
