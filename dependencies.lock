@@ -707,6 +707,7 @@ dependencies:
       type: service
     version: 9.5.0
 direct_dependencies:
+- espressif/esp_h264
 - espressif/cjson
 - espressif/esp_audio_codec
 - espressif/esp_audio_render
