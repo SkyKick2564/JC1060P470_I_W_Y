@@ -346,7 +346,7 @@ static esp_vc_err_t media_openh264_decode(
      * byte count is unchanged for four-byte NAL lengths.
      */
     heap_caps_free(ctx->annexb);
-    ctx->annexb = (uint8_t *)media_openh264_alloc(input->size + 4U);
+    ctx->annexb = (uint8_t *)media_openh264_alloc((size_t)input->size * 2U + 4U);
     if (ctx->annexb == NULL) {
         return ESP_VC_ERR_NO_MEMORY;
     }
@@ -411,9 +411,6 @@ static esp_vc_err_t media_openh264_decode(
             }
             nal_count++;
             src_offset = nal_end;
-            while (src_offset < input->size && input->data[src_offset] == 0) {
-                src_offset++;
-            }
         }
     } else {
         uint32_t src_offset = 0;
@@ -430,7 +427,7 @@ static esp_vc_err_t media_openh264_decode(
                                 input->data[src_offset + 3];
             src_offset += 4;
             if (nal_size == 0 || nal_size > input->size - src_offset ||
-                annexb_size + 4U + nal_size > input->size + 4U) {
+                annexb_size + 4U + nal_size > (size_t)input->size * 2U + 4U) {
                 heap_caps_free(ctx->annexb);
                 ctx->annexb = NULL;
                 return ESP_VC_ERR_WRONG_DATA;
@@ -453,7 +450,7 @@ static esp_vc_err_t media_openh264_decode(
         }
     }
 
-    if (nal_count == 0 || annexb_size == 0 || annexb_size > (size_t)(input->size + 4U)) {
+    if (nal_count == 0 || annexb_size == 0 || annexb_size > ((size_t)input->size * 2U + 4U)) {
         heap_caps_free(ctx->annexb);
         ctx->annexb = NULL;
         return ESP_VC_ERR_WRONG_DATA;
@@ -481,11 +478,13 @@ static esp_vc_err_t media_openh264_decode(
 
     if ((ctx->timing_access_units % 25U) == 0U) {
         ESP_LOGI(TAG,
-                 "25 AU timing avg(us): total=%u codec=%u | max(us): total=%u codec=%u",
+                 "25 AU timing avg(us): total=%u codec=%u store=%u | max(us): total=%u codec=%u store=%u",
                  (unsigned)(ctx->timing_decode_us / 25U),
                  (unsigned)(ctx->timing_codec_us / 25U),
+                 (unsigned)(ctx->timing_store_us / 25U),
                  (unsigned)ctx->timing_decode_max_us,
-                 (unsigned)ctx->timing_codec_max_us);
+                 (unsigned)ctx->timing_codec_max_us,
+                 (unsigned)ctx->timing_store_max_us);
         ctx->timing_decode_us = 0;
         ctx->timing_decode_max_us = 0;
         ctx->timing_codec_us = 0;
@@ -495,9 +494,16 @@ static esp_vc_err_t media_openh264_decode(
     }
 
     if (info.iBufferStatus == 1) {
+        int64_t store_start_us = esp_timer_get_time();
         esp_vc_err_t store_ret = media_openh264_store_frame(
             ctx, planes, &info, input->pts, input->dts,
             frame_type_nal, input->size);
+        uint32_t store_elapsed_us =
+            (uint32_t)(esp_timer_get_time() - store_start_us);
+        ctx->timing_store_us += store_elapsed_us;
+        if (store_elapsed_us > ctx->timing_store_max_us) {
+            ctx->timing_store_max_us = store_elapsed_us;
+        }
         if (store_ret != ESP_VC_ERR_OK) {
             return store_ret;
         }
