@@ -416,6 +416,7 @@ void create_screen_main() {
                                     objects.video_image = obj;
                                     lv_obj_set_pos(obj, 18, 16);
                                     lv_obj_set_size(obj, 389, 200);
+                                    lv_image_set_inner_align(obj, LV_IMAGE_ALIGN_STRETCH);
                                     lv_obj_set_style_bg_color(obj, lv_color_hex(0x212127), LV_PART_MAIN | LV_STATE_DEFAULT);
                                     lv_obj_set_style_bg_opa(obj, 240, LV_PART_MAIN | LV_STATE_DEFAULT);
                                     lv_obj_set_style_radius(obj, 20, LV_PART_MAIN | LV_STATE_DEFAULT);
