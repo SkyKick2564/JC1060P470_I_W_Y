@@ -166,6 +166,8 @@ typedef struct esp_player_stream {
     /* Properties */
     void                         *audio_render_hd;  /*!< esp_audio_render_stream_handle_t from esp_audio_render_stream_get() */
     void                         *video_render_hd;  /*!< esp_video_render_handle_t from esp_video_render_create() */
+    uint16_t                      video_render_width;  /*!< Optional scaled video output width; 0 keeps decoded size */
+    uint16_t                      video_render_height; /*!< Optional scaled video output height; 0 keeps decoded size */
     esp_player_custom_elements_t *custom_elements;  /*!< Custom decoders; player-owned copy from set_custom_elements() */
     esp_player_task_config_t     *task_cfg;         /*!< NULL = built-in defaults; see esp_player_set_task_config() */
     esp_player_buffer_config_t   *buffer_cfg;       /*!< NULL = built-in defaults; see esp_player_set_buffer_config() */
