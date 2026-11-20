@@ -78,8 +78,10 @@ int dev_fs_fat_sub_sdmmc_init(void *cfg, int cfg_size, void **device_handle)
         .max_files = config->vfs_config.max_files,
         .allocation_unit_size = config->vfs_config.allocation_unit_size};
 
-    ESP_LOGD(TAG, "host: flags=0x%" PRIx32 ", slot=%d, max_freq_khz=%d, io_voltage=%.1f, command_timeout_ms=%d",
-             handle->host.flags, handle->host.slot, handle->host.max_freq_khz, handle->host.io_voltage, handle->host.command_timeout_ms);
+    ESP_LOGI(TAG, "SDMMC request: slot=%d max_freq_khz=%d bus_width=%u",
+             handle->host.slot,
+             handle->host.max_freq_khz,
+             (unsigned)slot_config.width);
     ESP_LOGI(TAG, "slot_config: cd=%d, wp=%d, clk=%d, cmd=%d, d0=%d, d1=%d, d2=%d, d3=%d, d4=%d, d5=%d, d6=%d, d7=%d, width=%d, flags=0x%" PRIx32,
              slot_config.cd, slot_config.wp, slot_config.clk, slot_config.cmd, slot_config.d0, slot_config.d1, slot_config.d2, slot_config.d3, slot_config.d4, slot_config.d5, slot_config.d6, slot_config.d7, slot_config.width, slot_config.flags);
     ESP_LOGD(TAG, "mount_config: format_if_mount_failed=%d, max_files=%d, allocation_unit_size=%d",
