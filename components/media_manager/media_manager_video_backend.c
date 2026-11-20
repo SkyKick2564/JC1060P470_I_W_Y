@@ -144,6 +144,30 @@ static esp_video_render_err_t video_backend_get_display_info(
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
+static bool video_backend_ensure_buffers(video_backend_context_t *ctx)
+{
+    for (int i = 0; i < 2; i++) {
+        if (ctx->buffers[i] == NULL) {
+            ctx->buffers[i] = heap_caps_aligned_calloc(
+                MEDIA_VIDEO_PPA_BUFFER_ALIGNMENT, 1, ctx->fb.size,
+                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (ctx->buffers[i] == NULL) {
+                ESP_LOGE(TAG, "Cannot allocate video frame buffer %d (%u bytes)",
+                         i, (unsigned)ctx->fb.size);
+                for (int j = 0; j < 2; j++) {
+                    if (ctx->buffers[j] != NULL) {
+                        heap_caps_free(ctx->buffers[j]);
+                        ctx->buffers[j] = NULL;
+                    }
+                }
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 static esp_video_render_err_t video_backend_get_fb(
     esp_video_render_backend_handle_t backend,
     esp_video_render_fb_t *fb)
@@ -153,23 +177,8 @@ static esp_video_render_err_t video_backend_get_fb(
     }
 
     video_backend_context_t *ctx = backend;
-    if (ctx->buffers[0] == NULL) {
-        for (int i = 0; i < 2; i++) {
-            ctx->buffers[i] = heap_caps_aligned_calloc(
-                MEDIA_VIDEO_PPA_BUFFER_ALIGNMENT, 1, ctx->fb.size,
-                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-            if (ctx->buffers[i] == NULL) {
-                ESP_LOGE(TAG, "Cannot allocate double video frame buffers (%u bytes each)",
-                         (unsigned)ctx->fb.size);
-                for (int j = 0; j < 2; j++) {
-                    if (ctx->buffers[j] != NULL) {
-                        heap_caps_free(ctx->buffers[j]);
-                        ctx->buffers[j] = NULL;
-                    }
-                }
-                return ESP_VIDEO_RENDER_ERR_NO_MEM;
-            }
-        }
+    if (!video_backend_ensure_buffers(ctx)) {
+        return ESP_VIDEO_RENDER_ERR_NO_MEM;
     }
 
     *fb = ctx->fb;
@@ -267,7 +276,20 @@ static esp_video_render_err_t video_backend_write_fb(
      * publishing it to LVGL, which may read the image asynchronously.
      */
     if (display_index < 0) {
+        /*
+         * Some renderer paths provide their own framebuffer without calling
+         * this backend's get_fb(). Ensure the LVGL-owned destination buffers
+         * exist before copying; otherwise memcpy() would write through NULL.
+         */
+        if (!video_backend_ensure_buffers(ctx)) {
+            return ESP_VIDEO_RENDER_ERR_NO_MEM;
+        }
         display_index = ctx->display_buffer_index == 0 ? 1 : 0;
+        if (ctx->buffers[display_index] == NULL ||
+            fb->data == ctx->buffers[display_index]) {
+            ESP_LOGE(TAG, "Invalid framebuffer copy destination/source");
+            return ESP_VIDEO_RENDER_ERR_INVALID_STATE;
+        }
         memcpy(ctx->buffers[display_index], fb->data, fb->size);
         if (!ctx->external_fb_logged) {
             ESP_LOGW(TAG,
