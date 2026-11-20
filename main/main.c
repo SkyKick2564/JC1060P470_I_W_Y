@@ -181,22 +181,26 @@ static esp_err_t app_before_update(void *user_ctx)
 
     ESP_LOGI(TAG, "Network Manager and ESP-Hosted deinitialized");
 
-    /* Deinitialize LVGL before touching board peripherals */
+    /*
+     * Stop Media Manager first. Its video render task still uses LVGL,
+     * so LVGL must remain initialized until the player task has exited.
+     */
+    err = media_manager_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Media Manager deinit failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Media Manager deinitialized");
+
+    /* LVGL can be deinitialized only after all media tasks have exited. */
     err = app_lvgl_deinit();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "LVGL deinit failed: %s",
                  esp_err_to_name(err));
         return err;
     }
-
-    err = media_manager_deinit();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Media Manager deinit failed: %s",
-                esp_err_to_name(err));
-        return err;
-    }
-
-    ESP_LOGI(TAG, "Media Manager deinitialized");
 
     err = esp_board_manager_deinit();
     if (err != ESP_OK) {
