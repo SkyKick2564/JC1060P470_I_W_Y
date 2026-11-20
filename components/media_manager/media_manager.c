@@ -148,9 +148,9 @@ static bool media_manager_is_video_file(const char *path)
     }
 
     extension++;
-    return strcasecmp(extension, "mp4") == 0 ||
-           strcasecmp(extension, "avi") == 0 ||
-           strcasecmp(extension, "ts") == 0;
+    return strcasecmp(extension, "avi") == 0 ||
+           strcasecmp(extension, "mjpeg") == 0 ||
+           strcasecmp(extension, "mjpg") == 0;
 }
 
 void media_manager_notify_codec_opened(bool opened)
