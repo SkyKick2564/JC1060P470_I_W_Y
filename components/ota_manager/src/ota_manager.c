@@ -711,7 +711,7 @@ static void ota_check_for_update(bool *out_server_reachable)
  * startup sequence. If it is still pending verification, a reboot before
  * this point will allow the bootloader to roll back to the previous image.
  */
-static void ota_confirm_running_firmware_if_pending(void)
+void ota_manager_confirm_running_firmware(void)
 {
     const esp_partition_t *running = esp_ota_get_running_partition();
     if (running == NULL) {
