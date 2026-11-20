@@ -8,10 +8,46 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "player_audio_render.h"
 
 static const char *TAG = "ESP_PLAYER_AUDIO_RENDER";
+
+typedef struct {
+    int64_t window_start_us;
+    uint32_t calls, blocks;
+    uint64_t acquire_us, write_us, release_us, bytes, max_acquire_us;
+} player_audio_render_profile_t;
+static player_audio_render_profile_t s_audio_render_profile;
+
+static void player_audio_render_profile_add(uint64_t acquire_us, uint64_t write_us,
+                                            uint64_t release_us, uint32_t bytes, bool written)
+{
+    int64_t now_us = esp_timer_get_time();
+    player_audio_render_profile_t *p = &s_audio_render_profile;
+    if (p->window_start_us == 0) p->window_start_us = now_us;
+    p->calls++;
+    p->acquire_us += acquire_us;
+    p->write_us += write_us;
+    p->release_us += release_us;
+    if (acquire_us > p->max_acquire_us) p->max_acquire_us = acquire_us;
+    if (written) { p->blocks++; p->bytes += bytes; }
+    uint64_t elapsed_us = (uint64_t)(now_us - p->window_start_us);
+    if (elapsed_us < 1000000ULL) return;
+    uint64_t rate_x100 = (uint64_t)p->blocks * 100000000ULL / elapsed_us;
+    ESP_LOGI(TAG, "PROFILE audio_render: blocks/s=%llu.%02llu blocks=%u calls=%u avg_acquire=%lluus max_acquire=%lluus avg_write=%lluus avg_release=%lluus bytes/s=%llu",
+             (unsigned long long)(rate_x100 / 100ULL), (unsigned long long)(rate_x100 % 100ULL),
+             (unsigned)p->blocks, (unsigned)p->calls,
+             (unsigned long long)(p->calls ? p->acquire_us / p->calls : 0),
+             (unsigned long long)p->max_acquire_us,
+             (unsigned long long)(p->blocks ? p->write_us / p->blocks : 0),
+             (unsigned long long)(p->calls ? p->release_us / p->calls : 0),
+             (unsigned long long)(p->bytes * 1000000ULL / elapsed_us));
+    p->window_start_us = now_us;
+    p->calls = p->blocks = 0;
+    p->acquire_us = p->write_us = p->release_us = p->bytes = p->max_acquire_us = 0;
+}
 
 typedef struct {
     esp_gmf_element_t  parent;      /*!< Parent element */
@@ -76,7 +112,12 @@ static esp_gmf_job_err_t player_audio_render_process(esp_gmf_element_handle_t se
         return ESP_GMF_JOB_ERR_FAIL;
     }
     player_audio_render_t *audio_render = (player_audio_render_t *)self;
+    uint64_t acquire_us = 0, write_us = 0, release_us = 0;
+    uint32_t written_bytes = 0;
+    bool written = false;
+    int64_t stage_start_us = esp_timer_get_time();
     esp_gmf_err_io_t io_ret = esp_gmf_port_acquire_in(in_port, &in_load, audio_render->frame_size, ESP_GMF_MAX_DELAY);
+    acquire_us = (uint64_t)(esp_timer_get_time() - stage_start_us);
     if (player_audio_render_abort_during_seek(cfg, io_ret)) {
         vTaskDelay(1);
         return ESP_GMF_JOB_ERR_CONTINUE;
@@ -104,9 +145,13 @@ static esp_gmf_job_err_t player_audio_render_process(esp_gmf_element_handle_t se
         ESP_LOGW(TAG, "Skip write: buf NULL, valid_size=%u", (unsigned)in_load->valid_size);
         goto _exit;
     }
+    written_bytes = in_load->valid_size;
+    stage_start_us = esp_timer_get_time();
     render_ret = esp_audio_render_stream_write(cfg->stream_handle,
                                                in_load->buf,
                                                in_load->valid_size);
+    write_us = (uint64_t)(esp_timer_get_time() - stage_start_us);
+    written = (render_ret == ESP_AUDIO_RENDER_ERR_OK);
     if (render_ret != ESP_AUDIO_RENDER_ERR_OK && render_ret != ESP_AUDIO_RENDER_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "Write audio render stream error, ret: %d", render_ret);
         job_ret = ESP_GMF_JOB_ERR_FAIL;
@@ -124,12 +169,15 @@ _exit:
                 job_ret = ESP_GMF_JOB_ERR_DONE;
             }
         }
+        stage_start_us = esp_timer_get_time();
         io_ret = esp_gmf_port_release_in(in_port, in_load, ESP_GMF_MAX_DELAY);
+        release_us = (uint64_t)(esp_timer_get_time() - stage_start_us);
         if (player_audio_render_abort_during_seek(cfg, io_ret)) {
             return ESP_GMF_JOB_ERR_CONTINUE;
         }
         ESP_GMF_PORT_RELEASE_IN_CHECK(TAG, io_ret, job_ret, return job_ret);
     }
+    player_audio_render_profile_add(acquire_us, write_us, release_us, written_bytes, written);
 
     return job_ret;
 }
