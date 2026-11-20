@@ -128,7 +128,7 @@ devices:
         allocation_unit_size: 16384
       sub_config:
         slot: SDMMC_HOST_SLOT_0
-        frequency: SDMMC_FREQ_DEFAULT
+        frequency: SDMMC_FREQ_HIGHSPEED
         bus_width: 4
         pins:
           clk: 43
