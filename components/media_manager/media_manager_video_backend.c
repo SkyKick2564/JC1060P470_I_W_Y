@@ -271,12 +271,8 @@ static esp_video_render_err_t video_backend_write_fb(
      * holding that framebuffer lock. The playback task must be able to
      * publish source dimensions concurrently to release this wait.
      */
-    uint16_t source_width;
-    uint16_t source_height;
     bool source_info_valid;
     portENTER_CRITICAL(&s_target_mux);
-    source_width = ctx->source_width;
-    source_height = ctx->source_height;
     source_info_valid = ctx->source_info_valid;
     portEXIT_CRITICAL(&s_target_mux);
 
