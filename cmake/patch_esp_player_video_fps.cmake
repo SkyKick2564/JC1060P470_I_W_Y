@@ -13,11 +13,15 @@ set(ESP_PLAYER_VIDEO_FPS_SOURCE "video_render_cfg.fps = stream->video_side->trac
 set(ESP_PLAYER_VIDEO_FPS_OVERRIDE "video_render_cfg.fps = 10;")
 
 string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "${ESP_PLAYER_VIDEO_FPS_SOURCE}" ESP_PLAYER_VIDEO_FPS_POSITION)
-if(ESP_PLAYER_VIDEO_FPS_POSITION EQUAL -1)
-    message(FATAL_ERROR "ESP-Player video FPS assignment changed; review the 10 FPS override")
+if(NOT ESP_PLAYER_VIDEO_FPS_POSITION EQUAL -1)
+    string(REPLACE "${ESP_PLAYER_VIDEO_FPS_SOURCE}" "${ESP_PLAYER_VIDEO_FPS_OVERRIDE}"
+           ESP_PLAYER_VIDEO_PIPELINE_SOURCE "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
+    file(WRITE "${ESP_PLAYER_VIDEO_PIPELINE}" "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
+    message(STATUS "ESP-Player render stream FPS overridden to 10 for playback test")
+else()
+    string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "${ESP_PLAYER_VIDEO_FPS_OVERRIDE}" ESP_PLAYER_VIDEO_OVERRIDE_POSITION)
+    if(ESP_PLAYER_VIDEO_OVERRIDE_POSITION EQUAL -1)
+        message(FATAL_ERROR "ESP-Player video FPS assignment changed; review the 10 FPS override")
+    endif()
+    message(STATUS "ESP-Player 10 FPS render override already applied")
 endif()
-
-string(REPLACE "${ESP_PLAYER_VIDEO_FPS_SOURCE}" "${ESP_PLAYER_VIDEO_FPS_OVERRIDE}"
-       ESP_PLAYER_VIDEO_PIPELINE_SOURCE "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
-file(WRITE "${ESP_PLAYER_VIDEO_PIPELINE}" "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
-message(STATUS "ESP-Player render stream FPS overridden to 10 for playback test")
