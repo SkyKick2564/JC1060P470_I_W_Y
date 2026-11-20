@@ -115,8 +115,11 @@ esp_err_t app_init(void)
 
     /* Initialize LVGL port */
     lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    /* Keep LVGL rendering on core 1 so CPU-bound media decode can run on core 0. */
-    lvgl_cfg.task_affinity = 1;
+    /*
+     * Keep LVGL/UI refresh on Core 0. Media extraction, decode and video
+     * rendering are pinned to Core 1 in media_manager_video_player.c.
+     */
+    lvgl_cfg.task_affinity = 0;
     err = lvgl_port_init(&lvgl_cfg);
     if(err != ESP_OK)
     {
