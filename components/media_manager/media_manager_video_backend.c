@@ -125,17 +125,15 @@ static esp_video_render_err_t video_backend_init(
 
 static bool video_backend_with_gram(esp_video_render_backend_handle_t backend)
 {
+    (void)backend;
+
     /*
-     * write_fb() consumes a complete frame synchronously: when the renderer
-     * supplies its transient stream framebuffer, write_fb() copies it into
-     * the alternate LVGL-owned PSRAM buffer before returning.
-     *
-     * This lets esp_video_render use its direct single-video/full-display
-     * path instead of blending every decoded frame into a second full-size
-     * framebuffer with PPA. get_fb() remains available for composition paths
-     * that need a destination framebuffer.
+     * This backend publishes a memory image to LVGL; it does not write into
+     * display GRAM. Returning false makes the renderer acquire our persistent
+     * destination framebuffer through get_fb(), rather than handing write_fb()
+     * its transient render-pool framebuffer.
      */
-    return backend != NULL;
+    return false;
 }
 
 static esp_video_render_err_t video_backend_get_display_info(
