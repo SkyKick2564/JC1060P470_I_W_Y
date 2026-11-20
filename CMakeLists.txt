@@ -15,3 +15,6 @@ endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(JC1060P470_I_W_Y VERSION ${APP_VERSION})
 
+# Apply the MJPEG AVI FPS correction at the exact point ESP-Player configures its renderer.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/patch_esp_player_mjpeg_fps.cmake)
+
