@@ -106,11 +106,11 @@ static esp_video_render_err_t video_backend_init(
     lvgl_port_unlock();
 
     ctx->display_buffer_index = -1;
-    ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB888;
+    ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB565;
     ctx->fb.info.width = MEDIA_MANAGER_VIDEO_MAX_WIDTH;
     ctx->fb.info.height = MEDIA_MANAGER_VIDEO_MAX_HEIGHT;
     ctx->fb.size = (uint32_t)MEDIA_MANAGER_VIDEO_MAX_WIDTH *
-                   MEDIA_MANAGER_VIDEO_MAX_HEIGHT * 3U;
+                   MEDIA_MANAGER_VIDEO_MAX_HEIGHT * 2U;
 
     portENTER_CRITICAL(&s_target_mux);
     s_active_backend = ctx;
@@ -215,7 +215,7 @@ static esp_video_render_err_t video_backend_write_fb(
     video_backend_context_t *ctx = backend;
     int64_t frame_start_us = esp_timer_get_time();
     if (fb->size != ctx->fb.size ||
-        fb->info.format != ESP_VIDEO_RENDER_FORMAT_RGB888 ||
+        fb->info.format != ESP_VIDEO_RENDER_FORMAT_RGB565 ||
         fb->info.width != ctx->fb.info.width ||
         fb->info.height != ctx->fb.info.height) {
         return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
@@ -293,10 +293,10 @@ static esp_video_render_err_t video_backend_write_fb(
      * Image widget without changing the widget's layout.
      */
     ctx->image.header.magic = LV_IMAGE_HEADER_MAGIC;
-    ctx->image.header.cf = LV_COLOR_FORMAT_RGB888;
+    ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
     ctx->image.header.w = source_width;
     ctx->image.header.h = source_height;
-    ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 3U;
+    ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
     ctx->image.data_size = ctx->fb.size;
     ctx->image.data = ctx->buffers[display_index];
     ctx->display_buffer_index = display_index;
