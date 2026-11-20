@@ -55,21 +55,23 @@
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
 
 /*
- * Keep the CPU-heavy H.264 decode worker on Core 1 (sdkconfig). Run video
- * color conversion/rendering on Core 0 so it does not starve LVGL on Core 1.
- * Keep audio output on Core 1 and give audio stages sufficient priority.
+ * Split the two decoder paths across the P4 cores:
+ * - Core 0: AAC decode/render and video color conversion/render.
+ * - Core 1: MP4 extraction and H.264 decode.
+ * Keep the video renderer off Core 1 so it cannot starve the UI task there.
+ * The dedicated I2S output worker remains pinned to Core 1.
  */
 static const esp_player_task_config_t s_player_task_config = {
     .extractor = {
         .stack = 5120,
-        .prio = 6,
-        .core = 0,
+        .prio = 5,
+        .core = 1,
         .stack_in_ext = 1,
     },
     .audio_decoder = {
         .stack = 5120,
         .prio = 7,
-        .core = 1,
+        .core = 0,
         .stack_in_ext = 1,
     },
     .audio_render = {
@@ -81,7 +83,7 @@ static const esp_player_task_config_t s_player_task_config = {
     .video_decoder = {
         .stack = 5120,
         .prio = 6,
-        .core = 0,
+        .core = 1,
         .stack_in_ext = 1,
     },
     .video_render = {
