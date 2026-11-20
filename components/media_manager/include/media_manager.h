@@ -84,10 +84,9 @@ esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget);
  * @brief Queue a file from the SD card for playback and return immediately.
  *
  * Audio: .wav and .mp3.
- * Video containers: .mp4, .avi and .ts. With a registered video widget,
- * audio/video tracks are played together; without one, only the audio track
- * is played.
- * Example: "/sdcard/media/movie.mp4".
+ * Video files: .avi (MJPEG video with optional supported audio track),
+ * .mjpeg and .mjpg (standalone MJPEG streams).
+ * Example: "/sdcard/media/movie.avi".
  */
 esp_err_t media_manager_play_file(const char *path);
 
