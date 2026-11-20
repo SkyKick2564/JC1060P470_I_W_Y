@@ -31,8 +31,8 @@ if(ESP_PLAYER_MJPEG_FPS_PATCHED EQUAL -1)
         int32_t reported_fps = stream->video_side->track_info.video_info.fps;
         stream->video_side->track_info.video_info.fps = 25;
         ESP_LOGW(TAG,
-                 "${ESP_PLAYER_MJPEG_FPS_MARKER}: extractor=%" PRId32 ", using=25",
-                 reported_fps);
+                 "Force MJPEG AVI renderer timing to 25 FPS: extractor=%d, using=25",
+                 (int)reported_fps);
     }
 
     esp_gmf_task_cfg_t cfg = DEFAULT_ESP_GMF_TASK_CONFIG();]=])
