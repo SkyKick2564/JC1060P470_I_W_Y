@@ -15,6 +15,3 @@ endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(JC1060P470_I_W_Y VERSION ${APP_VERSION})
 
-# Correct the known 10 FPS metadata returned for this 25 FPS MJPEG AVI.
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/patch_esp_player_mjpeg_fps.cmake)
-
