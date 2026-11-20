@@ -459,7 +459,7 @@ esp_err_t media_manager_video_play_file(
             break;
         }
 
-        if (xTaskCreate(
+        if (xTaskCreatePinnedToCore(
                 media_video_audio_output_task,
                 "media_audio_out",
                 VIDEO_AUDIO_OUTPUT_TASK_STACK,
