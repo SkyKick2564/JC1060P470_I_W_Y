@@ -602,6 +602,21 @@ esp_err_t media_manager_video_play_file(
             break;
         }
 
+        /*
+         * MJPEG AVI frames can exceed the player's small built-in 100 KiB
+         * extractor pool. A truncated compressed frame reaches the hardware
+         * JPEG decoder and can trigger JPEG_DE_FRAME_EOF_ERR. Keep enough
+         * compressed data queued for SD-card read jitter and large frames.
+         */
+        esp_player_buffer_config_t buffer_cfg = {
+            .extractor_pool_size = 1024U * 1024U,
+        };
+        if (esp_player_set_buffer_config(player, &buffer_cfg) != ESP_PLAYER_ERR_OK) {
+            ESP_LOGE(TAG, "Configure 1 MiB extractor buffers failed");
+            result = ESP_FAIL;
+            break;
+        }
+
         if (esp_player_set_event_cb(
                 player, media_video_player_event, &event_ctx) != ESP_PLAYER_ERR_OK) {
             result = ESP_FAIL;
