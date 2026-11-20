@@ -407,7 +407,7 @@ void app_main(void)
 
     /*
      * Bind the EEZ Image widget created by ui_init().
-     * The Media Manager will use it for decoded MP4 video frames.
+     * The Media Manager will use it for decoded MJPEG video frames.
      */
     if (objects.video_image == NULL) {
         ESP_LOGE(TAG, "EEZ video_image widget was not created");
@@ -421,14 +421,14 @@ void app_main(void)
         return;
     }
 
-    err = media_manager_play_file("/sdcard/test.mp4");
+    err = media_manager_play_file("/sdcard/test.avi");
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Play MP4 file failed: %s",
+        ESP_LOGE(TAG, "Play MJPEG AVI file failed: %s",
                  esp_err_to_name(err));
         return;
     }
 
-    ESP_LOGI(TAG, "MP4 playback queued with video_image target");
+    ESP_LOGI(TAG, "MJPEG AVI playback queued with video_image target");
 
     err = network_manager_init(&network);
     if (err != ESP_OK) {
