@@ -105,6 +105,31 @@ esp_player_err_t esp_player_submit_frame(esp_player_handle_t handle, esp_player_
     return ESP_PLAYER_ERR_NOT_SUPPORT;
 }
 
+esp_player_err_t esp_player_set_video_render_size(esp_player_handle_t handle,
+                                                  uint16_t width,
+                                                  uint16_t height)
+{
+    if (handle == NULL || width == 0 || height == 0) {
+        ESP_LOGE(ESP_PLAYER_TAG, "Invalid video render size: handle=%p size=%ux%u",
+                 handle, (unsigned)width, (unsigned)height);
+        return ESP_PLAYER_ERR_INVALID_ARG;
+    }
+
+    esp_player_stream_t *stream = (esp_player_stream_t *)handle;
+    if (!is_state_allowed_for_operation(stream)) {
+        ESP_LOGE(ESP_PLAYER_TAG, "Failed to set video render size. state: %d", stream->main_state);
+        return ESP_PLAYER_ERR_NOT_SUPPORT;
+    }
+    if (stream->video_side != NULL && stream->video_side->render != NULL) {
+        ESP_LOGE(ESP_PLAYER_TAG, "Cannot change video render size while render pipeline exists");
+        return ESP_PLAYER_ERR_INVALID_STATE;
+    }
+
+    stream->video_render_width = width;
+    stream->video_render_height = height;
+    return ESP_PLAYER_ERR_OK;
+}
+
 esp_player_err_t esp_player_set_task_config(esp_player_handle_t handle, const esp_player_task_config_t *config)
 {
     if (handle == NULL) {
