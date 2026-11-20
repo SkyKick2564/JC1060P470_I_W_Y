@@ -181,7 +181,48 @@ static esp_gmf_job_err_t player_video_render_open(esp_gmf_element_handle_t self,
         }
     }
 
+
     if (render_width > 0 && render_height > 0) {
+        uint16_t scale_source_width =
+            (has_visible_rect && !mask_bottom_padding) ?
+            cfg->display_width : cfg->width;
+        uint16_t scale_source_height =
+            (has_visible_rect && !mask_bottom_padding) ?
+            cfg->display_height : cfg->height;
+
+        if (scale_source_width == 0 || scale_source_height == 0) {
+            ESP_LOGE(TAG, "Invalid source size for PPA scaling");
+            esp_video_render_stream_close(video_render->stream_hd);
+            video_render->stream_hd = NULL;
+            return ESP_GMF_JOB_ERR_FAIL;
+        }
+
+        uint32_t scale_x_steps =
+            ((uint32_t)render_width * 16U + scale_source_width - 1U) /
+            scale_source_width;
+        uint32_t scale_y_steps =
+            ((uint32_t)render_height * 16U + scale_source_height - 1U) /
+            scale_source_height;
+        uint32_t scale_steps = scale_x_steps > scale_y_steps ?
+                               scale_x_steps : scale_y_steps;
+
+        uint32_t ppa_width =
+            ((uint32_t)scale_source_width * scale_steps + 15U) / 16U;
+        uint32_t ppa_height =
+            ((uint32_t)scale_source_height * scale_steps + 15U) / 16U;
+        if (scale_steps == 0 || ppa_width == 0 || ppa_height == 0 ||
+            ppa_width > UINT16_MAX || ppa_height > UINT16_MAX) {
+            ESP_LOGE(TAG, "Invalid PPA Q4 render geometry");
+            esp_video_render_stream_close(video_render->stream_hd);
+            video_render->stream_hd = NULL;
+            return ESP_GMF_JOB_ERR_FAIL;
+        }
+
+        uint16_t target_width = render_width;
+        uint16_t target_height = render_height;
+        render_width = (uint16_t)ppa_width;
+        render_height = (uint16_t)ppa_height;
+
         esp_video_render_rect_t disp_rect = {
             .x = 0,
             .y = 0,
@@ -197,11 +238,13 @@ static esp_gmf_job_err_t player_video_render_open(esp_gmf_element_handle_t self,
             video_render->stream_hd = NULL;
             return ESP_GMF_JOB_ERR_FAIL;
         }
-        if (cfg->render_width > 0 && cfg->render_height > 0) {
-            ESP_LOGI(TAG, "PPA video scale: %ux%u -> %ux%u",
-                     (unsigned int)cfg->width, (unsigned int)cfg->height,
-                     (unsigned int)render_width, (unsigned int)render_height);
-        }
+
+        ESP_LOGI(TAG,
+                 "PPA Q4 cover scale: source=%ux%u target=%ux%u render=%ux%u factor=%u/16",
+                 (unsigned)scale_source_width, (unsigned)scale_source_height,
+                 (unsigned)target_width, (unsigned)target_height,
+                 (unsigned)render_width, (unsigned)render_height,
+                 (unsigned)scale_steps);
     }
     ESP_LOGI(TAG, "Video render stream opened");
     return ESP_GMF_JOB_ERR_OK;
