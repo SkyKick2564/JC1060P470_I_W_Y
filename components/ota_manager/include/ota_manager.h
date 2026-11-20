@@ -71,6 +71,9 @@ esp_err_t ota_manager_init(
 /* Start the OTA polling FreeRTOS task. Safe to call once. */
 esp_err_t ota_manager_start(void);
 
+/* Confirm the running image after essential application startup succeeds. */
+void ota_manager_confirm_running_firmware(void);
+
 /*
  * Confirm the firmware currently pending in OTA_MODE_MANUAL.
  * Returns ESP_OK without action if no update is waiting for confirmation.
