@@ -322,6 +322,8 @@ esp_player_err_t player_pl_create_video_render(esp_player_stream_t *stream)
             video_render_cfg.width = stream->video_side->track_info.video_info.width;
             video_render_cfg.height = stream->video_side->track_info.video_info.height;
             player_get_video_visible_size(stream, &video_render_cfg.display_width, &video_render_cfg.display_height);
+            video_render_cfg.render_width = stream->video_render_width;
+            video_render_cfg.render_height = stream->video_render_height;
             video_render_cfg.fps = stream->video_side->track_info.video_info.fps;
             ESP_LOGI(TAG, "Video renderer FPS from stream metadata: %d",
                      (int)video_render_cfg.fps);
