@@ -15,5 +15,3 @@ endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(JC1060P470_I_W_Y VERSION ${APP_VERSION})
 
-# Apply the project-local ESP-Player render-FPS override after component discovery.
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/patch_esp_player_video_fps.cmake)
