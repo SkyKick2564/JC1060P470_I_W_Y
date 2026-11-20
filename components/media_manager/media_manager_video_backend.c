@@ -382,14 +382,23 @@ static esp_video_render_err_t video_backend_deinit(
     }
     portEXIT_CRITICAL(&s_target_mux);
 
-    if (lvgl_port_lock(0)) {
-        if (lv_obj_is_valid(ctx->widget) &&
-            lv_obj_check_type(ctx->widget, &lv_image_class) &&
-            lv_image_get_src(ctx->widget) == &ctx->image) {
-            lv_image_set_src(ctx->widget, ctx->previous_src);
-        }
-        lvgl_port_unlock();
+    /*
+     * The LVGL image may still reference ctx->image and either PSRAM buffer.
+     * Never free those buffers unless the LVGL lock was acquired and the
+     * widget source has been detached. A zero-timeout lock here could fail
+     * during a display refresh and leave LVGL with a dangling image pointer.
+     */
+    if (!lvgl_port_lock(1000)) {
+        ESP_LOGE(TAG, "Timed out detaching LVGL image during backend deinit");
+        return ESP_VIDEO_RENDER_ERR_TIMEOUT;
     }
+
+    if (lv_obj_is_valid(ctx->widget) &&
+        lv_obj_check_type(ctx->widget, &lv_image_class) &&
+        lv_image_get_src(ctx->widget) == &ctx->image) {
+        lv_image_set_src(ctx->widget, ctx->previous_src);
+    }
+    lvgl_port_unlock();
 
     for (int i = 0; i < 2; i++) {
         if (ctx->buffers[i] != NULL) {
