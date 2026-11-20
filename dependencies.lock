@@ -711,7 +711,6 @@ direct_dependencies:
 - espressif/esp_audio_codec
 - espressif/esp_audio_render
 - espressif/esp_extractor
-- espressif/esp_h264
 - espressif/esp_hosted
 - espressif/esp_lcd_jd9165
 - espressif/esp_lcd_touch_gt911
