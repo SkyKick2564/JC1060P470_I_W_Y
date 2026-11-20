@@ -526,7 +526,7 @@ esp_err_t media_manager_video_play_file(
                 &audio_output,
                 VIDEO_AUDIO_OUTPUT_TASK_PRIO,
                 &audio_output_task,
-                1) != pdPASS) {
+                0) != pdPASS) {
             result = ESP_ERR_NO_MEM;
             break;
         }
