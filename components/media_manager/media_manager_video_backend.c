@@ -42,6 +42,7 @@ typedef struct {
     uint16_t source_height;
     bool source_info_valid;
     bool source_bound;
+    bool external_fb_logged;
     uint32_t profile_frames;
     int64_t profile_start_us;
     int64_t profile_lock_wait_max_us;
@@ -257,9 +258,22 @@ static esp_video_render_err_t video_backend_write_fb(
             break;
         }
     }
+
+    /*
+     * esp_video_render may pass its own render-pool framebuffer to the
+     * backend instead of the buffer previously returned by get_fb().
+     * The incoming frame is valid for this callback, but its lifetime is
+     * owned by the renderer. Copy it into our persistent double buffer before
+     * publishing it to LVGL, which may read the image asynchronously.
+     */
     if (display_index < 0) {
-        ESP_LOGE(TAG, "Renderer returned an unknown frame buffer");
-        return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
+        display_index = ctx->display_buffer_index == 0 ? 1 : 0;
+        memcpy(ctx->buffers[display_index], fb->data, fb->size);
+        if (!ctx->external_fb_logged) {
+            ESP_LOGW(TAG,
+                     "Renderer supplied a render-pool framebuffer; copying into LVGL-owned buffer");
+            ctx->external_fb_logged = true;
+        }
     }
 
     /*
