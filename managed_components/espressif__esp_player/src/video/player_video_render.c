@@ -141,24 +141,67 @@ static esp_gmf_job_err_t player_video_render_open(esp_gmf_element_handle_t self,
         ESP_LOGE(TAG, "Failed to open video render stream, ret=%d", ret);
         return ESP_GMF_JOB_ERR_FAIL;
     }
-    if (player_video_render_should_mask_bottom_padding(cfg)) {
+    bool has_visible_rect = player_video_render_has_visible_rect(cfg);
+    bool mask_bottom_padding = player_video_render_should_mask_bottom_padding(cfg);
+
+    if (mask_bottom_padding) {
         ESP_LOGW(TAG, "Apply bottom padding mask decoded=%ux%u display=%ux%u",
                  (unsigned int)cfg->width, (unsigned int)cfg->height,
                  (unsigned int)cfg->display_width, (unsigned int)cfg->display_height);
-    } else if (player_video_render_has_visible_rect(cfg)) {
+    } else if (has_visible_rect) {
         esp_video_render_rect_t src_rect = {
             .x = 0,
             .y = 0,
             .width = cfg->display_width,
             .height = cfg->display_height,
         };
-        esp_video_render_rect_t disp_rect = src_rect;
-        esp_video_render_err_t src_ret = esp_video_render_stream_set_src_rect(video_render->stream_hd, &src_rect);
-        esp_video_render_err_t disp_ret = esp_video_render_stream_set_disp_rect(video_render->stream_hd, &disp_rect);
-        ESP_LOGW(TAG, "Apply visible crop decoded=%ux%u display=%ux%u src_ret=%d disp_ret=%d",
-                 (unsigned int)cfg->width, (unsigned int)cfg->height,
-                 (unsigned int)cfg->display_width, (unsigned int)cfg->display_height,
-                 src_ret, disp_ret);
+        esp_video_render_err_t src_ret =
+            esp_video_render_stream_set_src_rect(video_render->stream_hd, &src_rect);
+        if (src_ret != ESP_VIDEO_RENDER_ERR_OK) {
+            ESP_LOGE(TAG, "Failed to set visible source rectangle: %d", src_ret);
+            esp_video_render_stream_close(video_render->stream_hd);
+            video_render->stream_hd = NULL;
+            return ESP_GMF_JOB_ERR_FAIL;
+        }
+    }
+
+    uint16_t render_width = cfg->render_width;
+    uint16_t render_height = cfg->render_height;
+    if (render_width == 0 || render_height == 0) {
+        if (render_width != 0 || render_height != 0) {
+            ESP_LOGE(TAG, "Invalid partial video render size: %ux%u",
+                     (unsigned int)render_width, (unsigned int)render_height);
+            esp_video_render_stream_close(video_render->stream_hd);
+            video_render->stream_hd = NULL;
+            return ESP_GMF_JOB_ERR_FAIL;
+        }
+        if (has_visible_rect) {
+            render_width = cfg->display_width;
+            render_height = cfg->display_height;
+        }
+    }
+
+    if (render_width > 0 && render_height > 0) {
+        esp_video_render_rect_t disp_rect = {
+            .x = 0,
+            .y = 0,
+            .width = render_width,
+            .height = render_height,
+        };
+        esp_video_render_err_t disp_ret =
+            esp_video_render_stream_set_disp_rect(video_render->stream_hd, &disp_rect);
+        if (disp_ret != ESP_VIDEO_RENDER_ERR_OK) {
+            ESP_LOGE(TAG, "Failed to set video render rectangle %ux%u: %d",
+                     (unsigned int)render_width, (unsigned int)render_height, disp_ret);
+            esp_video_render_stream_close(video_render->stream_hd);
+            video_render->stream_hd = NULL;
+            return ESP_GMF_JOB_ERR_FAIL;
+        }
+        if (cfg->render_width > 0 && cfg->render_height > 0) {
+            ESP_LOGI(TAG, "PPA video scale: %ux%u -> %ux%u",
+                     (unsigned int)cfg->width, (unsigned int)cfg->height,
+                     (unsigned int)render_width, (unsigned int)render_height);
+        }
     }
     ESP_LOGI(TAG, "Video render stream opened");
     return ESP_GMF_JOB_ERR_OK;
