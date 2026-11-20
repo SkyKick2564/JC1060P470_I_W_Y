@@ -4627,13 +4627,11 @@ CONFIG_CODEC_DUMMY_SUPPORT=y
 CONFIG_EXTRACTOR_CUSTOM_SUPPORT=y
 # default:
 CONFIG_WAV_EXTRACTOR_SUPPORT=y
-# default:
 # CONFIG_MP4_EXTRACTOR_SUPPORT is not set
 # default:
 CONFIG_TS_EXTRACTOR_SUPPORT=y
 # default:
 CONFIG_OGG_EXTRACTOR_SUPPORT=y
-# default:
 CONFIG_AVI_EXTRACTOR_SUPPORT=y
 # default:
 CONFIG_AUDIO_ES_EXTRACTOR_SUPPORT=y
@@ -4641,12 +4639,19 @@ CONFIG_AUDIO_ES_EXTRACTOR_SUPPORT=y
 CONFIG_CAF_EXTRACTOR_SUPPORT=y
 # default:
 CONFIG_FLV_EXTRACTOR_SUPPORT=y
-# default:
 CONFIG_MJPEG_EXTRACTOR_SUPPORT=y
 # default:
 CONFIG_EXTRACTOR_HELPER_FILE_IO_CACHE_SIZE=1024
 # end of Espressif Extractor Configuration
 
+#
+# ESP H264 Configuration
+#
+# default:
+CONFIG_ESP_H264_DECODER_IRAM=y
+# default:
+# CONFIG_ESP_H264_DUAL_TASK is not set
+# end of ESP H264 Configuration
 
 # default:
 CONFIG_ESP_HOSTED=y
@@ -5134,7 +5139,6 @@ CONFIG_ESP_LCD_TOUCH_MAX_BUTTONS=1
 #
 # ESP_Muxer Configuration
 #
-# default:
 # CONFIG_ESP_MUXER_MP4_SUPPORT is not set
 # default:
 CONFIG_ESP_MUXER_TS_SUPPORT=y
@@ -5216,6 +5220,7 @@ CONFIG_ESP_VIDEO_ISP_DEVICE_HIST_SAMPLING_RGB=y
 # default:
 CONFIG_ESP_VIDEO_DISABLE_ISP_ERROR_INTERRUPT=y
 # default:
+# CONFIG_ESP_VIDEO_USE_CUSTOMIZED_ESP_H264_VERSION is not set
 
 #
 # Video Data Preprocessing
@@ -5246,26 +5251,17 @@ CONFIG_ESP_VIDEO_ENABLE_SWAP_BYTE_RISCV=y
 #
 # Video Decoder Configuration
 #
-# default:
 # CONFIG_VIDEO_DECODER_SW_H264_SUPPORT is not set
-# default:
 # CONFIG_VIDEO_DECODER_SW_MJPEG_SUPPORT is not set
-# default:
 CONFIG_VIDEO_DECODER_HW_MJPEG_SUPPORT=y
 # end of Video Decoder Configuration
 
 #
 # Video Encoder Configuration
 #
-# default:
 # CONFIG_VIDEO_ENCODER_HW_H264_SUPPORT is not set
-# default:
-# CONFIG_VIDEO_ENCODER_HW_H264_DUAL_SUPPORT is not set
-# default:
 # CONFIG_VIDEO_ENCODER_SW_H264_SUPPORT is not set
-# default:
 # CONFIG_VIDEO_ENCODER_HW_MJPEG_SUPPORT is not set
-# default:
 # CONFIG_VIDEO_ENCODER_SW_MJPEG_SUPPORT is not set
 # end of Video Encoder Configuration
 # end of Video Codec Configuration
