@@ -24,12 +24,12 @@ static const char *TAG = "ESP_PLAYER_VIDEO_RENDER";
 typedef struct {
     int64_t window_start_us;
     uint32_t calls, frames;
-    uint64_t acquire_us, write_us, release_us, bytes, max_acquire_us;
+    uint64_t acquire_us, write_us, release_us, process_us, bytes, max_acquire_us;
 } player_video_render_profile_t;
 static player_video_render_profile_t s_video_render_profile;
 
 static void player_video_render_profile_add(uint64_t acquire_us, uint64_t write_us,
-                                            uint64_t release_us, uint32_t bytes, bool rendered)
+                                            uint64_t release_us, uint64_t process_us, uint32_t bytes, bool rendered)
 {
     int64_t now_us = esp_timer_get_time();
     player_video_render_profile_t *p = &s_video_render_profile;
@@ -38,22 +38,25 @@ static void player_video_render_profile_add(uint64_t acquire_us, uint64_t write_
     p->acquire_us += acquire_us;
     p->write_us += write_us;
     p->release_us += release_us;
+    p->process_us += process_us;
     if (acquire_us > p->max_acquire_us) p->max_acquire_us = acquire_us;
     if (rendered) { p->frames++; p->bytes += bytes; }
     uint64_t elapsed_us = (uint64_t)(now_us - p->window_start_us);
     if (elapsed_us < 1000000ULL) return;
     uint64_t fps_x100 = (uint64_t)p->frames * 100000000ULL / elapsed_us;
-    ESP_LOGI(TAG, "PROFILE video_render: fps=%llu.%02llu frames=%u calls=%u avg_acquire=%lluus max_acquire=%lluus avg_write=%lluus avg_release=%lluus bytes/s=%llu",
+    ESP_LOGI(TAG, "PROFILE video_render: fps=%llu.%02llu frames=%u calls=%u avg_acquire=%lluus max_acquire=%lluus avg_write=%lluus avg_release=%lluus avg_other=%lluus bytes/s=%llu",
              (unsigned long long)(fps_x100 / 100ULL), (unsigned long long)(fps_x100 % 100ULL),
              (unsigned)p->frames, (unsigned)p->calls,
              (unsigned long long)(p->calls ? p->acquire_us / p->calls : 0),
              (unsigned long long)p->max_acquire_us,
              (unsigned long long)(p->frames ? p->write_us / p->frames : 0),
              (unsigned long long)(p->calls ? p->release_us / p->calls : 0),
+             (unsigned long long)(p->calls ? (p->process_us > p->acquire_us + p->write_us + p->release_us ?
+                 (p->process_us - p->acquire_us - p->write_us - p->release_us) / p->calls : 0) : 0),
              (unsigned long long)(p->bytes * 1000000ULL / elapsed_us));
     p->window_start_us = now_us;
     p->calls = p->frames = 0;
-    p->acquire_us = p->write_us = p->release_us = p->bytes = p->max_acquire_us = 0;
+    p->acquire_us = p->write_us = p->release_us = p->process_us = p->bytes = p->max_acquire_us = 0;
 }
 
 typedef struct {
@@ -313,6 +316,7 @@ static esp_gmf_job_err_t player_video_render_process(esp_gmf_element_handle_t se
         return ESP_GMF_JOB_ERR_FAIL;
     }
     player_video_render_config_t *cfg = (player_video_render_config_t *)OBJ_GET_CFG(self);
+    int64_t process_start_us = esp_timer_get_time();
     uint64_t acquire_us = 0, write_us = 0, release_us = 0;
     uint32_t rendered_bytes = 0;
     bool rendered = false;
@@ -376,7 +380,9 @@ _process_release:
         }
         ESP_GMF_PORT_RELEASE_IN_CHECK(TAG, io_ret, job_ret, return job_ret);
     }
-    player_video_render_profile_add(acquire_us, write_us, release_us, rendered_bytes, rendered);
+    player_video_render_profile_add(acquire_us, write_us, release_us,
+                                    (uint64_t)(esp_timer_get_time() - process_start_us),
+                                    rendered_bytes, rendered);
     return job_ret;
 }
 
