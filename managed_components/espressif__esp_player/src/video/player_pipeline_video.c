@@ -207,22 +207,6 @@ esp_player_err_t player_pl_run_create_video_decoder(esp_player_stream_t *stream)
         stream->video_side->track_info.video_info.fps = 25;
     }
 
-    /*
-     * This board's 1280x720 MJPEG AVI is encoded at 25 FPS, but the AVI
-     * extractor reports 10 FPS. Correct the stream timing before ESP-Player
-     * configures both the A/V sync clock and video renderer. Restrict this
-     * workaround to the known test resolution.
-     */
-    if (stream != NULL && stream->video_side != NULL &&
-        stream->video_side->track_info.video_info.width == 1280 &&
-        stream->video_side->track_info.video_info.height == 720) {
-        int32_t reported_fps = stream->video_side->track_info.video_info.fps;
-        stream->video_side->track_info.video_info.fps = 25;
-        ESP_LOGW(TAG,
-                 "Force MJPEG AVI renderer timing to 25 FPS: extractor=%d, using=25",
-                 (int)reported_fps);
-    }
-
     esp_gmf_task_cfg_t cfg = DEFAULT_ESP_GMF_TASK_CONFIG();
     esp_gmf_port_handle_t decoder_outport = NULL;
     esp_gmf_port_handle_t decoder_inport = NULL;
@@ -338,7 +322,9 @@ esp_player_err_t player_pl_create_video_render(esp_player_stream_t *stream)
             video_render_cfg.width = stream->video_side->track_info.video_info.width;
             video_render_cfg.height = stream->video_side->track_info.video_info.height;
             player_get_video_visible_size(stream, &video_render_cfg.display_width, &video_render_cfg.display_height);
-            video_render_cfg.fps = 10;
+            video_render_cfg.fps = stream->video_side->track_info.video_info.fps;
+            ESP_LOGI(TAG, "Video renderer FPS from stream metadata: %d",
+                     (int)video_render_cfg.fps);
             video_render_cfg.sync_handle = stream->sync_handle;
             video_render_cfg.decoded_format = stream->video_side->decoded_format;
             esp_gmf_element_handle_t video_render_el = NULL;
