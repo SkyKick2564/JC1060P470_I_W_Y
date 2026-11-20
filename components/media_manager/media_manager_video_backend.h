@@ -10,6 +10,11 @@
 
 #include "media_manager.h"
 
+/* EEZ video_image is 389x200; resize in P4 PPA before LVGL sees each frame. */
+#define MEDIA_MANAGER_VIDEO_RENDER_WIDTH  389
+#define MEDIA_MANAGER_VIDEO_RENDER_HEIGHT 200
+
+/* Maximum decoded source dimensions accepted from the MJPEG stream. */
 #define MEDIA_MANAGER_VIDEO_MAX_WIDTH  1280
 #define MEDIA_MANAGER_VIDEO_MAX_HEIGHT 720
 
