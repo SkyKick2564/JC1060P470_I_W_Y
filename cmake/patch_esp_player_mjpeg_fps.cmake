@@ -21,21 +21,38 @@ if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
     else()
         set(ESP_PLAYER_RENDER_FPS_INSERT [=[
             /*
-             * The AVI extractor reports the correct 25 FPS, but the MJPEG
-             * decoder can replace track_info.fps with its default 10 FPS.
-             * Correct the final stream metadata immediately before the
-             * renderer and A/V sync clock consume it.
+             * The MJPEG decoder may replace the AVI extractor's frame rate
+             * with its default value (10 FPS). Restore the source frame rate
+             * from the extractor immediately before configuring the renderer
+             * and the A/V synchronization clock.
              */
             if (stream->video_side->track_info.video_info.format == ESP_FOURCC_MJPG &&
-                stream->video_side->track_info.video_info.width == 1280 &&
-                stream->video_side->track_info.video_info.height == 720) {
-                int32_t reported_fps = stream->video_side->track_info.video_info.fps;
-                stream->video_side->track_info.video_info.fps = 25;
-                player_sync_set_video_fps(stream->sync_handle, 25);
-                player_sync_enable_video_fps_sync(stream->sync_handle, true);
-                ESP_LOGW(TAG,
-                         "Correct MJPEG AVI FPS at renderer creation: decoder=%" PRId32 ", renderer=25",
-                         reported_fps);
+                stream->extractor != NULL) {
+                int8_t video_idx = -1;
+                esp_gmf_element_handle_t extractor_el = player_extractor_el(stream);
+                if (extractor_el != NULL &&
+                    player_extractor_track_active(extractor_el,
+                                                  ESP_EXTRACTOR_STREAM_TYPE_VIDEO,
+                                                  &video_idx) == ESP_GMF_ERR_OK &&
+                    video_idx >= 0) {
+                    esp_extractor_stream_info_t extractor_info = {0};
+                    if (player_extractor_get_stream_info(extractor_el,
+                                                         ESP_EXTRACTOR_STREAM_TYPE_VIDEO,
+                                                         video_idx,
+                                                         &extractor_info) == ESP_GMF_ERR_OK &&
+                        extractor_info.video_info.fps > 0) {
+                        int32_t decoder_fps =
+                            (int32_t)stream->video_side->track_info.video_info.fps;
+                        int32_t source_fps = (int32_t)extractor_info.video_info.fps;
+                        stream->video_side->track_info.video_info.fps = source_fps;
+                        player_sync_set_video_fps(stream->sync_handle, (float)source_fps);
+                        player_sync_enable_video_fps_sync(stream->sync_handle, true);
+                        ESP_LOGW(TAG,
+                                 "Correct MJPEG FPS at renderer creation: decoder=%" PRId32
+                                 ", extractor=%" PRId32 ", renderer=%" PRId32,
+                                 decoder_fps, source_fps, source_fps);
+                    }
+                }
             }
 ]=])
 
