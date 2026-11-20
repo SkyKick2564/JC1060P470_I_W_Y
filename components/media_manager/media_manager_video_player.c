@@ -107,6 +107,7 @@ typedef struct {
 typedef struct {
     size_t size;
     int64_t queued_at_us;
+    int64_t producer_wait_us;
     uint8_t data[VIDEO_AUDIO_PCM_BLOCK_SIZE];
 } media_video_pcm_block_t;
 
@@ -122,6 +123,8 @@ typedef struct {
     int64_t profile_codec_write_us;
     int64_t profile_queue_wait_max_us;
     int64_t profile_codec_write_max_us;
+    int64_t profile_producer_wait_us;
+    int64_t profile_block_bytes;
 } media_video_audio_output_t;
 
 static void media_video_audio_output_task(void *arg)
@@ -152,6 +155,8 @@ static void media_video_audio_output_task(void *arg)
         output->profile_blocks++;
         output->profile_queue_wait_us += queue_wait_us;
         output->profile_codec_write_us += codec_write_us;
+        output->profile_producer_wait_us += block->producer_wait_us;
+        output->profile_block_bytes += (int64_t)block->size;
         if (queue_wait_us > output->profile_queue_wait_max_us) {
             output->profile_queue_wait_max_us = queue_wait_us;
         }
@@ -164,9 +169,14 @@ static void media_video_audio_output_task(void *arg)
         if (output->profile_blocks >= 50) {
             int64_t window_us = now_us - output->profile_start_us;
             ESP_LOGI(TAG,
-                     "Audio output profile: blocks=%" PRIu32 " rate=%.1f blocks/s avg_queue=%.2f ms max_queue=%.2f ms avg_codec_write=%.2f ms max_codec_write=%.2f ms",
+                     "Audio output profile: blocks=%" PRIu32 " rate=%.1f blocks/s avg_block=%" PRIi64 " B (%.2f ms PCM) avg_producer_wait=%.2f ms avg_queue=%.2f ms max_queue=%.2f ms avg_codec_write=%.2f ms max_codec_write=%.2f ms",
                      output->profile_blocks,
                      window_us > 0 ? (double)output->profile_blocks * 1000000.0 / (double)window_us : 0.0,
+                     output->profile_block_bytes / output->profile_blocks,
+                     (double)output->profile_block_bytes * 1000.0 /
+                         ((double)output->profile_blocks * VIDEO_OUTPUT_SAMPLE_RATE *
+                          VIDEO_OUTPUT_CHANNELS * (VIDEO_OUTPUT_BITS / 8)),
+                     (double)output->profile_producer_wait_us / (double)output->profile_blocks / 1000.0,
                      (double)output->profile_queue_wait_us / (double)output->profile_blocks / 1000.0,
                      (double)output->profile_queue_wait_max_us / 1000.0,
                      (double)output->profile_codec_write_us / (double)output->profile_blocks / 1000.0,
@@ -177,6 +187,8 @@ static void media_video_audio_output_task(void *arg)
             output->profile_codec_write_us = 0;
             output->profile_queue_wait_max_us = 0;
             output->profile_codec_write_max_us = 0;
+            output->profile_producer_wait_us = 0;
+            output->profile_block_bytes = 0;
         }
 
         if (xQueueSend(output->free_queue, &block, 0) != pdTRUE) {
@@ -207,6 +219,7 @@ static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
      * playback merely because all preallocated blocks are temporarily busy.
      * Poll periodically so a codec write error can abort the wait promptly.
      */
+    int64_t producer_wait_start_us = esp_timer_get_time();
     while (xQueueReceive(output->free_queue, &block,
                          VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE) {
         if (output->error != ESP_OK) {
@@ -229,6 +242,7 @@ static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
     }
 
     block->size = length;
+    block->producer_wait_us = esp_timer_get_time() - producer_wait_start_us;
     block->queued_at_us = esp_timer_get_time();
     memcpy(block->data, pcm, length);
 
