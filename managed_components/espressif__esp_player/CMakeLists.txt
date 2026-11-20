@@ -55,6 +55,7 @@ set(requires
 set(priv_requires
         gmf_io
         esp_extractor
+        esp_timer
 )
 
 if(CONFIG_ESP_PLAYER_ENABLE_HLS_IO)
