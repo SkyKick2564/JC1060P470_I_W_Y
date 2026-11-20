@@ -56,12 +56,9 @@
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
 
 /*
- * Split playback work across both P4 cores:
- * - Core 0: audio render, video render/color conversion, and I2S output.
- * - Core 1: AVI extraction, AAC decode, and hardware MJPEG decode.
- * Keep the audio decoder with the extractor/video decoder to reduce
- * contention with the real-time render tasks on Core 0.
- * Keep video decoder and renderer stacks in internal SRAM.
+ * Keep UI/LVGL refresh and video rendering on Core 0. Run audio rendering
+ * on Core 1 with extraction/decoding so UI refreshes cannot starve the PCM
+ * producer. The dedicated high-priority I2S output task remains on Core 0.
  */
 static const esp_player_task_config_t s_player_task_config = {
     .extractor = {
@@ -78,8 +75,8 @@ static const esp_player_task_config_t s_player_task_config = {
     },
     .audio_render = {
         .stack = 5120,
-        .prio = 8,
-        .core = 0,
+        .prio = 9,
+        .core = 1,
         .stack_in_ext = 1,
     },
     .video_decoder = {
