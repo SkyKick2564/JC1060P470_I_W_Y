@@ -1,20 +1,20 @@
 set(ESP_PLAYER_VIDEO_PIPELINE
-    "\${CMAKE_CURRENT_LIST_DIR}/../managed_components/espressif__esp_player/src/video/player_pipeline_video.c")
+    "${CMAKE_CURRENT_LIST_DIR}/../managed_components/espressif__esp_player/src/video/player_pipeline_video.c")
 
-if(NOT EXISTS "\${ESP_PLAYER_VIDEO_PIPELINE}")
+if(NOT EXISTS "${ESP_PLAYER_VIDEO_PIPELINE}")
     message(WARNING "ESP-Player video pipeline not found; MJPEG AVI FPS correction was not applied")
     return()
 endif()
 
-file(READ "\${ESP_PLAYER_VIDEO_PIPELINE}" ESP_PLAYER_VIDEO_PIPELINE_SOURCE)
+file(READ "${ESP_PLAYER_VIDEO_PIPELINE}" ESP_PLAYER_VIDEO_PIPELINE_SOURCE)
 
 set(ESP_PLAYER_MJPEG_RENDER_FPS_MARKER "Correct MJPEG AVI FPS at renderer creation")
-string(FIND "\${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "\${ESP_PLAYER_MJPEG_RENDER_FPS_MARKER}" ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED)
+string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "${ESP_PLAYER_MJPEG_RENDER_FPS_MARKER}" ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED)
 
 if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
     set(ESP_PLAYER_RENDER_FPS_ANCHOR
         "            video_render_cfg.fps = stream->video_side->track_info.video_info.fps;")
-    string(FIND "\${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "\${ESP_PLAYER_RENDER_FPS_ANCHOR}" ESP_PLAYER_RENDER_FPS_POSITION)
+    string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "${ESP_PLAYER_RENDER_FPS_ANCHOR}" ESP_PLAYER_RENDER_FPS_POSITION)
 
     if(ESP_PLAYER_RENDER_FPS_POSITION EQUAL -1)
         message(WARNING "ESP-Player renderer FPS assignment was not found; MJPEG AVI FPS correction was not applied")
@@ -42,11 +42,11 @@ if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
 ]=])
 
         string(REPLACE
-            "\${ESP_PLAYER_RENDER_FPS_ANCHOR}"
-            "\${ESP_PLAYER_RENDER_FPS_INSERT}\${ESP_PLAYER_RENDER_FPS_ANCHOR}"
+            "${ESP_PLAYER_RENDER_FPS_ANCHOR}"
+            "${ESP_PLAYER_RENDER_FPS_INSERT}${ESP_PLAYER_RENDER_FPS_ANCHOR}"
             ESP_PLAYER_VIDEO_PIPELINE_SOURCE
-            "\${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
-        file(WRITE "\${ESP_PLAYER_VIDEO_PIPELINE}" "\${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
+            "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
+        file(WRITE "${ESP_PLAYER_VIDEO_PIPELINE}" "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
         message(STATUS "ESP-Player: installed MJPEG AVI FPS correction at renderer setup")
     endif()
 else()
