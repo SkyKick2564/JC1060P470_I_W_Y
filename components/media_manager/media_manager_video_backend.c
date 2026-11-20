@@ -44,6 +44,7 @@ typedef struct {
     uint16_t output_height;
     bool source_info_valid;
     bool source_bound;
+    bool crop_logged;
     bool external_fb_logged;
     uint32_t profile_frames;
     int64_t profile_start_us;
@@ -54,6 +55,50 @@ typedef struct {
 static portMUX_TYPE s_target_mux = portMUX_INITIALIZER_UNLOCKED;
 static lv_obj_t *s_target_widget;
 static video_backend_context_t *s_active_backend;
+
+/*
+ * ESP32-P4 PPA SRM has a Q4 scale coefficient (1/16 steps).
+ * Select the next scale step that covers the widget, then crop the
+ * centered visible area from the larger PPA output.
+ */
+static bool video_backend_get_ppa_cover_crop(
+    uint16_t source_width,
+    uint16_t source_height,
+    uint16_t target_width,
+    uint16_t target_height,
+    uint16_t *scaled_width,
+    uint16_t *scaled_height,
+    uint16_t *crop_x,
+    uint16_t *crop_y)
+{
+    if (source_width == 0 || source_height == 0 ||
+        target_width == 0 || target_height == 0 ||
+        scaled_width == NULL || scaled_height == NULL ||
+        crop_x == NULL || crop_y == NULL) {
+        return false;
+    }
+
+    uint32_t scale_x_steps =
+        ((uint32_t)target_width * 16U + source_width - 1U) / source_width;
+    uint32_t scale_y_steps =
+        ((uint32_t)target_height * 16U + source_height - 1U) / source_height;
+    uint32_t scale_steps = scale_x_steps > scale_y_steps ?
+                           scale_x_steps : scale_y_steps;
+
+    uint32_t actual_width = ((uint32_t)source_width * scale_steps) / 16U;
+    uint32_t actual_height = ((uint32_t)source_height * scale_steps) / 16U;
+    if (actual_width < target_width || actual_height < target_height ||
+        actual_width > MEDIA_MANAGER_VIDEO_MAX_WIDTH ||
+        actual_height > MEDIA_MANAGER_VIDEO_MAX_HEIGHT) {
+        return false;
+    }
+
+    *scaled_width = (uint16_t)actual_width;
+    *scaled_height = (uint16_t)actual_height;
+    *crop_x = (uint16_t)((actual_width - target_width) / 2U);
+    *crop_y = (uint16_t)((actual_height - target_height) / 2U);
+    return true;
+}
 
 static esp_video_render_err_t video_backend_init(
     void *cfg,
@@ -272,11 +317,35 @@ static esp_video_render_err_t video_backend_write_fb(
      * publish source dimensions concurrently to release this wait.
      */
     bool source_info_valid;
+    uint16_t source_width;
+    uint16_t source_height;
     portENTER_CRITICAL(&s_target_mux);
     source_info_valid = ctx->source_info_valid;
+    source_width = ctx->source_width;
+    source_height = ctx->source_height;
     portEXIT_CRITICAL(&s_target_mux);
 
     if (!source_info_valid) {
+        return ESP_VIDEO_RENDER_ERR_NOT_SUPPORTED;
+    }
+
+    uint16_t scaled_width = 0;
+    uint16_t scaled_height = 0;
+    uint16_t crop_x = 0;
+    uint16_t crop_y = 0;
+    if (!video_backend_get_ppa_cover_crop(
+            source_width,
+            source_height,
+            ctx->output_width,
+            ctx->output_height,
+            &scaled_width,
+            &scaled_height,
+            &crop_x,
+            &crop_y)) {
+        ESP_LOGE(TAG,
+                 "Cannot crop PPA output %ux%u to widget %ux%u",
+                 (unsigned)source_width, (unsigned)source_height,
+                 (unsigned)ctx->output_width, (unsigned)ctx->output_height);
         return ESP_VIDEO_RENDER_ERR_NOT_SUPPORTED;
     }
 
@@ -343,19 +412,36 @@ static esp_video_render_err_t video_backend_write_fb(
     }
 
     /*
-     * The render canvas uses a fixed maximum stride. The image descriptor
-     * exposes only the source video's visible width/height while retaining
-     * that stride, allowing LVGL to scale the source image inside the EEZ
-     * Image widget without changing the widget's layout.
+     * The PPA output is larger than the widget because P4 SRM scale is
+     * quantized to 1/16 steps. Crop its centered visible region while keeping
+     * the render-canvas stride, so LVGL receives exactly the widget size
+     * without applying another software scale.
      */
+    size_t image_offset =
+        (size_t)crop_y * MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U +
+        (size_t)crop_x * 2U;
+    if (image_offset >= ctx->fb.size) {
+        lvgl_port_unlock();
+        return ESP_VIDEO_RENDER_ERR_INVALID_STATE;
+    }
+
     ctx->image.header.magic = LV_IMAGE_HEADER_MAGIC;
     ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
     ctx->image.header.w = ctx->output_width;
     ctx->image.header.h = ctx->output_height;
     ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
-    ctx->image.data_size = ctx->fb.size;
-    ctx->image.data = ctx->buffers[display_index];
+    ctx->image.data_size = ctx->fb.size - image_offset;
+    ctx->image.data = ctx->buffers[display_index] + image_offset;
     ctx->display_buffer_index = display_index;
+
+    if (!ctx->crop_logged) {
+        ESP_LOGI(TAG,
+                 "PPA Q4 crop: render=%ux%u widget=%ux%u offset=(%u,%u)",
+                 (unsigned)scaled_width, (unsigned)scaled_height,
+                 (unsigned)ctx->output_width, (unsigned)ctx->output_height,
+                 (unsigned)crop_x, (unsigned)crop_y);
+        ctx->crop_logged = true;
+    }
 
     if (!ctx->source_bound) {
         lv_image_set_src(ctx->widget, &ctx->image);
