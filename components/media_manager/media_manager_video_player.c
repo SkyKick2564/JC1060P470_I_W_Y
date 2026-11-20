@@ -323,6 +323,27 @@ static esp_err_t media_video_register_video_pool(esp_gmf_pool_handle_t *pool)
         element == NULL) {
         return ESP_FAIL;
     }
+
+    /*
+     * Scale in the P4 hardware before the frame enters LVGL. The EEZ
+     * video_image widget is 389x200, so keep the render buffers at that
+     * exact size instead of asking LVGL to scale 1280x720 on every refresh.
+     */
+    esp_gmf_video_resolution_t dst_resolution = {
+        .width = MEDIA_MANAGER_VIDEO_RENDER_WIDTH,
+        .height = MEDIA_MANAGER_VIDEO_RENDER_HEIGHT,
+    };
+    if (esp_gmf_video_ppa_set_dst_resolution(element, &dst_resolution) !=
+            ESP_GMF_ERR_OK ||
+        esp_gmf_video_ppa_set_dst_format(element, ESP_FOURCC_RGB16) !=
+            ESP_GMF_ERR_OK) {
+        ESP_LOGE(TAG, "Configure P4 PPA output to %ux%u RGB565 failed",
+                 MEDIA_MANAGER_VIDEO_RENDER_WIDTH,
+                 MEDIA_MANAGER_VIDEO_RENDER_HEIGHT);
+        esp_gmf_element_deinit(element);
+        return ESP_FAIL;
+    }
+
     if (esp_gmf_pool_register_element(*pool, element, NULL) != ESP_GMF_ERR_OK) {
         esp_gmf_element_deinit(element);
         return ESP_FAIL;
