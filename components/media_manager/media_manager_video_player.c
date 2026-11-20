@@ -60,7 +60,9 @@
  * - Core 0: AAC decode/render and video color conversion/render.
  * - Core 1: MP4 extraction and H.264 decode.
  * Keep the video renderer off Core 1 so it cannot starve the UI task there.
- * The dedicated I2S output worker remains pinned to Core 1.
+ * The dedicated I2S output worker is pinned to Core 0.
+ * Keep the CPU-intensive H.264 decoder and video renderer stacks in internal
+ * SRAM to avoid PSRAM stack traffic in the per-frame hot path.
  */
 static const esp_player_task_config_t s_player_task_config = {
     .extractor = {
@@ -85,13 +87,13 @@ static const esp_player_task_config_t s_player_task_config = {
         .stack = 5120,
         .prio = 6,
         .core = 1,
-        .stack_in_ext = 1,
+        .stack_in_ext = 0,
     },
     .video_render = {
         .stack = 5120,
         .prio = 6,
         .core = 0,
-        .stack_in_ext = 1,
+        .stack_in_ext = 0,
     },
 };
 
