@@ -55,9 +55,9 @@
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
 
 /*
- * Keep the CPU-heavy H.264 decode worker on Core 1 (sdkconfig), while the
- * player-side video decoder runs on Core 0. Give the audio and render stages
- * enough priority to keep their queues fed/drained under decode load.
+ * Keep the CPU-heavy H.264 decode worker on Core 1 (sdkconfig). Run video
+ * color conversion/rendering on Core 0 so it does not starve LVGL on Core 1.
+ * Keep audio output on Core 1 and give audio stages sufficient priority.
  */
 static const esp_player_task_config_t s_player_task_config = {
     .extractor = {
@@ -86,8 +86,8 @@ static const esp_player_task_config_t s_player_task_config = {
     },
     .video_render = {
         .stack = 5120,
-        .prio = 8,
-        .core = 1,
+        .prio = 6,
+        .core = 0,
         .stack_in_ext = 1,
     },
 };
