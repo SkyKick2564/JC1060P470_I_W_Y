@@ -1,30 +1,40 @@
 set(ESP_PLAYER_VIDEO_PIPELINE
     "${CMAKE_CURRENT_LIST_DIR}/../managed_components/espressif__esp_player/src/video/player_pipeline_video.c")
 
+set(ESP_PLAYER_MJPEG_RENDER_FPS_MARKER "Correct MJPEG AVI FPS at renderer creation")
+
 if(NOT EXISTS "${ESP_PLAYER_VIDEO_PIPELINE}")
-    message(WARNING "ESP-Player video pipeline not found; MJPEG AVI FPS correction was not applied")
-    return()
+    message(FATAL_ERROR
+        "ESP-Player source not found at ${ESP_PLAYER_VIDEO_PIPELINE}; refusing to build without the MJPEG AVI FPS correction")
 endif()
 
 file(READ "${ESP_PLAYER_VIDEO_PIPELINE}" ESP_PLAYER_VIDEO_PIPELINE_SOURCE)
-
-set(ESP_PLAYER_MJPEG_RENDER_FPS_MARKER "Correct MJPEG AVI FPS at renderer creation")
-string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "${ESP_PLAYER_MJPEG_RENDER_FPS_MARKER}" ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED)
+string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}"
+       "${ESP_PLAYER_MJPEG_RENDER_FPS_MARKER}"
+       ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED)
 
 if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
     set(ESP_PLAYER_RENDER_FPS_ANCHOR
         "            video_render_cfg.fps = stream->video_side->track_info.video_info.fps;")
-    string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "${ESP_PLAYER_RENDER_FPS_ANCHOR}" ESP_PLAYER_RENDER_FPS_POSITION)
+    string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}"
+           "${ESP_PLAYER_RENDER_FPS_ANCHOR}"
+           ESP_PLAYER_RENDER_FPS_POSITION)
 
     if(ESP_PLAYER_RENDER_FPS_POSITION EQUAL -1)
-        message(WARNING "ESP-Player renderer FPS assignment was not found; MJPEG AVI FPS correction was not applied")
-    else()
-        set(ESP_PLAYER_RENDER_FPS_INSERT [=[
+        message(FATAL_ERROR
+            "ESP-Player renderer FPS assignment was not found; refusing to build without the MJPEG AVI FPS correction")
+    endif()
+
+    set(ESP_PLAYER_RENDER_FPS_INSERT [=[
             /*
-             * The MJPEG decoder may replace the AVI extractor's frame rate
-             * with its default value (10 FPS). Restore the source frame rate
-             * from the extractor immediately before configuring the renderer
-             * and the A/V synchronization clock.
+             * ESP-Player 1.0.7 obtains the source FPS from extractor track info.
+             * Its decoder INFO event updates width, height, and bitrate, but does
+             * not update FPS. The previous workaround ran after decoder startup;
+             * the decoder event can queue REPORT_VIDEO_INFO and the state task
+             * can create the renderer before that late workaround executes.
+             *
+             * Restore the extractor's authoritative FPS immediately before the
+             * renderer config consumes track_info.video_info.fps.
              */
             if (stream->video_side->track_info.video_info.format == ESP_FOURCC_MJPG &&
                 stream->extractor != NULL) {
@@ -41,29 +51,41 @@ if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
                                                          video_idx,
                                                          &extractor_info) == ESP_GMF_ERR_OK &&
                         extractor_info.video_info.fps > 0) {
-                        int32_t decoder_fps =
+                        int32_t previous_fps =
                             (int32_t)stream->video_side->track_info.video_info.fps;
                         int32_t source_fps = (int32_t)extractor_info.video_info.fps;
                         stream->video_side->track_info.video_info.fps = source_fps;
                         player_sync_set_video_fps(stream->sync_handle, (float)source_fps);
                         player_sync_enable_video_fps_sync(stream->sync_handle, true);
                         ESP_LOGW(TAG,
-                                 "Correct MJPEG FPS at renderer creation: decoder=%" PRId32
-                                 ", extractor=%" PRId32 ", renderer=%" PRId32,
-                                 decoder_fps, source_fps, source_fps);
+                                 "MJPEG renderer FPS set from AVI extractor: previous=%" PRId32
+                                 ", source=%" PRId32 ", renderer=%" PRId32,
+                                 previous_fps, source_fps, source_fps);
+                    } else {
+                        ESP_LOGE(TAG, "Could not read MJPEG FPS from AVI extractor");
                     }
+                } else {
+                    ESP_LOGE(TAG, "Could not find active MJPEG AVI video track");
                 }
             }
 ]=])
 
-        string(REPLACE
-            "${ESP_PLAYER_RENDER_FPS_ANCHOR}"
-            "${ESP_PLAYER_RENDER_FPS_INSERT}${ESP_PLAYER_RENDER_FPS_ANCHOR}"
-            ESP_PLAYER_VIDEO_PIPELINE_SOURCE
-            "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
-        file(WRITE "${ESP_PLAYER_VIDEO_PIPELINE}" "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
-        message(STATUS "ESP-Player: installed MJPEG AVI FPS correction at renderer setup")
-    endif()
+    string(REPLACE
+        "${ESP_PLAYER_RENDER_FPS_ANCHOR}"
+        "${ESP_PLAYER_RENDER_FPS_INSERT}${ESP_PLAYER_RENDER_FPS_ANCHOR}"
+        ESP_PLAYER_VIDEO_PIPELINE_SOURCE
+        "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
+
+    file(WRITE "${ESP_PLAYER_VIDEO_PIPELINE}" "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
+    message(STATUS "ESP-Player: inserted MJPEG AVI FPS correction before renderer FPS assignment")
 else()
-    message(STATUS "ESP-Player: MJPEG AVI FPS correction already installed")
+    message(STATUS "ESP-Player: MJPEG AVI FPS correction already present")
+endif()
+
+file(READ "${ESP_PLAYER_VIDEO_PIPELINE}" ESP_PLAYER_VIDEO_PIPELINE_VERIFICATION)
+string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_VERIFICATION}"
+       "${ESP_PLAYER_MJPEG_RENDER_FPS_MARKER}"
+       ESP_PLAYER_MJPEG_RENDER_FPS_VERIFIED)
+if(ESP_PLAYER_MJPEG_RENDER_FPS_VERIFIED EQUAL -1)
+    message(FATAL_ERROR "ESP-Player MJPEG AVI FPS correction verification failed")
 endif()
