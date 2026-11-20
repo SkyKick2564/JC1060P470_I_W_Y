@@ -319,6 +319,8 @@ esp_player_err_t esp_player_submit_frame(esp_player_handle_t handle, esp_player_
  *       - ESP_PLAYER_ERR_NOT_SUPPORT  Not allowed in current player state
  *       - ESP_PLAYER_ERR_NO_MEM       Allocation failed
  */
+esp_player_err_t esp_player_set_task_config(esp_player_handle_t handle, const esp_player_task_config_t *config);
+
 /**
  * @brief  Set the output size used by the video render stream
  *
@@ -340,8 +342,6 @@ esp_player_err_t esp_player_submit_frame(esp_player_handle_t handle, esp_player_
 esp_player_err_t esp_player_set_video_render_size(esp_player_handle_t handle,
                                                   uint16_t width,
                                                   uint16_t height);
-
-esp_player_err_t esp_player_set_task_config(esp_player_handle_t handle, const esp_player_task_config_t *config);
 
 /**
  * @brief  Override buffer / queue parameters for one player instance
