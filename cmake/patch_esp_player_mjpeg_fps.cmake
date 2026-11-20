@@ -31,10 +31,8 @@ if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
                 stream->video_side->track_info.video_info.height == 720) {
                 int32_t reported_fps = stream->video_side->track_info.video_info.fps;
                 stream->video_side->track_info.video_info.fps = 25;
-                if (!(stream->expected_tasks & TASK_STATUS_EXTRACTOR_RUNNING)) {
-                    player_sync_set_video_fps(stream->sync_handle, 25);
-                    player_sync_enable_video_fps_sync(stream->sync_handle, true);
-                }
+                player_sync_set_video_fps(stream->sync_handle, 25);
+                player_sync_enable_video_fps_sync(stream->sync_handle, true);
                 ESP_LOGW(TAG,
                          "Correct MJPEG AVI FPS at renderer creation: decoder=%" PRId32 ", renderer=25",
                          reported_fps);
