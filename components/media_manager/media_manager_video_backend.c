@@ -226,7 +226,21 @@ static esp_video_render_err_t video_backend_write_fb(
         return ESP_VIDEO_RENDER_ERR_TIMEOUT;
     }
 
-    if (!ctx->source_info_valid) {
+    /*
+     * Do not use ctx->lock here. The renderer may call write_fb() while
+     * holding that framebuffer lock. The playback task must be able to
+     * publish source dimensions concurrently to release this wait.
+     */
+    uint16_t source_width;
+    uint16_t source_height;
+    bool source_info_valid;
+    portENTER_CRITICAL(&s_target_mux);
+    source_width = ctx->source_width;
+    source_height = ctx->source_height;
+    source_info_valid = ctx->source_info_valid;
+    portEXIT_CRITICAL(&s_target_mux);
+
+    if (!source_info_valid) {
         return ESP_VIDEO_RENDER_ERR_NOT_SUPPORTED;
     }
 
@@ -268,8 +282,8 @@ static esp_video_render_err_t video_backend_write_fb(
      */
     ctx->image.header.magic = LV_IMAGE_HEADER_MAGIC;
     ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
-    ctx->image.header.w = ctx->source_width;
-    ctx->image.header.h = ctx->source_height;
+    ctx->image.header.w = source_width;
+    ctx->image.header.h = source_height;
     ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
     ctx->image.data_size = ctx->fb.size;
     ctx->image.data = ctx->buffers[display_index];
@@ -389,14 +403,16 @@ esp_err_t media_manager_video_backend_set_source_info(
                  width <= MEDIA_MANAGER_VIDEO_MAX_WIDTH &&
                  height <= MEDIA_MANAGER_VIDEO_MAX_HEIGHT;
 
-    if (xSemaphoreTake(ctx->lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
-        return ESP_ERR_TIMEOUT;
-    }
-
+    /*
+     * Source metadata has a different lifetime from framebuffer access.
+     * Protect it with the short global critical section instead of ctx->lock:
+     * write_fb() can be waiting for this event while the renderer owns ctx->lock.
+     */
+    portENTER_CRITICAL(&s_target_mux);
     ctx->source_width = valid ? width : 0;
     ctx->source_height = valid ? height : 0;
     ctx->source_info_valid = valid;
-    xSemaphoreGive(ctx->lock);
+    portEXIT_CRITICAL(&s_target_mux);
 
     xEventGroupSetBits(ctx->events, MEDIA_VIDEO_SOURCE_INFO_READY);
 
