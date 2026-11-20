@@ -124,7 +124,7 @@ static esp_video_render_err_t video_backend_init(
 
     *out_backend = (esp_video_render_backend_handle_t)ctx;
     ESP_LOGI(TAG, "EEZ Image target attached; render canvas %ux%u",
-             MEDIA_MANAGER_VIDEO_MAX_WIDTH, MEDIA_MANAGER_VIDEO_MAX_HEIGHT);
+             ctx->fb.info.width, ctx->fb.info.height);
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
