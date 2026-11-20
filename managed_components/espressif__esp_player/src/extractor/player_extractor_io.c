@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_gmf_io.h"
 
 #include "player_stream.h"
@@ -21,6 +22,40 @@
 
 /* Must match PLAYER_RAW_MAX_FRAME_SIZE in player_extractor.c */
 #define PLAYER_RAW_PACE_CHUNK_BYTES  (2048U)
+
+typedef struct {
+    int64_t window_start_us;
+    uint32_t calls, errors;
+    uint64_t total_us, pace_us, io_us, bytes, max_io_us;
+} player_extractor_profile_t;
+static player_extractor_profile_t s_extractor_profile;
+
+static void player_extractor_profile_add(uint64_t total_us, uint64_t pace_us,
+                                         uint64_t io_us, uint32_t bytes, bool error)
+{
+    int64_t now_us = esp_timer_get_time();
+    player_extractor_profile_t *p = &s_extractor_profile;
+    if (p->window_start_us == 0) p->window_start_us = now_us;
+    p->calls++;
+    p->total_us += total_us;
+    p->pace_us += pace_us;
+    p->io_us += io_us;
+    p->bytes += bytes;
+    p->errors += error ? 1U : 0U;
+    if (io_us > p->max_io_us) p->max_io_us = io_us;
+    uint64_t elapsed_us = (uint64_t)(now_us - p->window_start_us);
+    if (elapsed_us < 1000000ULL) return;
+    ESP_LOGI(ESP_PLAYER_TAG, "PROFILE extractor: reads/s=%llu bytes/s=%llu errors=%u avg_total=%lluus avg_pace=%lluus avg_io=%lluus max_io=%lluus",
+             (unsigned long long)((uint64_t)p->calls * 1000000ULL / elapsed_us),
+             (unsigned long long)(p->bytes * 1000000ULL / elapsed_us), (unsigned)p->errors,
+             (unsigned long long)(p->calls ? p->total_us / p->calls : 0),
+             (unsigned long long)(p->calls ? p->pace_us / p->calls : 0),
+             (unsigned long long)(p->calls ? p->io_us / p->calls : 0),
+             (unsigned long long)p->max_io_us);
+    p->window_start_us = now_us;
+    p->calls = p->errors = 0;
+    p->total_us = p->pace_us = p->io_us = p->bytes = p->max_io_us = 0;
+}
 
 #if CONFIG_ESP_PLAYER_ENABLE_AUDIO
 static uint32_t player_raw_pcm_byte_rate(const esp_player_stream_t *stream)
@@ -117,8 +152,11 @@ static esp_player_err_t player_ensure_input_open(esp_player_stream_t *stream)
 
 int _extractor_read(void *buffer, uint32_t size, void *ctx)
 {
+    int64_t profile_start_us = esp_timer_get_time();
+    uint64_t pace_us = 0, io_us = 0;
     esp_player_stream_t *stream = (esp_player_stream_t *)ctx;
     if (player_ensure_input_open(stream) != ESP_PLAYER_ERR_OK) {
+        player_extractor_profile_add((uint64_t)(esp_timer_get_time() - profile_start_us), 0, 0, 0, true);
         return -1;
     }
     esp_gmf_payload_t load = {0};
@@ -130,7 +168,9 @@ int _extractor_read(void *buffer, uint32_t size, void *ctx)
     if (stream->sync_handle != NULL) {
         /* RAW pace: decode PTS tracks extractor chunk rate; render PTS batches PCM. */
         pace_pts = player_sync_get_audio_decode_pts_ms(stream->sync_handle);
+        int64_t pace_start_us = esp_timer_get_time();
         player_extractor_raw_read_pace(stream, ext_el, pace_pts);
+        pace_us += (uint64_t)(esp_timer_get_time() - pace_start_us);
         render_pts = player_sync_get_audio_render_pts_ms(stream->sync_handle);
     }
     if (ext_el) {
@@ -142,9 +182,12 @@ _read_again:
     load.buf = buffer + pos;
     load.buf_length = size - pos;
     load.valid_size = 0;
+    int64_t io_start_us = esp_timer_get_time();
     esp_gmf_err_io_t ret = esp_gmf_io_acquire_read(stream->input_handle, &load, load.buf_length, pdMS_TO_TICKS(diff_pts));
+    io_us += (uint64_t)(esp_timer_get_time() - io_start_us);
     if (ret == ESP_GMF_IO_TIMEOUT) {
         if ((stream->_is_stop == true) && pos == 0) {
+            player_extractor_profile_add((uint64_t)(esp_timer_get_time() - profile_start_us), pace_us, io_us, 0, false);
             return 0;
         }
         if (pos > 0) {
@@ -159,7 +202,9 @@ _read_again:
             memcpy((uint8_t *)buffer + pos, load.buf, load.valid_size);
         }
     }
+    io_start_us = esp_timer_get_time();
     esp_gmf_io_release_read(stream->input_handle, &load, pdMS_TO_TICKS(ESP_PLAYER_READ_WAIT_TIME_MS));
+    io_us += (uint64_t)(esp_timer_get_time() - io_start_us);
     pos += load.valid_size;
     if (pos < size && load.is_done != true) {
         goto _read_again;
@@ -167,10 +212,11 @@ _read_again:
 _read_done:
     load.valid_size = pos;
 
-    if (pos > 0) {
-        return (int)pos;
-    }
-    return ret == ESP_GMF_IO_OK ? load.valid_size : -1;
+    int result = (pos > 0) ? (int)pos :
+                 (ret == ESP_GMF_IO_OK ? (int)load.valid_size : -1);
+    player_extractor_profile_add((uint64_t)(esp_timer_get_time() - profile_start_us),
+                                 pace_us, io_us, (uint32_t)(result > 0 ? result : 0), result < 0);
+    return result;
 }
 
 int _extractor_seek(uint32_t position, void *ctx)
