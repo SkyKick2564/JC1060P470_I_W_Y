@@ -599,6 +599,30 @@ esp_err_t media_manager_video_play_file(
             break;
         }
 
+        if (video_enabled) {
+            uint16_t render_width = 0;
+            uint16_t render_height = 0;
+            result = media_manager_video_backend_get_output_size(
+                &render_width, &render_height);
+            if (result != ESP_OK) {
+                ESP_LOGE(TAG, "Get video widget output size failed: %s",
+                         esp_err_to_name(result));
+                break;
+            }
+
+            esp_player_err_t render_size_ret = esp_player_set_video_render_size(
+                player, render_width, render_height);
+            if (render_size_ret != ESP_PLAYER_ERR_OK) {
+                ESP_LOGE(TAG, "Set video render size %ux%u failed: %d",
+                         (unsigned)render_width, (unsigned)render_height,
+                         (int)render_size_ret);
+                result = ESP_FAIL;
+                break;
+            }
+            ESP_LOGI(TAG, "Video render target: %ux%u",
+                     (unsigned)render_width, (unsigned)render_height);
+        }
+
         /*
          * MJPEG AVI frames can exceed the player's small built-in 100 KiB
          * extractor pool. A truncated compressed frame reaches the hardware
