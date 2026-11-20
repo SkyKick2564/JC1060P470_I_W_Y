@@ -25,7 +25,6 @@
 #include "esp_gmf_bit_cvt.h"
 #include "esp_gmf_rate_cvt.h"
 #include "esp_gmf_alc.h"
-#include "esp_gmf_video_color_convert.h"
 #if CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32S31
 #include "esp_gmf_video_ppa.h"
 #endif
@@ -349,19 +348,6 @@ static esp_err_t media_video_register_video_pool(esp_gmf_pool_handle_t *pool)
         return ESP_FAIL;
     }
 #endif
-
-    element = NULL;
-    esp_imgfx_color_convert_cfg_t color_cfg = {
-        .color_space_std = ESP_IMGFX_COLOR_SPACE_STD_BT601,
-    };
-    if (esp_gmf_video_color_convert_init(&color_cfg, &element) != ESP_GMF_ERR_OK ||
-        element == NULL) {
-        return ESP_FAIL;
-    }
-    if (esp_gmf_pool_register_element(*pool, element, NULL) != ESP_GMF_ERR_OK) {
-        esp_gmf_element_deinit(element);
-        return ESP_FAIL;
-    }
 
     return ESP_OK;
 }
