@@ -56,9 +56,10 @@
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
 
 /*
- * Keep UI/LVGL refresh and video rendering on Core 0. Run audio rendering
- * on Core 1 with extraction/decoding so UI refreshes cannot starve the PCM
- * producer. The dedicated high-priority I2S output task remains on Core 0.
+ * Keep UI/LVGL refresh on Core 0. Run audio and video rendering on Core 1
+ * so UI refresh work cannot directly starve either playback renderer.
+ * Audio rendering has higher priority than video rendering and decoding.
+ * The dedicated high-priority I2S output task remains on Core 0.
  */
 static const esp_player_task_config_t s_player_task_config = {
     .extractor = {
@@ -87,8 +88,8 @@ static const esp_player_task_config_t s_player_task_config = {
     },
     .video_render = {
         .stack = 5120,
-        .prio = 6,
-        .core = 0,
+        .prio = 7,
+        .core = 1,
         .stack_in_ext = 0,
     },
 };
