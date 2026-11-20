@@ -23,6 +23,8 @@ extern "C" {
     .height         = 0,                         \
     .display_width  = 0,                         \
     .display_height = 0,                         \
+    .render_width   = 0,                         \
+    .render_height  = 0,                         \
     .decoded_format = 0,                         \
     .fps            = 0,                         \
     .sync_handle    = NULL                       \
@@ -34,6 +36,8 @@ typedef struct {
     uint16_t              height;
     uint16_t              display_width;
     uint16_t              display_height;
+    uint16_t              render_width;
+    uint16_t              render_height;
     uint32_t              decoded_format;
     uint32_t              fps;
     player_sync_handle_t  sync_handle;
