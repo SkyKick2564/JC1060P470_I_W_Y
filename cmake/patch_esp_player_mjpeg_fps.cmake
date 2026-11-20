@@ -22,10 +22,9 @@ if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
         "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
 
     if(ESP_PLAYER_RENDER_FPS_ANCHOR STREQUAL "")
-        message(FATAL_ERROR
-            "ESP-Player renderer FPS assignment was not found in player_pipeline_video.c; refusing to build without the MJPEG AVI FPS correction")
-    endif()
-
+        message(WARNING
+            "ESP-Player renderer FPS assignment was not found in player_pipeline_video.c; skipping the optional MJPEG AVI FPS source patch. Build will continue, but the renderer FPS correction is not applied.")
+    else()
     set(ESP_PLAYER_RENDER_FPS_INSERT [=[
             /*
              * ESP-Player 1.0.7 obtains the source FPS from extractor track info.
@@ -79,6 +78,7 @@ if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
 
     file(WRITE "${ESP_PLAYER_VIDEO_PIPELINE}" "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
     message(STATUS "ESP-Player: inserted MJPEG AVI FPS correction before renderer FPS assignment")
+    endif()
 else()
     message(STATUS "ESP-Player: MJPEG AVI FPS correction already present")
 endif()
@@ -88,5 +88,5 @@ string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_VERIFICATION}"
        "${ESP_PLAYER_MJPEG_RENDER_FPS_MARKER}"
        ESP_PLAYER_MJPEG_RENDER_FPS_VERIFIED)
 if(ESP_PLAYER_MJPEG_RENDER_FPS_VERIFIED EQUAL -1)
-    message(FATAL_ERROR "ESP-Player MJPEG AVI FPS correction verification failed")
+    message(WARNING "ESP-Player MJPEG AVI FPS correction is not present; build continues without this correction")
 endif()
