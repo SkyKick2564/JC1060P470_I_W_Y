@@ -858,12 +858,6 @@ esp_err_t ota_manager_start(void)
         return ESP_OK;
     }
 
-    /*
-     * ota_manager_start() is called by the application after its critical
-     * startup steps have succeeded. Keep rollback confirmation inside OTA.
-     */
-    ota_confirm_running_firmware_if_pending();
-
     if (xTaskCreate(
             ota_manager_task,
             "ota_manager",
