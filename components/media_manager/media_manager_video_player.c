@@ -11,6 +11,7 @@
 #include "esp_codec_dev.h"
 #include "esp_player.h"
 #include "esp_player_advance.h"
+#include "esp_player_advance.h"
 #include "esp_audio_render.h"
 #include "esp_video_render.h"
 #include "esp_extractor_defaults.h"
@@ -53,6 +54,44 @@
 #define VIDEO_AUDIO_OUTPUT_TASK_STACK  (4 * 1024)
 #define VIDEO_AUDIO_OUTPUT_TASK_PRIO   (configMAX_PRIORITIES - 3)
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
+
+/*
+ * Keep the CPU-heavy H.264 decode worker on Core 1 (sdkconfig), while the
+ * player-side video decoder runs on Core 0. Give the audio and render stages
+ * enough priority to keep their queues fed/drained under decode load.
+ */
+static const esp_player_task_config_t s_player_task_config = {
+    .extractor = {
+        .stack = 5120,
+        .prio = 6,
+        .core = 0,
+        .stack_in_ext = 1,
+    },
+    .audio_decoder = {
+        .stack = 5120,
+        .prio = 7,
+        .core = 1,
+        .stack_in_ext = 1,
+    },
+    .audio_render = {
+        .stack = 5120,
+        .prio = 8,
+        .core = 0,
+        .stack_in_ext = 1,
+    },
+    .video_decoder = {
+        .stack = 5120,
+        .prio = 6,
+        .core = 0,
+        .stack_in_ext = 1,
+    },
+    .video_render = {
+        .stack = 5120,
+        .prio = 8,
+        .core = 1,
+        .stack_in_ext = 1,
+    },
+};
 
 #define VIDEO_COMMAND_PAUSE  (1UL << 1)
 #define VIDEO_COMMAND_RESUME (1UL << 2)
@@ -427,7 +466,8 @@ esp_err_t media_manager_video_play_file(
                 VIDEO_AUDIO_OUTPUT_TASK_STACK,
                 &audio_output,
                 VIDEO_AUDIO_OUTPUT_TASK_PRIO,
-                &audio_output_task) != pdPASS) {
+                &audio_output_task,
+                1) != pdPASS) {
             result = ESP_ERR_NO_MEM;
             break;
         }
@@ -503,6 +543,13 @@ esp_err_t media_manager_video_play_file(
 
         if (esp_player_set_event_cb(
                 player, media_video_player_event, &event_ctx) != ESP_PLAYER_ERR_OK) {
+            result = ESP_FAIL;
+            break;
+        }
+
+        if (esp_player_set_task_config(player, &s_player_task_config) !=
+            ESP_PLAYER_ERR_OK) {
+            ESP_LOGE(TAG, "Configure playback task affinity failed");
             result = ESP_FAIL;
             break;
         }
