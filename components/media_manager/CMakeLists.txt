@@ -16,7 +16,6 @@ idf_component_register(
         esp_video_render
         esp_extractor
         esp_video_codec
-        esp_h264
         media_lib_sal
         gmf_core
         gmf_audio
