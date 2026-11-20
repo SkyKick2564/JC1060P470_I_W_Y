@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_heap_caps.h"
 #include "esp_codec_dev.h"
 #include "esp_player.h"
@@ -105,6 +106,7 @@ typedef struct {
 
 typedef struct {
     size_t size;
+    int64_t queued_at_us;
     uint8_t data[VIDEO_AUDIO_PCM_BLOCK_SIZE];
 } media_video_pcm_block_t;
 
@@ -114,6 +116,12 @@ typedef struct {
     SemaphoreHandle_t done;
     esp_codec_dev_handle_t codec;
     volatile esp_err_t error;
+    uint32_t profile_blocks;
+    int64_t profile_start_us;
+    int64_t profile_queue_wait_us;
+    int64_t profile_codec_write_us;
+    int64_t profile_queue_wait_max_us;
+    int64_t profile_codec_write_max_us;
 } media_video_audio_output_t;
 
 static void media_video_audio_output_task(void *arg)
@@ -126,14 +134,49 @@ static void media_video_audio_output_task(void *arg)
             break;
         }
 
+        int64_t now_us = esp_timer_get_time();
+        int64_t queue_wait_us = now_us - block->queued_at_us;
+        int64_t codec_write_us = 0;
         if (output->error == ESP_OK) {
+            int64_t write_start_us = esp_timer_get_time();
             esp_err_t err = esp_codec_dev_write(
                 output->codec, block->data, (int)block->size);
+            codec_write_us = esp_timer_get_time() - write_start_us;
             if (err != ESP_CODEC_DEV_OK) {
                 output->error = err;
                 ESP_LOGE(TAG, "Audio output write failed: %s",
                          esp_err_to_name(err));
             }
+        }
+
+        output->profile_blocks++;
+        output->profile_queue_wait_us += queue_wait_us;
+        output->profile_codec_write_us += codec_write_us;
+        if (queue_wait_us > output->profile_queue_wait_max_us) {
+            output->profile_queue_wait_max_us = queue_wait_us;
+        }
+        if (codec_write_us > output->profile_codec_write_max_us) {
+            output->profile_codec_write_max_us = codec_write_us;
+        }
+        if (output->profile_start_us == 0) {
+            output->profile_start_us = now_us;
+        }
+        if (output->profile_blocks >= 50) {
+            int64_t window_us = now_us - output->profile_start_us;
+            ESP_LOGI(TAG,
+                     "Audio output profile: blocks=%" PRIu32 " rate=%.1f blocks/s avg_queue=%.2f ms max_queue=%.2f ms avg_codec_write=%.2f ms max_codec_write=%.2f ms",
+                     output->profile_blocks,
+                     window_us > 0 ? (double)output->profile_blocks * 1000000.0 / (double)window_us : 0.0,
+                     (double)output->profile_queue_wait_us / (double)output->profile_blocks / 1000.0,
+                     (double)output->profile_queue_wait_max_us / 1000.0,
+                     (double)output->profile_codec_write_us / (double)output->profile_blocks / 1000.0,
+                     (double)output->profile_codec_write_max_us / 1000.0);
+            output->profile_blocks = 0;
+            output->profile_start_us = 0;
+            output->profile_queue_wait_us = 0;
+            output->profile_codec_write_us = 0;
+            output->profile_queue_wait_max_us = 0;
+            output->profile_codec_write_max_us = 0;
         }
 
         if (xQueueSend(output->free_queue, &block, 0) != pdTRUE) {
@@ -186,6 +229,7 @@ static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
     }
 
     block->size = length;
+    block->queued_at_us = esp_timer_get_time();
     memcpy(block->data, pcm, length);
 
     if (xQueueSend(output->queue, &block, VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE) {
