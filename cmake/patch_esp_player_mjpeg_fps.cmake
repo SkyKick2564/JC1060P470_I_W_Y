@@ -14,15 +14,16 @@ string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}"
        ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED)
 
 if(ESP_PLAYER_MJPEG_RENDER_FPS_PATCHED EQUAL -1)
-    set(ESP_PLAYER_RENDER_FPS_ANCHOR
-        "            video_render_cfg.fps = stream->video_side->track_info.video_info.fps;")
-    string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}"
-           "${ESP_PLAYER_RENDER_FPS_ANCHOR}"
-           ESP_PLAYER_RENDER_FPS_POSITION)
+    # Match the assignment independently of indentation and spacing.
+    # The managed component's formatting can differ between ESP-Player releases.
+    string(REGEX MATCH
+        "[ \t]*video_render_cfg[.]fps[ \t]*=[ \t]*stream->video_side->track_info[.]video_info[.]fps[ \t]*;"
+        ESP_PLAYER_RENDER_FPS_ANCHOR
+        "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
 
-    if(ESP_PLAYER_RENDER_FPS_POSITION EQUAL -1)
+    if(ESP_PLAYER_RENDER_FPS_ANCHOR STREQUAL "")
         message(FATAL_ERROR
-            "ESP-Player renderer FPS assignment was not found; refusing to build without the MJPEG AVI FPS correction")
+            "ESP-Player renderer FPS assignment was not found in player_pipeline_video.c; refusing to build without the MJPEG AVI FPS correction")
     endif()
 
     set(ESP_PLAYER_RENDER_FPS_INSERT [=[
