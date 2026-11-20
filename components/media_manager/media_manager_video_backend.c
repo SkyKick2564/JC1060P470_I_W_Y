@@ -9,6 +9,7 @@
 #include "freertos/semphr.h"
 
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
 #include "sdkconfig.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -41,6 +42,10 @@ typedef struct {
     uint16_t source_height;
     bool source_info_valid;
     bool source_bound;
+    uint32_t profile_frames;
+    int64_t profile_start_us;
+    int64_t profile_lock_wait_max_us;
+    int64_t profile_total_us;
 } video_backend_context_t;
 
 static portMUX_TYPE s_target_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -208,6 +213,7 @@ static esp_video_render_err_t video_backend_write_fb(
     }
 
     video_backend_context_t *ctx = backend;
+    int64_t frame_start_us = esp_timer_get_time();
     if (fb->size != ctx->fb.size ||
         fb->info.format != ESP_VIDEO_RENDER_FORMAT_RGB565 ||
         fb->info.width != ctx->fb.info.width ||
@@ -263,9 +269,15 @@ static esp_video_render_err_t video_backend_write_fb(
      * reuse the framebuffer on the next cycle. Blocking here propagates
      * backpressure into decoding and audio/video playback.
      */
+    int64_t lock_start_us = esp_timer_get_time();
     if (!lvgl_port_lock(1)) {
         ESP_LOGD(TAG, "Drop late video frame: LVGL is busy");
         return ESP_VIDEO_RENDER_ERR_OK;
+    }
+
+    int64_t lock_wait_us = esp_timer_get_time() - lock_start_us;
+    if (lock_wait_us > ctx->profile_lock_wait_max_us) {
+        ctx->profile_lock_wait_max_us = lock_wait_us;
     }
 
     if (!lv_obj_is_valid(ctx->widget) ||
@@ -296,6 +308,26 @@ static esp_video_render_err_t video_backend_write_fb(
 
     lv_obj_invalidate(ctx->widget);
     lvgl_port_unlock();
+
+    int64_t elapsed_us = esp_timer_get_time() - frame_start_us;
+    ctx->profile_total_us += elapsed_us;
+    ctx->profile_frames++;
+    if (ctx->profile_start_us == 0) {
+        ctx->profile_start_us = frame_start_us;
+    }
+    if (ctx->profile_frames >= 50) {
+        int64_t window_us = esp_timer_get_time() - ctx->profile_start_us;
+        ESP_LOGI(TAG,
+                 "Frame profile: count=%" PRIu32 " rate=%.2f fps avg_write=%.2f ms max_lvgl_wait=%.2f ms",
+                 ctx->profile_frames,
+                 window_us > 0 ? (double)ctx->profile_frames * 1000000.0 / (double)window_us : 0.0,
+                 (double)ctx->profile_total_us / (double)ctx->profile_frames / 1000.0,
+                 (double)ctx->profile_lock_wait_max_us / 1000.0);
+        ctx->profile_frames = 0;
+        ctx->profile_start_us = 0;
+        ctx->profile_total_us = 0;
+        ctx->profile_lock_wait_max_us = 0;
+    }
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
