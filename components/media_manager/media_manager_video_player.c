@@ -47,7 +47,7 @@
 #define VIDEO_OUTPUT_SAMPLE_RATE 44100
 #define VIDEO_OUTPUT_BITS        16
 #define VIDEO_OUTPUT_CHANNELS    2
-#define VIDEO_RENDER_FPS         10
+#define VIDEO_RENDER_FPS         25
 
 #define VIDEO_AUDIO_QUEUE_LENGTH       24
 #define VIDEO_AUDIO_PCM_BLOCK_SIZE     (64 * 1024)
@@ -58,11 +58,11 @@
 /*
  * Split the two decoder paths across the P4 cores:
  * - Core 0: AAC decode/render and video color conversion/render.
- * - Core 1: MP4 extraction and H.264 decode.
+ * - Core 1: AVI/MJPEG extraction and hardware MJPEG decode.
  * Keep the video renderer off Core 1 so it cannot starve the UI task there.
  * The dedicated I2S output worker is pinned to Core 0.
- * Keep the CPU-intensive H.264 decoder and video renderer stacks in internal
- * SRAM to avoid PSRAM stack traffic in the per-frame hot path.
+ * Keep the video decoder and renderer stacks in internal SRAM to avoid
+ * PSRAM stack traffic in the per-frame hot path.
  */
 static const esp_player_task_config_t s_player_task_config = {
     .extractor = {
@@ -423,7 +423,7 @@ static void media_video_register_defaults(void)
     esp_extractor_register_default();
     esp_audio_dec_register_default();
     esp_video_dec_register_default();
-    ESP_LOGI(TAG, "Espressif default H.264 decoder registered");
+    ESP_LOGI(TAG, "Espressif default MJPEG decoder registered");
 }
 
 static void media_video_unregister_defaults(void)
@@ -591,7 +591,7 @@ esp_err_t media_manager_video_play_file(
             }
             ESP_LOGI(TAG, "Video output enabled; EEZ Image target is ready");
         } else {
-            ESP_LOGI(TAG, "No EEZ Image target; playing MP4 audio track only");
+            ESP_LOGI(TAG, "No EEZ Image target; playing AVI audio track only");
         }
 
         esp_player_config_t player_cfg = ESP_PLAYER_CONFIG_DEFAULT();
