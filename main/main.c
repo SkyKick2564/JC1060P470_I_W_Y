@@ -406,6 +406,13 @@ void app_main(void)
     ESP_LOGI(TAG, "Application started");
 
     /*
+     * Confirm a pending OTA image as soon as the board and essential UI
+     * initialization have succeeded. Do not make rollback confirmation
+     * depend on optional SD/media playback or later network startup.
+     */
+    ota_manager_confirm_running_firmware();
+
+    /*
      * Bind the EEZ Image widget created by ui_init().
      * The Media Manager will use it for decoded MJPEG video frames.
      */
