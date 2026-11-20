@@ -56,13 +56,12 @@
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
 
 /*
- * Split the two decoder paths across the P4 cores:
- * - Core 0: AAC decode/render and video color conversion/render.
- * - Core 1: AVI/MJPEG extraction and hardware MJPEG decode.
- * Keep the video renderer off Core 1 so it cannot starve the UI task there.
- * The dedicated I2S output worker is pinned to Core 0.
- * Keep the video decoder and renderer stacks in internal SRAM to avoid
- * PSRAM stack traffic in the per-frame hot path.
+ * Split playback work across both P4 cores:
+ * - Core 0: audio render, video render/color conversion, and I2S output.
+ * - Core 1: AVI extraction, AAC decode, and hardware MJPEG decode.
+ * Keep the audio decoder with the extractor/video decoder to reduce
+ * contention with the real-time render tasks on Core 0.
+ * Keep video decoder and renderer stacks in internal SRAM.
  */
 static const esp_player_task_config_t s_player_task_config = {
     .extractor = {
@@ -72,9 +71,9 @@ static const esp_player_task_config_t s_player_task_config = {
         .stack_in_ext = 1,
     },
     .audio_decoder = {
-        .stack = 5120,
-        .prio = 7,
-        .core = 0,
+        .stack = 6144,
+        .prio = 8,
+        .core = 1,
         .stack_in_ext = 1,
     },
     .audio_render = {
@@ -639,7 +638,13 @@ esp_err_t media_manager_video_play_file(
         esp_player_data_src_t source = {
             .url = url,
             .av_mask = video_enabled ? ESP_PLAYER_MASK_AV : ESP_PLAYER_MASK_AUDIO,
-            .sync_mode = ESP_PLAYER_SYNC_MODE_AUDIO,
+            /*
+             * The AAC/AVI audio clock is not a reliable master on this board:
+             * PCM output profiling shows substantial under-production. Use
+             * the video clock as master so video is paced by the AVI frame rate
+             * and audio follows it instead of slowing the entire presentation.
+             */
+            .sync_mode = ESP_PLAYER_SYNC_MODE_VIDEO,
         };
         if (esp_player_set_data_src(player, &source) != ESP_PLAYER_ERR_OK ||
             esp_player_run(player) != ESP_PLAYER_ERR_OK) {
