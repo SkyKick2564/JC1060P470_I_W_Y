@@ -7,6 +7,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <stdint.h>
 #include <string.h>
 #include "esp_log.h"
 
@@ -180,7 +181,6 @@ static esp_gmf_job_err_t player_video_render_open(esp_gmf_element_handle_t self,
             render_height = cfg->display_height;
         }
     }
-
 
     if (render_width > 0 && render_height > 0) {
         uint16_t scale_source_width =
