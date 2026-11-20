@@ -1,8 +1,9 @@
 {
   "navigation": {
     "selectedUserPageObject": "[JC1060P470C.eez-project]:/userPages/0",
-    "selectedActionObject": "[JC1060P470C.eez-project]:/actions/0",
+    "selectedActionObject": "[JC1060P470C.eez-project]:/actions/-1",
     "selectedStyleObject": "[JC1060P470C.eez-project]:/lvglStyles/styles/0",
+    "selectedBitmapObject": "[JC1060P470C.eez-project]:/bitmaps/3",
     "subnavigationSelectedItems": {
       "variables-tab/sub-navigation/selected-item": "Global"
     }
@@ -25,7 +26,7 @@
           },
           {
             "type": "border",
-            "selected": 0,
+            "selected": 2,
             "size": 161.5,
             "location": "right",
             "children": [
@@ -73,7 +74,7 @@
           },
           {
             "type": "border",
-            "selected": 1,
+            "selected": 0,
             "size": 101.5,
             "location": "bottom",
             "children": [
@@ -121,12 +122,12 @@
             {
               "type": "row",
               "id": "#82234093-22dd-47c4-a87d-250ce4316a9a",
-              "weight": 15,
+              "weight": 22.965997293042008,
               "children": [
                 {
                   "type": "tabset",
                   "id": "#e1fe8c2f-b1de-4482-b6be-ec5b2fb04cf9",
-                  "weight": 0.9025974025974026,
+                  "weight": 0.8783783783783784,
                   "enableClose": false,
                   "children": [
                     {
@@ -158,7 +159,7 @@
                 {
                   "type": "tabset",
                   "id": "#505cfafd-4fc6-4117-9637-f10df5c7c32d",
-                  "weight": 1.0974025974025974,
+                  "weight": 1.4844573007512307,
                   "enableClose": false,
                   "children": [
                     {
@@ -174,7 +175,7 @@
                 {
                   "type": "tabset",
                   "id": "#2262d8cd-0c27-42a6-ac41-7b28cb5ab09d",
-                  "weight": 1,
+                  "weight": 0.6371643208703912,
                   "enableClose": false,
                   "children": [
                     {
@@ -192,7 +193,7 @@
             {
               "type": "tabset",
               "id": "EDITORS",
-              "weight": 60.951219512195124,
+              "weight": 52.84790800231531,
               "enableDeleteWhenEmpty": false,
               "enableClose": false,
               "children": [
@@ -203,7 +204,7 @@
                   "component": "editor",
                   "config": {
                     "objectPath": "[JC1060P470C.eez-project]:/userPages/0",
-                    "permanent": false
+                    "permanent": true
                   },
                   "icon": "svg:page"
                 },
@@ -225,7 +226,7 @@
             {
               "type": "row",
               "id": "#ce6a45c4-eee1-4a8e-9a27-2663fc38011e",
-              "weight": 24.048780487804876,
+              "weight": 24.186094704642674,
               "children": [
                 {
                   "type": "tabset",
@@ -1075,13 +1076,18 @@
       "selectionFront": {},
       "selectionBack": {
         "0": {
-          "0": {}
+          "1": {
+            "0": {
+              "4": {},
+              "$selected": true
+            }
+          }
         }
       },
       "transform": {
         "translate": {
-          "x": -154.07502261420177,
-          "y": -124.6158412483039
+          "x": -211.81512890094922,
+          "y": -129.38545906829444
         },
         "scale": 0.5
       },
@@ -1206,12 +1212,11 @@
   "lvglPart": "MAIN",
   "lvglState": "DEFAULT",
   "lvglExpandedPropertiesGroup": [
-    "BACKGROUND",
     "MISCELLANEOUS"
   ],
   "showInactiveFlowsInDebugger": true,
   "globalFlowZoom": true,
   "flowZoom": 0.5,
   "implementationLanguage": "C",
-  "openDialogDefaultPath": "C:\\Users\\skyki\\OneDrive\\Desktop\\images.png"
+  "openDialogDefaultPath": "C:\\Users\\skyki\\Downloads\\play-button (1).png"
 }
