@@ -388,7 +388,7 @@ void app_main(void)
         return;
     }
 
-    err = media_manager_set_volume(70.0f);
+    err = media_manager_set_volume(30.0f);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Set volume failed: %s",
                 esp_err_to_name(err));
