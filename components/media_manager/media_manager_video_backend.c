@@ -108,15 +108,10 @@ static esp_video_render_err_t video_backend_init(
 
     ctx->display_buffer_index = -1;
     ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB565;
-    /*
-     * The EEZ Image widget is 389x200. The GMF PPA element scales decoded
-     * 1280x720 frames to this exact size before they reach the renderer.
-     * This avoids LVGL doing a large software image scale on every refresh.
-     */
-    ctx->fb.info.width = MEDIA_MANAGER_VIDEO_RENDER_WIDTH;
-    ctx->fb.info.height = MEDIA_MANAGER_VIDEO_RENDER_HEIGHT;
-    ctx->fb.size = (uint32_t)MEDIA_MANAGER_VIDEO_RENDER_WIDTH *
-                   MEDIA_MANAGER_VIDEO_RENDER_HEIGHT * 2U;
+    ctx->fb.info.width = MEDIA_MANAGER_VIDEO_MAX_WIDTH;
+    ctx->fb.info.height = MEDIA_MANAGER_VIDEO_MAX_HEIGHT;
+    ctx->fb.size = (uint32_t)MEDIA_MANAGER_VIDEO_MAX_WIDTH *
+                   MEDIA_MANAGER_VIDEO_MAX_HEIGHT * 2U;
 
     portENTER_CRITICAL(&s_target_mux);
     s_active_backend = ctx;
@@ -124,7 +119,7 @@ static esp_video_render_err_t video_backend_init(
 
     *out_backend = (esp_video_render_backend_handle_t)ctx;
     ESP_LOGI(TAG, "EEZ Image target attached; render canvas %ux%u",
-             ctx->fb.info.width, ctx->fb.info.height);
+             MEDIA_MANAGER_VIDEO_MAX_WIDTH, MEDIA_MANAGER_VIDEO_MAX_HEIGHT);
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
@@ -335,15 +330,16 @@ static esp_video_render_err_t video_backend_write_fb(
     }
 
     /*
-     * PPA has already scaled the frame to the EEZ Image widget dimensions.
-     * Publish a 1:1 image so LVGL only composites the pixels and never has
-     * to resample the full-resolution decoded frame.
+     * The render canvas uses a fixed maximum stride. The image descriptor
+     * exposes only the source video's visible width/height while retaining
+     * that stride, allowing LVGL to scale the source image inside the EEZ
+     * Image widget without changing the widget's layout.
      */
     ctx->image.header.magic = LV_IMAGE_HEADER_MAGIC;
     ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
-    ctx->image.header.w = ctx->fb.info.width;
-    ctx->image.header.h = ctx->fb.info.height;
-    ctx->image.header.stride = ctx->fb.info.width * 2U;
+    ctx->image.header.w = source_width;
+    ctx->image.header.h = source_height;
+    ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
     ctx->image.data_size = ctx->fb.size;
     ctx->image.data = ctx->buffers[display_index];
     ctx->display_buffer_index = display_index;
