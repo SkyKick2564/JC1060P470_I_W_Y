@@ -11,7 +11,6 @@
 #include "esp_codec_dev.h"
 #include "esp_player.h"
 #include "esp_player_advance.h"
-#include "esp_player_advance.h"
 #include "esp_audio_render.h"
 #include "esp_video_render.h"
 #include "esp_extractor_defaults.h"
