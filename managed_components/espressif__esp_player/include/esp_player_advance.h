@@ -319,6 +319,28 @@ esp_player_err_t esp_player_submit_frame(esp_player_handle_t handle, esp_player_
  *       - ESP_PLAYER_ERR_NOT_SUPPORT  Not allowed in current player state
  *       - ESP_PLAYER_ERR_NO_MEM       Allocation failed
  */
+/**
+ * @brief  Set the output size used by the video render stream
+ *
+ * @note  The decoded frame keeps its original dimensions. The renderer scales
+ *        the frame to this output size using the registered video processing
+ *        element before blending it into the display framebuffer.
+ *        Call in IDLE, STOPPED, or FINISHED, before playback starts.
+ *
+ * @param[in]  handle  Player handle
+ * @param[in]  width   Rendered video width in pixels
+ * @param[in]  height  Rendered video height in pixels
+ *
+ * @return
+ *       - ESP_PLAYER_ERR_OK             Success
+ *       - ESP_PLAYER_ERR_INVALID_ARG    Invalid handle or zero dimension
+ *       - ESP_PLAYER_ERR_NOT_SUPPORT    Not allowed in current player state
+ *       - ESP_PLAYER_ERR_INVALID_STATE  Video render pipeline already exists
+ */
+esp_player_err_t esp_player_set_video_render_size(esp_player_handle_t handle,
+                                                  uint16_t width,
+                                                  uint16_t height);
+
 esp_player_err_t esp_player_set_task_config(esp_player_handle_t handle, const esp_player_task_config_t *config);
 
 /**
