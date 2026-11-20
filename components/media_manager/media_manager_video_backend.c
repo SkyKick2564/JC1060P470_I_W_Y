@@ -40,6 +40,8 @@ typedef struct {
     SemaphoreHandle_t lock;
     uint16_t source_width;
     uint16_t source_height;
+    uint16_t output_width;
+    uint16_t output_height;
     bool source_info_valid;
     bool source_bound;
     bool external_fb_logged;
@@ -104,6 +106,21 @@ static esp_video_render_err_t video_backend_init(
 
     ctx->widget = target->widget;
     ctx->previous_src = lv_image_get_src(ctx->widget);
+    int32_t output_width = lv_obj_get_width(ctx->widget);
+    int32_t output_height = lv_obj_get_height(ctx->widget);
+    if (output_width <= 0 || output_height <= 0 ||
+        output_width > MEDIA_MANAGER_VIDEO_MAX_WIDTH ||
+        output_height > MEDIA_MANAGER_VIDEO_MAX_HEIGHT) {
+        lvgl_port_unlock();
+        vEventGroupDelete(ctx->events);
+        vSemaphoreDelete(ctx->lock);
+        free(ctx);
+        ESP_LOGE(TAG, "Invalid video widget size: %ldx%ld",
+                 (long)output_width, (long)output_height);
+        return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
+    }
+    ctx->output_width = (uint16_t)output_width;
+    ctx->output_height = (uint16_t)output_height;
     lvgl_port_unlock();
 
     ctx->display_buffer_index = -1;
@@ -337,8 +354,8 @@ static esp_video_render_err_t video_backend_write_fb(
      */
     ctx->image.header.magic = LV_IMAGE_HEADER_MAGIC;
     ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
-    ctx->image.header.w = source_width;
-    ctx->image.header.h = source_height;
+    ctx->image.header.w = ctx->output_width;
+    ctx->image.header.h = ctx->output_height;
     ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
     ctx->image.data_size = ctx->fb.size;
     ctx->image.data = ctx->buffers[display_index];
@@ -455,6 +472,28 @@ esp_err_t media_manager_set_video_widget(lv_obj_t *image_widget)
     } else {
         ESP_LOGI(TAG, "EEZ Image target registered");
     }
+    return ESP_OK;
+}
+
+esp_err_t media_manager_video_backend_get_output_size(
+    uint16_t *width,
+    uint16_t *height)
+{
+    if (width == NULL || height == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    video_backend_context_t *ctx;
+    portENTER_CRITICAL(&s_target_mux);
+    ctx = s_active_backend;
+    portEXIT_CRITICAL(&s_target_mux);
+
+    if (ctx == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    *width = ctx->output_width;
+    *height = ctx->output_height;
     return ESP_OK;
 }
 
