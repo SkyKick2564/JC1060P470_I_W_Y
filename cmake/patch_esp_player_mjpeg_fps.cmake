@@ -1,7 +1,7 @@
 set(ESP_PLAYER_VIDEO_PIPELINE
     "${CMAKE_CURRENT_LIST_DIR}/../managed_components/espressif__esp_player/src/video/player_pipeline_video.c")
 
-set(ESP_PLAYER_MJPEG_RENDER_FPS_MARKER "Correct MJPEG AVI FPS at renderer creation")
+set(ESP_PLAYER_MJPEG_RENDER_FPS_MARKER "MJPEG renderer FPS set from AVI extractor")
 
 if(NOT EXISTS "${ESP_PLAYER_VIDEO_PIPELINE}")
     message(FATAL_ERROR
