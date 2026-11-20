@@ -591,7 +591,7 @@ esp_err_t media_manager_video_play_file(
             }
             ESP_LOGI(TAG, "Video output enabled; EEZ Image target is ready");
         } else {
-            ESP_LOGI(TAG, "No EEZ Image target; playing AVI audio track only");
+            ESP_LOGI(TAG, "No EEZ Image target; video output disabled");
         }
 
         esp_player_config_t player_cfg = ESP_PLAYER_CONFIG_DEFAULT();
