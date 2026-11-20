@@ -7,46 +7,57 @@ endif()
 
 file(READ "${ESP_PLAYER_VIDEO_PIPELINE}" ESP_PLAYER_VIDEO_PIPELINE_SOURCE)
 
-# The AVI extractor reports 10 FPS for this known 1280x720, 25 FPS MJPEG file.
-# Override the timing unconditionally for this resolution before ESP-Player
-# configures its video sync clock and renderer. Do not depend on the extractor's
-# codec tag or the incorrect FPS value matching a particular representation.
-set(ESP_PLAYER_MJPEG_FPS_MARKER "Force MJPEG AVI renderer timing to 25 FPS")
+# Apply the AVI FPS correction only after the decoder has reported its stream
+# information. The decoder can overwrite track_info after the extractor runs.
+set(ESP_PLAYER_MJPEG_FPS_MARKER "Correct MJPEG AVI FPS after decoder stream info")
 
 string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "${ESP_PLAYER_MJPEG_FPS_MARKER}" ESP_PLAYER_MJPEG_FPS_PATCHED)
 if(ESP_PLAYER_MJPEG_FPS_PATCHED EQUAL -1)
     set(ESP_PLAYER_MJPEG_FPS_INSERT_BEFORE [=[
-    esp_gmf_task_cfg_t cfg = DEFAULT_ESP_GMF_TASK_CONFIG();]=])
+    if (run_ret != ESP_PLAYER_ERR_OK) {
+        return run_ret;
+    }
+    return ESP_PLAYER_ERR_OK;
+}=])
 
     set(ESP_PLAYER_MJPEG_FPS_INSERT_AFTER [=[
+    if (run_ret != ESP_PLAYER_ERR_OK) {
+        return run_ret;
+    }
+
     /*
-     * This board's 1280x720 MJPEG AVI is encoded at 25 FPS, but the AVI
-     * extractor reports 10 FPS. Correct the stream timing before ESP-Player
-     * configures both the A/V sync clock and video renderer. Restrict this
-     * workaround to the known test resolution.
+     * Correct the known 1280x720 MJPEG AVI timing after the decoder has
+     * reported stream info. Applying this before decoder startup is too early:
+     * the decoder can overwrite track_info.video_info.fps with 10 again.
+     * Keep the track metadata, sync clock, and renderer configuration aligned.
      */
-    if (stream != NULL && stream->video_side != NULL &&
+    if (stream->video_side != NULL &&
         stream->video_side->track_info.video_info.width == 1280 &&
         stream->video_side->track_info.video_info.height == 720) {
         int32_t reported_fps = stream->video_side->track_info.video_info.fps;
         stream->video_side->track_info.video_info.fps = 25;
+        if (!(stream->expected_tasks & TASK_STATUS_EXTRACTOR_RUNNING)) {
+            player_sync_set_video_fps(stream->sync_handle, 25);
+            player_sync_enable_video_fps_sync(stream->sync_handle, true);
+        }
         ESP_LOGW(TAG,
-                 "Force MJPEG AVI renderer timing to 25 FPS: extractor=%d, using=25",
+                 "Correct MJPEG AVI FPS after decoder stream info: extractor=%d, using=25",
                  (int)reported_fps);
     }
 
-    esp_gmf_task_cfg_t cfg = DEFAULT_ESP_GMF_TASK_CONFIG();]=])
+    return ESP_PLAYER_ERR_OK;
+}]=])
 
     string(FIND "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}" "${ESP_PLAYER_MJPEG_FPS_INSERT_BEFORE}" ESP_PLAYER_MJPEG_FPS_POSITION)
     if(ESP_PLAYER_MJPEG_FPS_POSITION EQUAL -1)
-        message(FATAL_ERROR "ESP-Player video pipeline changed; cannot apply the MJPEG FPS correction")
+        message(FATAL_ERROR "ESP-Player video pipeline changed; cannot apply the post-decoder MJPEG FPS correction")
     endif()
 
     string(REPLACE "${ESP_PLAYER_MJPEG_FPS_INSERT_BEFORE}"
                    "${ESP_PLAYER_MJPEG_FPS_INSERT_AFTER}"
            ESP_PLAYER_VIDEO_PIPELINE_SOURCE "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
     file(WRITE "${ESP_PLAYER_VIDEO_PIPELINE}" "${ESP_PLAYER_VIDEO_PIPELINE_SOURCE}")
-    message(STATUS "ESP-Player: forced 1280x720 MJPEG AVI timing to 25 FPS")
+    message(STATUS "ESP-Player: corrected 1280x720 MJPEG AVI timing after decoder stream info")
 else()
-    message(STATUS "ESP-Player: 25 FPS MJPEG AVI timing correction already present")
+    message(STATUS "ESP-Player: post-decoder 25 FPS MJPEG AVI timing correction already present")
 endif()
