@@ -379,10 +379,38 @@ static esp_video_render_err_t video_backend_write_fb(
             ESP_LOGE(TAG, "Invalid framebuffer copy destination/source");
             return ESP_VIDEO_RENDER_ERR_INVALID_STATE;
         }
-        memcpy(ctx->buffers[display_index], fb->data, fb->size);
+        /*
+         * The render canvas is 1280x720 for compatibility with the PPA
+         * backend, but the video occupies only the Q4-scaled rectangle.
+         * Copying fb->size here moves 1.84 MB per frame even though LVGL
+         * reads only the 400x225 (or equivalent) rendered region. Preserve
+         * the canvas stride and copy only the valid rendered rows.
+         */
+        const size_t source_stride = (size_t)fb->info.width * 2U;
+        const size_t destination_stride =
+            (size_t)ctx->fb.info.width * 2U;
+        const size_t row_bytes = (size_t)scaled_width * 2U;
+        if (scaled_width > fb->info.width ||
+            scaled_height > fb->info.height ||
+            row_bytes > source_stride ||
+            row_bytes > destination_stride ||
+            (size_t)(scaled_height - 1U) * source_stride + row_bytes > fb->size ||
+            (size_t)(scaled_height - 1U) * destination_stride + row_bytes > ctx->fb.size) {
+            ESP_LOGE(TAG, "Invalid rendered rectangle for framebuffer copy: %ux%u",
+                     (unsigned)scaled_width, (unsigned)scaled_height);
+            return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
+        }
+        for (uint16_t y = 0; y < scaled_height; y++) {
+            memcpy(ctx->buffers[display_index] + (size_t)y * destination_stride,
+                   fb->data + (size_t)y * source_stride,
+                   row_bytes);
+        }
         if (!ctx->external_fb_logged) {
-            ESP_LOGW(TAG,
-                     "Renderer supplied a render-pool framebuffer; copying into LVGL-owned buffer");
+            ESP_LOGI(TAG,
+                     "Renderer framebuffer copy limited to %ux%u (%u bytes/frame; canvas %ux%u)",
+                     (unsigned)scaled_width, (unsigned)scaled_height,
+                     (unsigned)(row_bytes * scaled_height),
+                     (unsigned)fb->info.width, (unsigned)fb->info.height);
             ctx->external_fb_logged = true;
         }
     }
