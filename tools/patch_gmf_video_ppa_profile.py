@@ -22,7 +22,7 @@ source = TARGET.read_text(encoding="utf-8")
 if "PPA_PROFILE input_wait" in source:
     # The C source may already be patched by an earlier run; still ensure the
     # component declares esp_timer so the include is available to this target.
-    CMAKE_FILE = TARGET.parents[1] / "CMakeLists.txt"
+    CMAKE_FILE = TARGET.parents[2] / "CMakeLists.txt"
     if not CMAKE_FILE.is_file():
         sys.exit(f"ERROR: component CMakeLists.txt not found: {CMAKE_FILE}")
     cmake_source = CMAKE_FILE.read_text(encoding="utf-8")
@@ -145,7 +145,7 @@ replace_once(
 
 # esp_timer is a public dependency of this component because the profiling
 # code calls esp_timer_get_time() from esp_gmf_video_ppa.c.
-CMAKE_FILE = TARGET.parents[1] / "CMakeLists.txt"
+CMAKE_FILE = TARGET.parents[2] / "CMakeLists.txt"
 if not CMAKE_FILE.is_file():
     sys.exit(f"ERROR: component CMakeLists.txt not found: {CMAKE_FILE}. No file written.")
 
