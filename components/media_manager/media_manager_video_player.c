@@ -57,10 +57,9 @@
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
 
 /*
- * Keep video decoding/rendering on Core 1 so PPA processing is isolated from
- * the audio pipeline. Run audio decoding/rendering on Core 0 alongside UI;
- * audio tasks retain higher priority than the LVGL refresh task.
- * The dedicated high-priority I2S output task also remains on Core 0.
+ * Run audio decoding/rendering on Core 0 with the dedicated high-priority
+ * I2S output task. Keep video decoding/rendering and PPA processing on Core 1
+ * to separate the video workload from audio processing.
  */
 static const esp_player_task_config_t s_player_task_config = {
     .extractor = {
