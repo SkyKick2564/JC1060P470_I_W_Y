@@ -206,10 +206,43 @@ static esp_video_render_err_t video_backend_get_display_info(
         return ESP_VIDEO_RENDER_ERR_INVALID_ARG;
     }
 
-    const video_backend_context_t *ctx = backend;
+    video_backend_context_t *ctx = backend;
+    uint16_t render_width = 0;
+    uint16_t render_height = 0;
+    uint16_t crop_x = 0;
+    uint16_t crop_y = 0;
+
+    /*
+     * The renderer's display framebuffer only needs to contain the PPA
+     * output. Using the maximum 1280x720 canvas here forces a full 1.8 MB
+     * framebuffer copy for every frame, even when PPA has scaled the image
+     * down to a few hundred pixels.
+     */
+    if (!ctx->source_info_valid ||
+        !video_backend_get_ppa_cover_crop(
+            ctx->source_width,
+            ctx->source_height,
+            ctx->output_width,
+            ctx->output_height,
+            &render_width,
+            &render_height,
+            &crop_x,
+            &crop_y)) {
+        return ESP_VIDEO_RENDER_ERR_INVALID_STATE;
+    }
+
+    ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB565;
+    ctx->fb.info.width = render_width;
+    ctx->fb.info.height = render_height;
+    ctx->fb.size = (uint32_t)render_width * render_height * 2U;
+
     info->format = ctx->fb.info.format;
     info->width = ctx->fb.info.width;
     info->height = ctx->fb.info.height;
+
+    ESP_LOGI(TAG, "Render framebuffer: %ux%u (%u bytes), PPA output only",
+             (unsigned)render_width, (unsigned)render_height,
+             (unsigned)ctx->fb.size);
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
@@ -418,7 +451,7 @@ static esp_video_render_err_t video_backend_write_fb(
      * without applying another software scale.
      */
     size_t image_offset =
-        (size_t)crop_y * MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U +
+        (size_t)crop_y * ctx->fb.info.width * 2U +
         (size_t)crop_x * 2U;
     if (image_offset >= ctx->fb.size) {
         lvgl_port_unlock();
@@ -429,7 +462,7 @@ static esp_video_render_err_t video_backend_write_fb(
     ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
     ctx->image.header.w = ctx->output_width;
     ctx->image.header.h = ctx->output_height;
-    ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
+    ctx->image.header.stride = ctx->fb.info.width * 2U;
     ctx->image.data_size = ctx->fb.size - image_offset;
     ctx->image.data = ctx->buffers[display_index] + image_offset;
     ctx->display_buffer_index = display_index;
