@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MIT
+board: jc3636f118
+chip: esp32s31
+version: 1.0.0
+description: "JC3636F118 QSPI display with CST816S capacitive touch"
+manufacturer: "Guition"

@@ -1,0 +1,110 @@
+# Devices Configuration
+devices:
+  # Power Control for SD Card 3.3 V LDO.
+  - name: sdcard_power_ctrl
+    type: power_ctrl
+    sub_type: gpio
+    peripherals:
+      - gpio_name: gpio_sd_power
+        active_level: 1
+
+  # Audio Codec (ES8388) - DAC for audio output.
+  - name: audio_dac
+    chip: es8388
+    type: audio_codec
+    config:
+      adc_enabled: false
+      dac_enabled: true
+      sys_cfg:
+        no_mclk: false
+    peripherals:
+      - pa_name: gpio_power_amp
+        gain: 6
+        active_level: 1
+      - i2s_name: i2s_audio_out
+      - i2c_name: i2c_master
+        address: 0x20
+        frequency: 100000
+
+  # Audio Codec (ES8388) - ADC for audio input.
+  - name: audio_adc
+    chip: es8388
+    type: audio_codec
+    config:
+      adc_enabled: true
+      sys_cfg:
+        no_mclk: false
+      adc_cfg:
+        label: [FL, FR]
+    peripherals:
+      - i2s_name: i2s_audio_in
+      - i2c_name: i2c_master
+        address: 0x20
+        frequency: 100000
+
+  # Boot button. Schematic net: download key / IO0_Auto / IO0.
+  # GPIO0 is also the I2S MCLK pin. Do not use this button together with
+  # the I2S audio interface.
+  - name: boot_button
+    type: button
+    sub_type: gpio
+    version: default
+    config:
+      active_level: 0
+      enable_power_save: false
+      disable_pull: false
+      long_press_time: 2000
+      short_press_time: 100
+    peripherals:
+      - gpio_name: gpio_boot_button
+
+  # Physical REC button (GPIO36, active-low).
+  - name: button_rec
+    type: button
+    sub_type: gpio
+    version: default
+    config:
+      active_level: 0
+      enable_power_save: false
+      disable_pull: false
+      long_press_time: 2000
+      short_press_time: 100
+    peripherals:
+      - gpio_name: gpio_button_rec
+
+  # Physical MODE button (GPIO39, active-low).
+  - name: button_mode
+    type: button
+    sub_type: gpio
+    version: default
+    config:
+      active_level: 0
+      enable_power_save: false
+      disable_pull: false
+      long_press_time: 2000
+      short_press_time: 100
+    peripherals:
+      - gpio_name: gpio_button_mode
+
+  # microSD card. Keep 1-bit SDMMC mode to avoid IO13 D3 / touch-pad reuse conflicts.
+  - name: fs_sdcard
+    type: fs_fat
+    sub_type: sdmmc
+    power_ctrl_device: sdcard_power_ctrl
+    version: default
+    config:
+      mount_point: "/sdcard"
+      vfs_config:
+        max_files: 5
+      sub_config:
+        slot: SDMMC_HOST_SLOT_1
+        frequency: SDMMC_FREQ_HIGHSPEED
+        bus_width: 1
+        pins:
+          clk: 14
+          cmd: 15
+          d0: 2
+          d1: -1
+          d2: -1
+          d3: -1
+          cd: 34

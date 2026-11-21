@@ -1,0 +1,14 @@
+description: Official Espressif board definitions for ESP Board Manager
+documentation: https://github.com/espressif/esp-board-manager/blob/main/esp_boards/README.md
+issues: https://github.com/espressif/esp-board-manager/issues
+repository: git://github.com/espressif/esp-board-manager.git
+repository_info:
+  commit_sha: 80aef5c3da572ca06a08374386475aad2cbdd52c
+  path: ./esp_boards
+tags:
+- board_manager
+- esp_board_manager
+- devkits
+- official_boards
+url: https://github.com/espressif/esp-board-manager
+version: 0.6.2

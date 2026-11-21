@@ -1,0 +1,145 @@
+# Devices Configuration for JC8048F550 / JC8048F543
+devices:
+  # ES8389 DAC drives ES_LOUTP/N and ES_ROUTP/N into two NS4150 power amplifiers.
+  - name: audio_dac
+    chip: es8389
+    type: audio_codec
+    config:
+      adc_enabled: false
+      dac_enabled: true
+      sys_cfg:
+        no_mclk: true
+      dac_cfg:
+        ref_enable: true
+    peripherals:
+      - name: gpio_pa_control
+        gain: 6
+        pa_active_level: 1
+      - name: i2s_audio_out
+      - name: i2c_master
+        address: 0x20
+        frequency: 400000
+
+  # ES8389 ADC receives two analog microphones on MIC1P/N and MIC2P/N.
+  - name: audio_adc
+    chip: es8389
+    type: audio_codec
+    config:
+      adc_enabled: true
+      dac_enabled: false
+      sys_cfg:
+        no_mclk: true
+      adc_cfg:
+        # codec_dev 2.0 label order is LSB to MSB: MIC1, MIC2, MIC3, MIC4.
+        label: [FL, FR, RE, NA]
+    peripherals:
+      - name: i2s_audio_in
+      - name: i2c_master
+        address: 0x20
+        frequency: 400000
+
+  # microSD card on SDMMC 4-bit bus. Shares GPIO20~25 stuffing option with SPI NAND.
+  - name: fs_sdcard
+    type: fs_fat
+    sub_type: sdmmc
+    # power_ctrl_device: sdcard_power_ctrl
+    version: default
+    config:
+      mount_point: "/sdcard"
+      vfs_config:
+        format_if_mount_failed: false
+        max_files: 5
+        allocation_unit_size: 16384
+      sub_config:
+        slot: SDMMC_HOST_SLOT_0
+        frequency: SDMMC_FREQ_DEFAULT
+        bus_width: 4
+        slot_flags: SDMMC_SLOT_FLAG_INTERNAL_PULLUP
+        pins:
+          clk: 24
+          cmd: 25
+          d0: 20
+          d1: 21
+          d2: 22
+          d3: 23
+          cd: -1
+          wp: -1
+
+  - name: lcd_brightness
+    type: ledc_ctrl
+    version: default
+    peripherals:
+      - name: ledc_backlight
+
+  # 800x480 RGB LCD panel. Schematic nets: RGB565 data GPIO8-19/33-36,
+  # PCLK=GPIO40, DE=GPIO43, HSYNC=GPIO44, VSYNC=GPIO45.
+  - name: display_lcd
+    chip: generic_rgb
+    type: display_lcd
+    version: 1.0.0
+    sub_type: rgb
+    config:
+      swap_xy: false
+      mirror_y: false
+      mirror_x: false
+      invert_color: false
+      need_reset: true
+      bits_per_pixel: 16
+      rgb_ele_order: LCD_RGB_ELEMENT_ORDER_BGR
+      data_endian: LCD_RGB_DATA_ENDIAN_BIG
+      rgb_panel_config:
+        clk_src: LCD_CLK_SRC_DEFAULT
+        data_width: 16
+        in_color_format: LCD_COLOR_FMT_RGB565
+        out_color_format: LCD_COLOR_FMT_RGB565
+        num_fbs: 3
+        bounce_buffer_size_px: 0
+        dma_burst_size: 64
+        hsync_gpio_num: 44
+        vsync_gpio_num: 45
+        de_gpio_num: 43
+        pclk_gpio_num: 40
+        disp_gpio_num: -1
+        data_gpio_nums: [36, 37, 38, 39, 46, 7, 35, 51, 50, 49, 48, 4, 5, 0, 1, 6]
+        timings:
+          pclk_hz: 24000000
+          h_res: 800
+          v_res: 480
+          hsync_pulse_width: 4
+          hsync_back_porch: 8
+          hsync_front_porch: 8
+          vsync_pulse_width: 4
+          vsync_back_porch: 8
+          vsync_front_porch: 8
+          flags:
+            pclk_active_neg: true
+        flags:
+          fb_in_psram: true
+
+  - name: lcd_touch
+    chip: gt911
+    type: lcd_touch
+    sub_type: i2c
+    version: default
+    dependencies:
+      espressif/esp_lcd_touch_gt911: "*"
+    config:
+      io_i2c_config:
+        lcd_cmd_bits: 16
+        scl_speed_hz: 400000
+
+      touch_config:
+        x_max: 800
+        y_max: 480
+        rst_gpio_num: -1
+        int_gpio_num: -1
+        levels:
+          reset: 0
+          interrupt: 0
+        flags:
+          swap_xy: false
+          mirror_x: false
+          mirror_y: false
+    peripherals:
+      - name: i2c_master
+        i2c_addr: [0xBA, 0x28]  # GT911 8-bit I2C address, from 7-bit 0x5D/0x14

@@ -1,0 +1,5 @@
+dependencies:
+  espressif/esp_board_manager: ==0.7.3~1
+  guition-jc/guition_boards:
+    version: ==0.1.4
+  idf: '>=6.1.0,<6.2.0'

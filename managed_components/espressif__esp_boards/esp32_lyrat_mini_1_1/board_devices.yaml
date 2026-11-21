@@ -1,0 +1,88 @@
+# Devices Configuration
+devices:
+  # Power Control for SD Card
+  - name: sdcard_power_ctrl
+    type: power_ctrl
+    sub_type: gpio
+    peripherals:
+      - gpio_name: gpio_sd_power
+        active_level: 0
+
+  # Audio Codec (ES8311) - DAC for audio output
+  - name: audio_dac
+    chip: es8311
+    type: audio_codec
+    config:
+      dac_enabled: true
+      sys_cfg:
+        no_mclk: true
+    peripherals:
+      - pa_name: gpio_power_amp
+        gain: 20                   # BOARD_PA_GAIN (dB)
+        active_level: 1         # High level active
+      - i2s_name: i2s_audio_out
+      - i2c_name: i2c_master
+        address: 0x30              # ES8311 I2C address,  0x18 << 1 = 0x30
+        frequency: 100000          # 100kHz I2C frequency
+
+  # Audio ADC (ES7243/ES7243E) - ADC for audio input
+  - name: audio_adc
+    chip: es7243e      # Some old boards use ES7243, ES7243 is EOL
+    type: audio_codec
+    config:
+      adc_enabled: true
+      # ES7243E data starts with the microphone channel, then the reference channel.
+      adc_cfg:
+        label: [RE, FL]
+    peripherals:
+      - i2s_name: i2s_audio_in
+      - i2c_name: i2c_master
+        address: 0x20              # ES7243E I2C address (0x26 for ES7243)
+        frequency: 100000          # 100kHz I2C frequency
+
+  # SD Card (FATFS)
+  - name: fs_sdcard
+    type: fs_fat
+    sub_type: sdmmc
+    power_ctrl_device: sdcard_power_ctrl
+    version: default
+    config:
+      mount_point: "/sdcard"
+      vfs_config:
+        max_files: 5
+      sub_config:
+        bus_width: 1                 # 1-line mode only
+        pins:
+            clk: 14
+            cmd: 15
+            d0: 2
+
+  # Boot button. Schematic net: Reset/Download Keys SW1, IO0_IO2_KEY -> IO0 via R35.
+  # GPIO0 is also the I2S MCLK pin. Do not use this button together with
+  # the I2S audio interface.
+  - name: boot_button
+    type: button
+    sub_type: gpio
+    version: default
+    config:
+      active_level: 0
+      enable_power_save: false
+      disable_pull: false
+      long_press_time: 2000
+      short_press_time: 100
+    peripherals:
+      - gpio_name: gpio_boot_button
+
+  # ADC Button Devices Configuration for multiple buttons
+  - name: adc_button_group
+    type: button
+    sub_type: adc_multi
+    config:
+      long_press_time: 2000
+      short_press_time: 100
+      button_num: 6
+      max_voltage: 3000
+      voltage_range: [380, 820, 1180, 1570, 1980, 2410]
+      button_labels: ["VOLUME_UP", "VOLUME_DOWN", "SET", "PLAY", "Mode", "REC"]
+    peripherals:
+    - adc_name: adc_button

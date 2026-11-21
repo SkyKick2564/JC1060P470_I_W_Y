@@ -1,0 +1,19 @@
+#
+# Partition Table
+#
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# end of Partition Table
+
+#
+# Zigbee
+#
+CONFIG_ZB_ENABLED=y
+# end of Zigbee
+
+### ESP-Hosted host link to the co-processor. Spinel does not use it: the
+### Zigbee stack talks to the RCP on a dedicated UART (CONFIG_ZB_RADIO_SPINEL_UART).
+CONFIG_ESP_HOSTED=y
+CONFIG_ESP_HOSTED_HOST_FEAT_RPC=y
+CONFIG_ESP_HOSTED_HOST_FEAT_RPC_EXT_V2=y
+CONFIG_ESP_HOSTED_HOST_FEAT_SYSTEM=y

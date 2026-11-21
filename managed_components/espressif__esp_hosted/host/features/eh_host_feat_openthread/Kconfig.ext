@@ -1,0 +1,46 @@
+menuconfig ESP_HOSTED_HOST_FEAT_OPENTHREAD
+	bool "OpenThread RCP on the co-processor (spinel over ESP-Hosted)"
+	default n
+	depends on ESP_HOSTED_HOST && ESP_HOSTED_HOST_FEAT_RPC
+	depends on ESP_HOSTED_HOST_FEAT_RPC_EXT_V2_READY
+	depends on ESP_HOSTED_HOST_TYPE_MCU
+	help
+	  OpenThread RCP on the co-processor, with spinel over the
+	  ESP-Hosted transport as ESP_AUX_IF frames. The host drives
+	  init / deinit / start / stop / query of the RCP over
+	  RpcReqFeatureControl.
+
+	  Needs an ESP-IDF that has the OpenThread custom transport, with
+	  CONFIG_OPENTHREAD_RADIO_SPINEL_CUSTOM=y.
+
+	  For spinel on a dedicated UART, leave this off: the app sets a
+	  UART radio config, as ESP-IDF examples/openthread/ot_cli does.
+
+if ESP_HOSTED_HOST_FEAT_OPENTHREAD
+
+	config ESP_HOSTED_HOST_FEAT_OPENTHREAD_AUTO_INIT
+		bool "Auto-initialize OpenThread feature at boot"
+		default y
+		depends on ESP_HOSTED_HOST_AUTO_FEAT_INIT
+
+	config ESP_HOSTED_OT_HOST_HOSTED_RX_QUEUE_LEN
+		int "Spinel receive queue length (frames)"
+		default 16
+		range 4 64
+		help
+			Number of spinel frames from the co-processor that can wait
+			until the OpenThread task reads them. Each queued frame holds
+			up to 1 KB of heap. When the queue is full, a received frame
+			is dropped and OpenThread retries it.
+
+endif # ESP_HOSTED_HOST_FEAT_OPENTHREAD
+
+config ESP_HOSTED_HOST_FEAT_OPENTHREAD_READY
+	bool
+	default y if ESP_HOSTED_HOST_FEAT_OPENTHREAD && \
+	             ESP_HOSTED_HOST_FEAT_RPC_READY && \
+	             ESP_HOSTED_HOST_FEAT_RPC_EXT_V2_READY && \
+	             OPENTHREAD_ENABLED && OPENTHREAD_RADIO_SPINEL_CUSTOM
+
+comment "⚠  Host OpenThread feature requires CONFIG_OPENTHREAD_ENABLED and CONFIG_OPENTHREAD_RADIO_SPINEL_CUSTOM"
+	depends on ESP_HOSTED_HOST_FEAT_OPENTHREAD && !(OPENTHREAD_ENABLED && OPENTHREAD_RADIO_SPINEL_CUSTOM)

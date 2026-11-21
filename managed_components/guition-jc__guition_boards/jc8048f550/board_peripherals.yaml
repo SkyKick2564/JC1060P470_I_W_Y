@@ -1,0 +1,66 @@
+# Peripherals Configuration for JC8048F550 / JC8048F543
+peripherals:
+  # Shared control bus for ES8389. Schematic nets: GPIO0 -> CDATA, GPIO1 -> CCLK.
+  - name: i2c_master
+    type: i2c
+    role: master
+    config:
+      port: 0
+      pins:
+        sda: 2
+        scl: 3
+
+  # ES8389 audio output path. Schematic nets:
+  # I2S_MCLK=GPIO2, I2S_SCLK=GPIO3, I2S_LRCK=GPIO4, I2S_DSDIN=GPIO5.
+  - name: i2s_audio_out
+    type: i2s
+    role: master
+    format: tdm-out
+    config: &i2s_audio_config
+      port: 0
+      sample_rate_hz: 48000
+      mclk_multiple: 256
+      data_bit_width: 16
+      slot_bit_width: I2S_SLOT_BIT_WIDTH_AUTO
+      slot_mode: I2S_SLOT_MODE_STEREO
+      ws_width: 16
+      total_slot: 2
+      slot_mask: I2S_TDM_SLOT0 | I2S_TDM_SLOT1
+      pins:
+        mclk: -1
+        bclk: 54
+        ws: 47
+        dout: 56
+        din: 16
+
+  # ES8389 audio input path. Schematic net: I2S_DSOUT=GPIO6.
+  - name: i2s_audio_in
+    type: i2s
+    role: master
+    format: tdm-in
+    config:
+      <<: *i2s_audio_config
+      total_slot: 4
+      slot_mask: I2S_TDM_SLOT0 | I2S_TDM_SLOT1 | I2S_TDM_SLOT2
+
+  # NS4150 left/right speaker amplifier enable. Schematic net: PA_CTRL=GPIO7.
+  - name: gpio_pa_control
+    type: gpio
+    role: io
+    config:
+      pin: 42
+      mode: GPIO_MODE_OUTPUT
+      default_level: 0
+
+  # Backlight Control
+  - name: ledc_backlight
+    type: ledc
+    version: default
+    config:
+      gpio_num: 17
+      speed_mode: LEDC_LOW_SPEED_MODE
+      freq_hz: 20000
+      duty_resolution: "LEDC_TIMER_10_BIT"
+      channel: 1
+      timer_sel: 1
+      duty: 0
