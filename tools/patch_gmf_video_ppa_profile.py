@@ -32,11 +32,11 @@ if "PPA_PROFILE input_wait" in source:
             sys.exit("ERROR: expected exactly one idf_component_register() in component CMakeLists.txt.")
         cmake_source = cmake_source.replace(
             anchor,
-            "# Required by temporary PPA profiling instrumentation.\\n"
-            "list(APPEND COMPONENT_REQUIRES esp_timer)\\n\\n" + anchor,
+            "# Required by temporary PPA profiling instrumentation.\n"
+            "list(APPEND COMPONENT_REQUIRES esp_timer)\n\n" + anchor,
             1,
         )
-        CMAKE_FILE.write_text(cmake_source, encoding="utf-8", newline="\\n")
+        CMAKE_FILE.write_text(cmake_source, encoding="utf-8", newline="\n")
         print(f"Added esp_timer dependency in: {CMAKE_FILE}")
     print(f"PPA profiling already installed: {TARGET}")
     raise SystemExit(0)
@@ -156,14 +156,14 @@ if "list(APPEND COMPONENT_REQUIRES esp_timer)" not in cmake_source:
         sys.exit("ERROR: expected exactly one idf_component_register() in component CMakeLists.txt. No file written.")
     cmake_source = cmake_source.replace(
         anchor,
-        "# Required by temporary PPA profiling instrumentation.\\n"
-        "list(APPEND COMPONENT_REQUIRES esp_timer)\\n\\n"
+        "# Required by temporary PPA profiling instrumentation.\n"
+        "list(APPEND COMPONENT_REQUIRES esp_timer)\n\n"
         + anchor,
         1,
     )
 
-TARGET.write_text(source, encoding="utf-8", newline="\\n")
-CMAKE_FILE.write_text(cmake_source, encoding="utf-8", newline="\\n")
+TARGET.write_text(source, encoding="utf-8", newline="\n")
+CMAKE_FILE.write_text(cmake_source, encoding="utf-8", newline="\n")
 print(f"Installed PPA profiling in: {TARGET}")
 print(f"Added esp_timer dependency in: {CMAKE_FILE}")
 print("Rebuild required. Search serial logs for: PPA_PROFILE")
