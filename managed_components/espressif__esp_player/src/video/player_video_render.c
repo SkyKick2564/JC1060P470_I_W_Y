@@ -28,6 +28,9 @@ typedef struct {
 } player_video_render_profile_t;
 static player_video_render_profile_t s_video_render_profile;
 
+static bool s_video_render_measure_active;
+static uint32_t s_video_render_measure_frames;
+
 static void player_video_render_profile_add(uint64_t acquire_us, uint64_t write_us,
                                             uint64_t release_us, uint64_t process_us, uint32_t bytes, bool rendered)
 {
@@ -173,7 +176,7 @@ static esp_gmf_job_err_t player_video_render_open(esp_gmf_element_handle_t self,
             .height = cfg->height,
             .fps = (uint8_t)cfg->fps,
         },
-        .cached = true, /* Keep frame data valid for the asynchronous blender task. */
+        .cached = false,
     };
     esp_video_render_err_t ret = esp_video_render_stream_open(
         cfg->render_handle, &stream_info, &video_render->stream_hd);
@@ -285,27 +288,20 @@ static esp_gmf_job_err_t player_video_render_open(esp_gmf_element_handle_t self,
                  (unsigned)render_width, (unsigned)render_height,
                  (unsigned)scale_steps);
     }
-    /*
-     * A single stream is rendered synchronously by default. That makes the
-     * decoder wait for PPA and backend presentation on every frame. Keep the
-     * decoded output in the stream cache and start the blender worker so the
-     * decoder can continue as soon as the frame has been queued.
-     */
-    ret = esp_video_render_stream_render_async(video_render->stream_hd);
-    if (ret != ESP_VIDEO_RENDER_ERR_OK) {
-        ESP_LOGE(TAG, "Failed to start asynchronous video rendering, ret=%d", ret);
-        esp_video_render_stream_close(video_render->stream_hd);
-        video_render->stream_hd = NULL;
-        return ESP_GMF_JOB_ERR_FAIL;
-    }
-
-    ESP_LOGI(TAG, "Video render stream opened (cached, asynchronous)");
+    s_video_render_measure_frames = 0;
+    esp_video_render_measure_enable(true);
+    s_video_render_measure_active = true;
+    ESP_LOGI(TAG, "Video render stream opened; render-stage measurement started");
     return ESP_GMF_JOB_ERR_OK;
 }
 
 static esp_gmf_job_err_t player_video_render_close(esp_gmf_element_handle_t self, void *para)
 {
     player_video_render_t *video_render = (player_video_render_t *)self;
+    if (s_video_render_measure_active) {
+        esp_video_render_measure_enable(false);
+        s_video_render_measure_active = false;
+    }
     if (video_render->stream_hd) {
         esp_video_render_stream_close(video_render->stream_hd);
         video_render->stream_hd = NULL;
@@ -397,6 +393,15 @@ _process_release:
     player_video_render_profile_add(acquire_us, write_us, release_us,
                                     (uint64_t)(esp_timer_get_time() - process_start_us),
                                     rendered_bytes, rendered);
+    if (rendered && s_video_render_measure_active) {
+        s_video_render_measure_frames++;
+        if (s_video_render_measure_frames >= 50) {
+            esp_video_render_measure_enable(false);
+            s_video_render_measure_active = false;
+            ESP_LOGI(TAG, "Render-stage measurement completed after %u frames",
+                     (unsigned)s_video_render_measure_frames);
+        }
+    }
     return job_ret;
 }
 
