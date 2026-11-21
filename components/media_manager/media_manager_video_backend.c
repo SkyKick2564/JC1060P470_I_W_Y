@@ -170,10 +170,17 @@ static esp_video_render_err_t video_backend_init(
 
     ctx->display_buffer_index = -1;
     ctx->fb.info.format = ESP_VIDEO_RENDER_FORMAT_RGB565;
-    ctx->fb.info.width = MEDIA_MANAGER_VIDEO_MAX_WIDTH;
-    ctx->fb.info.height = MEDIA_MANAGER_VIDEO_MAX_HEIGHT;
-    ctx->fb.size = (uint32_t)MEDIA_MANAGER_VIDEO_MAX_WIDTH *
-                   MEDIA_MANAGER_VIDEO_MAX_HEIGHT * 2U;
+    /*
+     * The current player targets a 389x200 EEZ Image widget. PPA's Q4
+     * scale quantization produces a 400x225 frame for 1280x720 input.
+     * Keep the renderer canvas at that actual frame size instead of a
+     * 1280x720 canvas; the old canvas forced an unnecessary full-frame
+     * composition pass and two 1.8 MiB PSRAM buffers.
+     */
+    ctx->fb.info.width = 400;
+    ctx->fb.info.height = 225;
+    ctx->fb.size = (uint32_t)ctx->fb.info.width *
+                   ctx->fb.info.height * 2U;
 
     portENTER_CRITICAL(&s_target_mux);
     s_active_backend = ctx;
@@ -181,7 +188,7 @@ static esp_video_render_err_t video_backend_init(
 
     *out_backend = (esp_video_render_backend_handle_t)ctx;
     ESP_LOGI(TAG, "EEZ Image target attached; render canvas %ux%u",
-             MEDIA_MANAGER_VIDEO_MAX_WIDTH, MEDIA_MANAGER_VIDEO_MAX_HEIGHT);
+             (unsigned)ctx->fb.info.width, (unsigned)ctx->fb.info.height);
     return ESP_VIDEO_RENDER_ERR_OK;
 }
 
@@ -418,7 +425,7 @@ static esp_video_render_err_t video_backend_write_fb(
      * without applying another software scale.
      */
     size_t image_offset =
-        (size_t)crop_y * MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U +
+        (size_t)crop_y * ctx->fb.info.width * 2U +
         (size_t)crop_x * 2U;
     if (image_offset >= ctx->fb.size) {
         lvgl_port_unlock();
@@ -429,7 +436,7 @@ static esp_video_render_err_t video_backend_write_fb(
     ctx->image.header.cf = LV_COLOR_FORMAT_RGB565;
     ctx->image.header.w = ctx->output_width;
     ctx->image.header.h = ctx->output_height;
-    ctx->image.header.stride = MEDIA_MANAGER_VIDEO_MAX_WIDTH * 2U;
+    ctx->image.header.stride = ctx->fb.info.width * 2U;
     ctx->image.data_size = ctx->fb.size - image_offset;
     ctx->image.data = ctx->buffers[display_index] + image_offset;
     ctx->display_buffer_index = display_index;
