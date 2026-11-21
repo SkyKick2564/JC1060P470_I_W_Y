@@ -12,7 +12,7 @@
 #define TP_C_SCL_PIN                GPIO_NUM_8
 #define TP_C_SDA_PIN                GPIO_NUM_7
 #define TP_C_RST_PIN                GPIO_NUM_NC
-#define TP_C_INT_PIN                GPIO_NUM_21
+#define TP_C_INT_PIN                GPIO_NUM_NC
 #define WIFI_SDIO_CLK_PIN           GPIO_NUM_18
 #define WIFI_SDIO_CMD_PIN           GPIO_NUM_19
 #define WIFI_SDIO_D0_PIN            GPIO_NUM_14

@@ -1,4 +1,0 @@
-dependencies:
-  espressif/esp_asrc:
-    require: public
-description: ASRC Example
