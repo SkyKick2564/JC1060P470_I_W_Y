@@ -12,51 +12,11 @@
 #include "ota_manager.h"
 #include "app_config.h"
 #include "esp_board_manager.h"
-#include "media_manager.h"
 #include "app.h"
 #include "ui.h"
 
 static const char *TAG = "MAIN";
 static wifi_ap_record_t s_ap_records[NETWORK_MANAGER_MAX_SCAN_RESULTS];
-
-static void on_media_event(
-    media_manager_event_t event,
-    esp_err_t error,
-    const char *path,
-    void *user_ctx)
-{
-    (void)user_ctx;
-
-    switch (event) {
-    case MEDIA_MANAGER_EVENT_STARTED:
-        ESP_LOGI(TAG, "Media started: %s", path);
-        break;
-
-    case MEDIA_MANAGER_EVENT_PAUSED:
-        ESP_LOGI(TAG, "Media paused");
-        break;
-
-    case MEDIA_MANAGER_EVENT_RESUMED:
-        ESP_LOGI(TAG, "Media resumed");
-        break;
-
-    case MEDIA_MANAGER_EVENT_STOPPED:
-        ESP_LOGI(TAG, "Media stopped");
-        break;
-
-    case MEDIA_MANAGER_EVENT_FINISHED:
-        ESP_LOGI(TAG, "Media playback finished: %s", path);
-        break;
-
-    case MEDIA_MANAGER_EVENT_ERROR:
-        ESP_LOGE(TAG, "Media playback error: %s (%s)",
-                 path, esp_err_to_name(error));
-        break;
-
-    default:
-        break;
-    }
-}
 
 /*
  * Called when Network Manager Internet connectivity changes.
@@ -180,19 +140,6 @@ static esp_err_t app_before_update(void *user_ctx)
     }
 
     ESP_LOGI(TAG, "Network Manager and ESP-Hosted deinitialized");
-
-    /*
-     * Stop Media Manager first. Its video render task still uses LVGL,
-     * so LVGL must remain initialized until the player task has exited.
-     */
-    err = media_manager_deinit();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Media Manager deinit failed: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
-
-    ESP_LOGI(TAG, "Media Manager deinitialized");
 
     /* LVGL can be deinitialized only after all media tasks have exited. */
     err = app_lvgl_deinit();
@@ -363,36 +310,10 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Board Manager initialized");
 
-    /* Initialize Media Manager using the Board Manager audio_dac device. */
-    err = media_manager_init();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Media Manager init failed: %s",
-                 esp_err_to_name(err));
-    } else {
-        ESP_LOGI(TAG, "Media Manager initialized");
-    }
-
     /* Verify SD card filesystem read/write operations. */
     err = test_sdcard_filesystem();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "SD card filesystem test FAILED");
-    }
-
-    err = media_manager_register_event_callback(
-        on_media_event,
-        NULL
-    );
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Register audio callback failed: %s",
-                esp_err_to_name(err));
-        return;
-    }
-
-    err = media_manager_set_volume(30.0f);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Set volume failed: %s",
-                esp_err_to_name(err));
-        return;
     }
 
     /* Initialize application and EEZ UI before registering the video target. */
@@ -411,31 +332,6 @@ void app_main(void)
      * depend on optional SD/media playback or later network startup.
      */
     ota_manager_confirm_running_firmware();
-
-    /*
-     * Bind the EEZ Image widget created by ui_init().
-     * The Media Manager will use it for decoded MJPEG video frames.
-     */
-    if (objects.video_image == NULL) {
-        ESP_LOGE(TAG, "EEZ video_image widget was not created");
-        return;
-    }
-
-    err = media_manager_set_video_widget(objects.video_image);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Register video_image widget failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-
-    err = media_manager_play_file("/sdcard/test.avi");
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Play MJPEG AVI file failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-
-    ESP_LOGI(TAG, "MJPEG AVI playback queued with video_image target");
 
     err = network_manager_init(&network);
     if (err != ESP_OK) {
