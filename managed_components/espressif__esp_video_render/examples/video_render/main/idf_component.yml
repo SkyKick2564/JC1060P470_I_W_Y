@@ -1,0 +1,8 @@
+dependencies:
+  espressif/esp_board_manager:
+    version: ~0.7
+  espressif/esp_video_render: {}
+  espressif/gmf_core:
+    version: ~1.0
+  espressif/gmf_video:
+    version: ~1.0

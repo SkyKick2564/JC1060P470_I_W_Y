@@ -1,0 +1,75 @@
+# Changelog
+
+## v1.0.0~2
+
+### Changes
+
+- Changed dependency version constraints from `^` (automatic minor updates) to `~` (automatic patch updates) to improve compatibility
+
+## v1.0.0~1
+
+### Docs
+
+- Updated example README files to use the latest ESP Board Manager board selection commands and board names
+
+## v1.0.0
+
+- Switched the `esp_board_manager` dependency in examples from local `override_path` to the standalone component at [espressif/esp-board-manager](https://github.com/espressif/esp-board-manager); pinned to `^0.5.11`.
+- Removed the example-local `idf_ext.py` board-manager forwarders; the recommended entry point is now [`esp-bmgr-assist`](https://pypi.org/project/esp-bmgr-assist/) (`pip install esp-bmgr-assist` then `idf.py bmgr ...`).
+- Updated example READMEs accordingly.
+- Updated `audio_render` example `on_pre_run` to match the new `esp_asp_prev_func_t` signature in `esp_audio_simple_player`
+
+## v0.8.1
+
+### Bug Fixes
+
+- Fixed wrong memory access for clear of payload buffer which not owned by audio processor
+
+### Features
+
+- Added `esp32s31` support for all example
+
+## v0.8.0
+
+### Bug Fixes
+
+- Added missing declare of `esp_audio_render_stream_get_latency`
+
+### Features
+
+- Corrected document for board setup for examples
+
+## v0.7.2~1
+
+### Bug Fixes
+
+- Removed CONFIG_AUDIO_BOARD and CODEC_I2C_BACKWARD_COMPATIBLE in sdkconfig.defaults
+
+## v0.7.2
+
+### Features
+
+- Added API `esp_audio_render_set_solo_stream` for solo stream playback
+
+## v0.7.1
+
+### Features
+
+- Added API `esp_audio_render_task_reconfigure` for reconfiguration of render task
+- Added `process_buf_align` to allow use special aligned buffer for audio processor
+- Added API `esp_audio_render_stream_set_mixer_gain` for changing of stream mixer gain
+- Added API `esp_audio_render_stream_set_fade` to do fade in/out when stream is mixing
+- Changed `ESP_AUDIO_RENDER_MIXER_THREAD_PRIORITY` default value to 20
+
+### Bug Fixes
+
+- Fixed double free caused by pipeline failed to create
+- Fixed mixer thread can not restart when all stream close and reopen
+- Warning for writing to ringfifo if timeout to prevent from resisting for further write
+
+
+## v0.7.0
+
+### Features
+
+- Initial version of `esp_audio_render`
