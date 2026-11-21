@@ -415,6 +415,53 @@ esp_err_t media_manager_video_play_file(
             break;
         }
 
+        /*
+         * The default scheduler puts both the AAC decoder and video renderer
+         * on Core 1 at priority 5. The renderer can spend long periods waiting
+         * for the blocking PPA transaction, while the audio decoder must keep
+         * producing PCM for the audio-render queue. Give only the audio decoder
+         * a higher priority; preserve Espressif's default stack sizes and core
+         * placement for every pipeline task.
+         */
+        const esp_player_task_config_t task_cfg = {
+            .extractor = {
+                .stack = 5120,
+                .prio = 5,
+                .core = 0,
+                .stack_in_ext = 1,
+            },
+            .audio_decoder = {
+                .stack = 5120,
+                .prio = 6,
+                .core = 1,
+                .stack_in_ext = 1,
+            },
+            .audio_render = {
+                .stack = 5120,
+                .prio = 5,
+                .core = 0,
+                .stack_in_ext = 1,
+            },
+            .video_decoder = {
+                .stack = 5120,
+                .prio = 5,
+                .core = 0,
+                .stack_in_ext = 1,
+            },
+            .video_render = {
+                .stack = 5120,
+                .prio = 5,
+                .core = 1,
+                .stack_in_ext = 1,
+            },
+        };
+        if (esp_player_set_task_config(player, &task_cfg) != ESP_PLAYER_ERR_OK) {
+            ESP_LOGE(TAG, "Configure ESP Player task priorities failed");
+            result = ESP_FAIL;
+            break;
+        }
+        ESP_LOGI(TAG, "Player task config: audio_decoder core=1 priority=6");
+
         if (esp_player_set_event_cb(
                 player, media_video_player_event, &event_ctx) != ESP_PLAYER_ERR_OK) {
             result = ESP_FAIL;
