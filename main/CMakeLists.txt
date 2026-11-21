@@ -8,6 +8,5 @@ idf_component_register(
         app
         network_manager
         ota_manager
-        media_manager
         esp_board_manager
 )
