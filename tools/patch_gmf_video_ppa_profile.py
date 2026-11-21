@@ -125,6 +125,27 @@ replace_once(
     "per-frame profile report",
 )
 
-TARGET.write_text(source, encoding="utf-8", newline="\n")
+# esp_timer is a public dependency of this component because the profiling
+# code calls esp_timer_get_time() from esp_gmf_video_ppa.c.
+CMAKE_FILE = TARGET.parents[1] / "CMakeLists.txt"
+if not CMAKE_FILE.is_file():
+    sys.exit(f"ERROR: component CMakeLists.txt not found: {CMAKE_FILE}. No file written.")
+
+cmake_source = CMAKE_FILE.read_text(encoding="utf-8")
+if "list(APPEND COMPONENT_REQUIRES esp_timer)" not in cmake_source:
+    anchor = "idf_component_register("
+    if cmake_source.count(anchor) != 1:
+        sys.exit("ERROR: expected exactly one idf_component_register() in component CMakeLists.txt. No file written.")
+    cmake_source = cmake_source.replace(
+        anchor,
+        "# Required by temporary PPA profiling instrumentation.\\n"
+        "list(APPEND COMPONENT_REQUIRES esp_timer)\\n\\n"
+        + anchor,
+        1,
+    )
+
+TARGET.write_text(source, encoding="utf-8", newline="\\n")
+CMAKE_FILE.write_text(cmake_source, encoding="utf-8", newline="\\n")
 print(f"Installed PPA profiling in: {TARGET}")
+print(f"Added esp_timer dependency in: {CMAKE_FILE}")
 print("Rebuild required. Search serial logs for: PPA_PROFILE")
