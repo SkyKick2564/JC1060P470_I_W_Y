@@ -21,6 +21,7 @@
 
 #include "esp_gmf_pool.h"
 #include "esp_gmf_element.h"
+#include "esp_gmf_obj.h"
 #include "esp_gmf_ch_cvt.h"
 #include "esp_gmf_bit_cvt.h"
 #include "esp_gmf_rate_cvt.h"
@@ -33,6 +34,40 @@
 #include "media_manager_video_backend.h"
 
 #define TAG "MEDIA_VIDEO_PLAYER"
+
+#if CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32S31
+/*
+ * esp_video_render duplicates registered GMF pool prototypes when it opens
+ * the processing pipeline. Override the prototype factory so each runtime
+ * vid_ppa instance enables GMF's supported asynchronous full-speed path.
+ */
+static esp_gmf_err_t media_video_ppa_new_full_speed(
+    void *config,
+    esp_gmf_obj_handle_t *handle)
+{
+    if (handle == NULL) {
+        return ESP_GMF_ERR_INVALID_ARG;
+    }
+
+    *handle = NULL;
+    esp_gmf_err_t ret = esp_gmf_video_ppa_init(
+        config, (esp_gmf_element_handle_t *)handle);
+    if (ret != ESP_GMF_ERR_OK) {
+        return ret;
+    }
+
+    ret = esp_gmf_video_ppa_set_full_speed(
+        (esp_gmf_element_handle_t)*handle, true);
+    if (ret != ESP_GMF_ERR_OK) {
+        (void)esp_gmf_obj_delete(*handle);
+        *handle = NULL;
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "PPA full-speed asynchronous conversion enabled");
+    return ESP_GMF_ERR_OK;
+}
+#endif
 
 #define VIDEO_EVENT_PLAYED       BIT(0)
 #define VIDEO_EVENT_PAUSED       BIT(1)
@@ -323,6 +358,14 @@ static esp_err_t media_video_register_video_pool(esp_gmf_pool_handle_t *pool)
         element == NULL) {
         return ESP_FAIL;
     }
+
+    /*
+     * The renderer duplicates pool prototypes through esp_gmf_obj_dupl().
+     * Route that duplication through a factory which enables vid_ppa's
+     * asynchronous two-frame queue on the runtime element.
+     */
+    ((esp_gmf_obj_t *)element)->new_obj = media_video_ppa_new_full_speed;
+
     if (esp_gmf_pool_register_element(*pool, element, NULL) != ESP_GMF_ERR_OK) {
         esp_gmf_element_deinit(element);
         return ESP_FAIL;
