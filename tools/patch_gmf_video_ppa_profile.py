@@ -20,6 +20,24 @@ if TARGET is None:
 
 source = TARGET.read_text(encoding="utf-8")
 if "PPA_PROFILE input_wait" in source:
+    # The C source may already be patched by an earlier run; still ensure the
+    # component declares esp_timer so the include is available to this target.
+    CMAKE_FILE = TARGET.parents[1] / "CMakeLists.txt"
+    if not CMAKE_FILE.is_file():
+        sys.exit(f"ERROR: component CMakeLists.txt not found: {CMAKE_FILE}")
+    cmake_source = CMAKE_FILE.read_text(encoding="utf-8")
+    if "list(APPEND COMPONENT_REQUIRES esp_timer)" not in cmake_source:
+        anchor = "idf_component_register("
+        if cmake_source.count(anchor) != 1:
+            sys.exit("ERROR: expected exactly one idf_component_register() in component CMakeLists.txt.")
+        cmake_source = cmake_source.replace(
+            anchor,
+            "# Required by temporary PPA profiling instrumentation.\\n"
+            "list(APPEND COMPONENT_REQUIRES esp_timer)\\n\\n" + anchor,
+            1,
+        )
+        CMAKE_FILE.write_text(cmake_source, encoding="utf-8", newline="\\n")
+        print(f"Added esp_timer dependency in: {CMAKE_FILE}")
     print(f"PPA profiling already installed: {TARGET}")
     raise SystemExit(0)
 
