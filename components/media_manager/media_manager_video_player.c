@@ -72,13 +72,13 @@ static const esp_player_task_config_t s_player_task_config = {
     .audio_decoder = {
         .stack = 6144,
         .prio = 8,
-        .core = 1,
+        .core = 0,
         .stack_in_ext = 1,
     },
     .audio_render = {
         .stack = 5120,
         .prio = 9,
-        .core = 1,
+        .core = 0,
         .stack_in_ext = 1,
     },
     .video_decoder = {
