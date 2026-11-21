@@ -56,43 +56,10 @@
 #define VIDEO_AUDIO_OUTPUT_TASK_PRIO   (configMAX_PRIORITIES - 3)
 #define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
 
-/*
- * Run audio decoding/rendering on Core 0 with the dedicated high-priority
- * I2S output task. Keep video decoding/rendering and PPA processing on Core 1
- * to separate the video workload from audio processing.
+/* Use ESP Player's default task placement and scheduling, as in Espressif's
+ * reference video_player example. This lets FreeRTOS balance pipeline work
+ * instead of forcing extractor and every video stage onto Core 1.
  */
-static const esp_player_task_config_t s_player_task_config = {
-    .extractor = {
-        .stack = 5120,
-        .prio = 5,
-        .core = 1,
-        .stack_in_ext = 1,
-    },
-    .audio_decoder = {
-        .stack = 6144,
-        .prio = 8,
-        .core = 0,
-        .stack_in_ext = 1,
-    },
-    .audio_render = {
-        .stack = 5120,
-        .prio = 9,
-        .core = 0,
-        .stack_in_ext = 1,
-    },
-    .video_decoder = {
-        .stack = 5120,
-        .prio = 6,
-        .core = 1,
-        .stack_in_ext = 0,
-    },
-    .video_render = {
-        .stack = 5120,
-        .prio = 7,
-        .core = 1,
-        .stack_in_ext = 0,
-    },
-};
 
 #define VIDEO_COMMAND_PAUSE  (1UL << 1)
 #define VIDEO_COMMAND_RESUME (1UL << 2)
@@ -645,12 +612,6 @@ esp_err_t media_manager_video_play_file(
             break;
         }
 
-        if (esp_player_set_task_config(player, &s_player_task_config) !=
-            ESP_PLAYER_ERR_OK) {
-            ESP_LOGE(TAG, "Configure playback task affinity failed");
-            result = ESP_FAIL;
-            break;
-        }
 
         if (strncmp(path, "file://", 7) == 0) {
             snprintf(url, sizeof(url), "%s", path);
