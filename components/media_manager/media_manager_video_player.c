@@ -1,4 +1,3 @@
-#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -7,8 +6,6 @@
 #include "freertos/task.h"
 
 #include "esp_log.h"
-#include "esp_timer.h"
-#include "esp_heap_caps.h"
 #include "esp_codec_dev.h"
 #include "esp_player.h"
 #include "esp_player_advance.h"
@@ -50,11 +47,6 @@
 #define VIDEO_OUTPUT_CHANNELS    2
 #define VIDEO_RENDER_FPS         25
 
-#define VIDEO_AUDIO_QUEUE_LENGTH       24
-#define VIDEO_AUDIO_PCM_BLOCK_SIZE     (64 * 1024)
-#define VIDEO_AUDIO_OUTPUT_TASK_STACK  (4 * 1024)
-#define VIDEO_AUDIO_OUTPUT_TASK_PRIO   (configMAX_PRIORITIES - 3)
-#define VIDEO_AUDIO_OUTPUT_WAIT        pdMS_TO_TICKS(100)
 
 /* Use ESP Player's default task placement and scheduling, as in Espressif's
  * reference video_player example. This lets FreeRTOS balance pipeline work
@@ -70,155 +62,17 @@ typedef struct {
     esp_player_error_source_t error_source;
 } media_video_event_context_t;
 
-typedef struct {
-    size_t size;
-    int64_t queued_at_us;
-    int64_t producer_wait_us;
-    uint8_t data[VIDEO_AUDIO_PCM_BLOCK_SIZE];
-} media_video_pcm_block_t;
-
-typedef struct {
-    QueueHandle_t queue;
-    QueueHandle_t free_queue;
-    SemaphoreHandle_t done;
-    esp_codec_dev_handle_t codec;
-    volatile esp_err_t error;
-    uint32_t profile_blocks;
-    int64_t profile_start_us;
-    int64_t profile_queue_wait_us;
-    int64_t profile_codec_write_us;
-    int64_t profile_queue_wait_max_us;
-    int64_t profile_codec_write_max_us;
-    int64_t profile_producer_wait_us;
-    int64_t profile_block_bytes;
-} media_video_audio_output_t;
-
-static void media_video_audio_output_task(void *arg)
-{
-    media_video_audio_output_t *output = (media_video_audio_output_t *)arg;
-    media_video_pcm_block_t *block = NULL;
-
-    while (xQueueReceive(output->queue, &block, portMAX_DELAY) == pdTRUE) {
-        if (block == NULL) {
-            break;
-        }
-
-        int64_t now_us = esp_timer_get_time();
-        int64_t queue_wait_us = now_us - block->queued_at_us;
-        int64_t codec_write_us = 0;
-        if (output->error == ESP_OK) {
-            int64_t write_start_us = esp_timer_get_time();
-            esp_err_t err = esp_codec_dev_write(
-                output->codec, block->data, (int)block->size);
-            codec_write_us = esp_timer_get_time() - write_start_us;
-            if (err != ESP_CODEC_DEV_OK) {
-                output->error = err;
-                ESP_LOGE(TAG, "Audio output write failed: %s",
-                         esp_err_to_name(err));
-            }
-        }
-
-        output->profile_blocks++;
-        output->profile_queue_wait_us += queue_wait_us;
-        output->profile_codec_write_us += codec_write_us;
-        output->profile_producer_wait_us += block->producer_wait_us;
-        output->profile_block_bytes += (int64_t)block->size;
-        if (queue_wait_us > output->profile_queue_wait_max_us) {
-            output->profile_queue_wait_max_us = queue_wait_us;
-        }
-        if (codec_write_us > output->profile_codec_write_max_us) {
-            output->profile_codec_write_max_us = codec_write_us;
-        }
-        if (output->profile_start_us == 0) {
-            output->profile_start_us = now_us;
-        }
-        if (output->profile_blocks >= 50) {
-            int64_t window_us = now_us - output->profile_start_us;
-            ESP_LOGI(TAG,
-                     "Audio output profile: blocks=%" PRIu32 " rate=%.1f blocks/s avg_block=%" PRIi64 " B (%.2f ms PCM) avg_producer_wait=%.2f ms avg_queue=%.2f ms max_queue=%.2f ms avg_codec_write=%.2f ms max_codec_write=%.2f ms",
-                     output->profile_blocks,
-                     window_us > 0 ? (double)output->profile_blocks * 1000000.0 / (double)window_us : 0.0,
-                     output->profile_block_bytes / output->profile_blocks,
-                     (double)output->profile_block_bytes * 1000.0 /
-                         ((double)output->profile_blocks * VIDEO_OUTPUT_SAMPLE_RATE *
-                          VIDEO_OUTPUT_CHANNELS * (VIDEO_OUTPUT_BITS / 8)),
-                     (double)output->profile_producer_wait_us / (double)output->profile_blocks / 1000.0,
-                     (double)output->profile_queue_wait_us / (double)output->profile_blocks / 1000.0,
-                     (double)output->profile_queue_wait_max_us / 1000.0,
-                     (double)output->profile_codec_write_us / (double)output->profile_blocks / 1000.0,
-                     (double)output->profile_codec_write_max_us / 1000.0);
-            output->profile_blocks = 0;
-            output->profile_start_us = 0;
-            output->profile_queue_wait_us = 0;
-            output->profile_codec_write_us = 0;
-            output->profile_queue_wait_max_us = 0;
-            output->profile_codec_write_max_us = 0;
-            output->profile_producer_wait_us = 0;
-            output->profile_block_bytes = 0;
-        }
-
-        if (xQueueSend(output->free_queue, &block, 0) != pdTRUE) {
-            ESP_LOGE(TAG, "Could not return PCM block to free pool");
-        }
-    }
-
-    xSemaphoreGive(output->done);
-    vTaskDelete(NULL);
-}
-
 static int media_video_audio_writer(uint8_t *pcm, uint32_t length, void *ctx)
 {
-    media_video_audio_output_t *output =
-        (media_video_audio_output_t *)ctx;
-    media_video_pcm_block_t *block = NULL;
+    esp_codec_dev_handle_t codec = (esp_codec_dev_handle_t)ctx;
 
-    if (output == NULL || output->queue == NULL ||
-        output->free_queue == NULL || pcm == NULL || length == 0 ||
-        length > VIDEO_AUDIO_PCM_BLOCK_SIZE) {
-        ESP_LOGE(TAG, "Invalid PCM block length: %" PRIu32, length);
+    if (codec == NULL || pcm == NULL || length == 0) {
         return -1;
     }
 
-    /*
-     * Apply backpressure when the decoder produces PCM faster than the codec
-     * consumes it. Keep waiting for a returned block instead of failing
-     * playback merely because all preallocated blocks are temporarily busy.
-     * Poll periodically so a codec write error can abort the wait promptly.
-     */
-    int64_t producer_wait_start_us = esp_timer_get_time();
-    while (xQueueReceive(output->free_queue, &block,
-                         VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE) {
-        if (output->error != ESP_OK) {
-            ESP_LOGE(TAG, "Audio output stopped while waiting for a PCM block: %s",
-                     esp_err_to_name(output->error));
-            return -1;
-        }
-    }
-
-    if (block == NULL) {
-        ESP_LOGE(TAG, "Received an invalid PCM block from the free pool");
-        return -1;
-    }
-
-    if (output->error != ESP_OK) {
-        (void)xQueueSend(output->free_queue, &block, 0);
-        ESP_LOGE(TAG, "Audio output is in error state: %s",
-                 esp_err_to_name(output->error));
-        return -1;
-    }
-
-    block->size = length;
-    block->producer_wait_us = esp_timer_get_time() - producer_wait_start_us;
-    block->queued_at_us = esp_timer_get_time();
-    memcpy(block->data, pcm, length);
-
-    if (xQueueSend(output->queue, &block, VIDEO_AUDIO_OUTPUT_WAIT) != pdTRUE) {
-        (void)xQueueSend(output->free_queue, &block, 0);
-        ESP_LOGW(TAG, "Audio output queue is full");
-        return -1;
-    }
-
-    return 0;
+    /* Match Espressif's reference video_player: write decoded PCM directly
+     * from the audio-render callback to the codec device. */
+    return esp_codec_dev_write(codec, pcm, (int)length);
 }
 
 static esp_err_t media_video_register_audio_pool(esp_gmf_pool_handle_t *pool)
@@ -419,10 +273,6 @@ esp_err_t media_manager_video_play_file(
     esp_audio_render_handle_t audio_render = NULL;
     esp_audio_render_stream_handle_t audio_stream = NULL;
     esp_video_render_handle_t video_render = NULL;
-    media_video_audio_output_t audio_output = {0};
-    media_video_pcm_block_t *audio_block_pool = NULL;
-    TaskHandle_t audio_output_task = NULL;
-    bool audio_output_task_started = false;
     esp_player_handle_t player = NULL;
     EventGroupHandle_t events = NULL;
     media_video_event_context_t event_ctx = {0};
@@ -458,47 +308,6 @@ esp_err_t media_manager_video_play_file(
         codec_opened = true;
         media_manager_notify_codec_opened(true);
 
-        audio_output.codec = codec;
-        audio_output.error = ESP_OK;
-        audio_output.queue = xQueueCreate(
-            VIDEO_AUDIO_QUEUE_LENGTH, sizeof(media_video_pcm_block_t *));
-        audio_output.free_queue = xQueueCreate(
-            VIDEO_AUDIO_QUEUE_LENGTH, sizeof(media_video_pcm_block_t *));
-        audio_output.done = xSemaphoreCreateBinary();
-        audio_block_pool = heap_caps_calloc(
-            VIDEO_AUDIO_QUEUE_LENGTH,
-            sizeof(*audio_block_pool),
-            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (audio_output.queue == NULL || audio_output.free_queue == NULL ||
-            audio_output.done == NULL || audio_block_pool == NULL) {
-            result = ESP_ERR_NO_MEM;
-            break;
-        }
-
-        for (size_t i = 0; i < VIDEO_AUDIO_QUEUE_LENGTH; i++) {
-            media_video_pcm_block_t *block = &audio_block_pool[i];
-            if (xQueueSend(audio_output.free_queue, &block, 0) != pdTRUE) {
-                result = ESP_FAIL;
-                break;
-            }
-        }
-        if (result != ESP_OK) {
-            break;
-        }
-
-        if (xTaskCreatePinnedToCore(
-                media_video_audio_output_task,
-                "media_audio_out",
-                VIDEO_AUDIO_OUTPUT_TASK_STACK,
-                &audio_output,
-                VIDEO_AUDIO_OUTPUT_TASK_PRIO,
-                &audio_output_task,
-                0) != pdPASS) {
-            result = ESP_ERR_NO_MEM;
-            break;
-        }
-        audio_output_task_started = true;
-
         if (esp_codec_dev_set_out_vol(codec, volume) != ESP_CODEC_DEV_OK) {
             ESP_LOGW(TAG, "Could not set initial video playback volume");
         }
@@ -511,7 +320,7 @@ esp_err_t media_manager_video_play_file(
         esp_audio_render_cfg_t audio_cfg = {
             .max_stream_num = 1,
             .out_writer = media_video_audio_writer,
-            .out_ctx = &audio_output,
+            .out_ctx = codec,
             .out_sample_info = {
                 .sample_rate = VIDEO_OUTPUT_SAMPLE_RATE,
                 .bits_per_sample = VIDEO_OUTPUT_BITS,
@@ -730,33 +539,6 @@ esp_err_t media_manager_video_play_file(
         (void)esp_gmf_pool_deinit(audio_pool);
     }
 
-    /*
-     * The player and audio renderer are stopped before the output task is
-     * drained, so no more PCM blocks can be submitted after this marker.
-     */
-    if (audio_output_task_started) {
-        media_video_pcm_block_t *end_marker = NULL;
-        while (xQueueSend(audio_output.queue, &end_marker,
-                          pdMS_TO_TICKS(100)) != pdTRUE) {
-            /* Let the output task drain queued PCM before retrying. */
-        }
-        (void)xSemaphoreTake(audio_output.done, portMAX_DELAY);
-        if (audio_output.error != ESP_OK && result == ESP_OK) {
-            result = audio_output.error;
-        }
-    }
-
-    heap_caps_free(audio_block_pool);
-
-    if (audio_output.queue != NULL) {
-        vQueueDelete(audio_output.queue);
-    }
-    if (audio_output.free_queue != NULL) {
-        vQueueDelete(audio_output.free_queue);
-    }
-    if (audio_output.done != NULL) {
-        vSemaphoreDelete(audio_output.done);
-    }
 
     if (codec_opened) {
         media_manager_notify_codec_opened(false);
