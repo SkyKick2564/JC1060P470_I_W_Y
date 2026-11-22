@@ -313,7 +313,12 @@ static esp_err_t network_manager_begin_manual_connection(
 
 static esp_err_t network_manager_commit_manual_profile(network_manager_t *manager)
 {
-    if (!manager->manual_connection_pending || !manager->manual_profile_save_pending) {
+    /* A delayed GOT_IP from the old link must not consume a pending switch. */
+    if (manager->wifi_config_switch_pending || !manager->manual_connection_pending) {
+        return ESP_OK;
+    }
+
+    if (!manager->manual_profile_save_pending) {
         manager->manual_connection_pending = false;
         manager->manual_profile_save_pending = false;
         memset(&manager->pending_wifi_config, 0, sizeof(manager->pending_wifi_config));
