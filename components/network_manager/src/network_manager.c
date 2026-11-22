@@ -281,9 +281,24 @@ static esp_err_t network_manager_begin_manual_connection(
     manager->pending_wifi_config = *config;
 
     bool wifi_connected;
+    char connected_ssid[sizeof(manager->status.ssid)] = {0};
     xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
     wifi_connected = manager->status.wifi_connected;
+    if (wifi_connected) {
+        memcpy(connected_ssid, manager->status.ssid, sizeof(connected_ssid));
+    }
     xSemaphoreGive(manager->status_mutex);
+
+    /* Selecting the network that is already connected should be a no-op. */
+    if (wifi_connected && !save_on_success &&
+        strcmp(connected_ssid, config->ssid) == 0) {
+        memcpy(manager->preferred_wifi_ssid, config->ssid,
+               sizeof(manager->preferred_wifi_ssid));
+        manager->manual_connection_pending = false;
+        manager->manual_profile_save_pending = false;
+        memset(&manager->pending_wifi_config, 0, sizeof(manager->pending_wifi_config));
+        return ESP_OK;
+    }
 
     if (wifi_connected || manager->wifi_connecting) {
         manager->wifi_config_switch_pending = true;
