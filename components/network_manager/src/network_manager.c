@@ -269,6 +269,93 @@ static esp_err_t network_manager_save_wifi_profiles(
     return nvs_commit(manager->nvs_handle);
 }
 
+static esp_err_t network_manager_begin_manual_connection(
+    network_manager_t *manager,
+    const network_saved_wifi_config_t *config,
+    bool save_on_success)
+{
+    if (!manager->started) return ESP_ERR_INVALID_STATE;
+
+    manager->manual_connection_pending = true;
+    manager->manual_profile_save_pending = save_on_success;
+    manager->pending_wifi_config = *config;
+
+    bool wifi_connected;
+    xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
+    wifi_connected = manager->status.wifi_connected;
+    xSemaphoreGive(manager->status_mutex);
+
+    if (wifi_connected || manager->wifi_connecting) {
+        manager->wifi_config_switch_pending = true;
+        manager->reconnect_scan_pending = false;
+        manager->ap_scan_pending = false;
+        esp_err_t err = wifi_manager_disconnect();
+        if (err == ESP_OK) return ESP_OK;
+
+        manager->wifi_config_switch_pending = false;
+        if (err != ESP_ERR_WIFI_NOT_CONNECT) {
+            manager->manual_connection_pending = false;
+            manager->manual_profile_save_pending = false;
+            memset(&manager->pending_wifi_config, 0, sizeof(manager->pending_wifi_config));
+            return err;
+        }
+    }
+
+    esp_err_t err = network_manager_apply_wifi_config(manager, config);
+    if (err != ESP_OK) {
+        manager->manual_connection_pending = false;
+        manager->manual_profile_save_pending = false;
+        memset(&manager->pending_wifi_config, 0, sizeof(manager->pending_wifi_config));
+        network_manager_schedule_reconnect_scan(manager);
+    }
+    return err;
+}
+
+static esp_err_t network_manager_commit_manual_profile(network_manager_t *manager)
+{
+    if (!manager->manual_connection_pending || !manager->manual_profile_save_pending) {
+        manager->manual_connection_pending = false;
+        manager->manual_profile_save_pending = false;
+        memset(&manager->pending_wifi_config, 0, sizeof(manager->pending_wifi_config));
+        return ESP_OK;
+    }
+
+    network_saved_wifi_config_t candidate[NETWORK_MANAGER_MAX_SAVED_WIFI];
+    uint8_t count = manager->saved_profile_count;
+    memcpy(candidate, manager->saved_profiles, count * sizeof(candidate[0]));
+    const network_saved_wifi_config_t *config = &manager->pending_wifi_config;
+    bool updated = false;
+
+    for (uint8_t n = 0; n < count; ++n) {
+        if (strcmp(candidate[n].ssid, config->ssid) == 0) {
+            candidate[n] = *config;
+            updated = true;
+            break;
+        }
+    }
+    if (!updated) {
+        if (count < NETWORK_MANAGER_MAX_SAVED_WIFI) candidate[count++] = *config;
+        else candidate[NETWORK_MANAGER_MAX_SAVED_WIFI - 1] = *config;
+    }
+
+    esp_err_t err = network_manager_save_wifi_profiles(manager, candidate, count);
+    if (err == ESP_OK) {
+        memset(manager->saved_profiles, 0, sizeof(manager->saved_profiles));
+        memcpy(manager->saved_profiles, candidate, count * sizeof(candidate[0]));
+        manager->saved_profile_count = count;
+        memcpy(manager->preferred_wifi_ssid, config->ssid, sizeof(manager->preferred_wifi_ssid));
+        network_manager_post_event(NETWORK_EVENT_CONFIG_CHANGED);
+        ESP_LOGI(TAG, "Saved Wi-Fi profile after successful IP connection: %s", config->ssid);
+    } else {
+        ESP_LOGE(TAG, "Connected Wi-Fi profile could not be saved: %s", esp_err_to_name(err));
+    }
+
+    manager->manual_connection_pending = false;
+    manager->manual_profile_save_pending = false;
+    memset(&manager->pending_wifi_config, 0, sizeof(manager->pending_wifi_config));
+    return err;
+}
+
 static esp_err_t network_manager_erase_wifi_config(network_manager_t *manager)
 {
     esp_err_t err = nvs_erase_key(manager->nvs_handle,
@@ -522,6 +609,20 @@ static void network_manager_process_wifi_disconnected(
 
     ESP_LOGW(TAG, "Wi-Fi disconnected, reason: %u", reason);
 
+    if (manager->manual_connection_pending && !manager->wifi_config_switch_pending) {
+        memcpy(manager->rejected_wifi_ssid, manager->pending_wifi_config.ssid,
+               sizeof(manager->rejected_wifi_ssid));
+        uint8_t event_reason = reason;
+        esp_err_t post_err = esp_event_post(NETWORK_MANAGER_EVENT,
+            NETWORK_EVENT_CONNECT_FAILED, &event_reason, sizeof(event_reason), 0);
+        if (post_err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to post connection failure event: %s", esp_err_to_name(post_err));
+        }
+        manager->manual_connection_pending = false;
+        manager->manual_profile_save_pending = false;
+        memset(&manager->pending_wifi_config, 0, sizeof(manager->pending_wifi_config));
+    }
+
     if (had_internet) {
         network_manager_post_event(NETWORK_EVENT_INTERNET_DISCONNECTED);
     }
@@ -583,6 +684,8 @@ static void network_manager_process_got_ip(
 
     xSemaphoreGive(manager->status_mutex);
 
+    (void)network_manager_commit_manual_profile(manager);
+    manager->rejected_wifi_ssid[0] = '\0';
     manager->reconnect_scan_pending = false;
 
     if (manager->ap_scan_enabled) {
@@ -603,6 +706,8 @@ static esp_err_t network_manager_stop_internal(network_manager_t *manager)
     manager->started = false;
     manager->wifi_connecting = false;
     manager->wifi_config_switch_pending = false;
+    manager->manual_connection_pending = false;
+    manager->manual_profile_save_pending = false;
     memset(&manager->pending_wifi_config, 0,
            sizeof(manager->pending_wifi_config));
     manager->reconnect_scan_pending = false;
@@ -715,6 +820,27 @@ static esp_err_t network_manager_process_request(
         }
         err = network_manager_stop_internal(manager);
         break;
+
+    case NETWORK_REQUEST_SELECT_WIFI: {
+        if (!manager->initialized || !manager->started) return ESP_ERR_INVALID_STATE;
+        const char *ssid = request->data.wifi_config.ssid;
+        const network_saved_wifi_config_t *saved = NULL;
+        for (uint8_t n = 0; n < manager->saved_profile_count; ++n) {
+            if (strcmp(manager->saved_profiles[n].ssid, ssid) == 0) {
+                saved = &manager->saved_profiles[n];
+                break;
+            }
+        }
+        if (saved == NULL) return ESP_ERR_NOT_FOUND;
+        network_saved_wifi_config_t config = *saved;
+        return network_manager_begin_manual_connection(manager, &config, false);
+    }
+
+    case NETWORK_REQUEST_CONNECT_WIFI: {
+        if (!manager->initialized || !manager->started) return ESP_ERR_INVALID_STATE;
+        return network_manager_begin_manual_connection(
+            manager, &request->data.wifi_config, true);
+    }
 
     case NETWORK_REQUEST_SET_CONFIG: {
         if (!manager->initialized) {
@@ -1018,6 +1144,7 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
                     const network_saved_wifi_config_t *profile =
                         &manager->saved_profiles[j];
                     if (strcmp(profile->ssid, manager->preferred_wifi_ssid) == 0 &&
+                        strcmp(profile->ssid, manager->rejected_wifi_ssid) != 0 &&
                         (best_profile == NULL || records[i].rssi > best_rssi)) {
                         best_profile = profile;
                         best_rssi = records[i].rssi;
@@ -1034,7 +1161,8 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
                 for (uint8_t j = 0; j < manager->saved_profile_count; ++j) {
                     const network_saved_wifi_config_t *profile =
                         &manager->saved_profiles[j];
-                    if (strncmp((const char *)records[i].ssid, profile->ssid,
+                    if (strcmp(profile->ssid, manager->rejected_wifi_ssid) != 0 &&
+                        strncmp((const char *)records[i].ssid, profile->ssid,
                                 sizeof(records[i].ssid)) == 0 &&
                         (best_profile == NULL || records[i].rssi > best_rssi)) {
                         best_profile = profile;
@@ -1367,30 +1495,37 @@ esp_err_t network_manager_deinit(network_manager_handle_t handle)
     return ESP_OK;
 }
 
-esp_err_t network_manager_set_wifi_config(
+static esp_err_t network_manager_submit_wifi_request(
     network_manager_handle_t handle,
+    network_request_type_t type,
     const char *ssid,
     const char *password)
 {
-    if (handle == NULL || ssid == NULL || password == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
+    if (handle == NULL || ssid == NULL) return ESP_ERR_INVALID_ARG;
     size_t ssid_len = strlen(ssid);
-    size_t password_len = strlen(password);
+    size_t password_len = password != NULL ? strlen(password) : 0;
+    if (ssid_len == 0 || ssid_len > 32 || password_len > 64) return ESP_ERR_INVALID_ARG;
 
-    if (ssid_len == 0 || ssid_len > 32 || password_len > 64) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    network_request_t request = {
-        .type = NETWORK_REQUEST_SET_CONFIG
-    };
-
+    network_request_t request = {.type = type};
     memcpy(request.data.wifi_config.ssid, ssid, ssid_len);
-    memcpy(request.data.wifi_config.password, password, password_len);
-
+    if (password != NULL) memcpy(request.data.wifi_config.password, password, password_len);
     return network_manager_submit(handle, &request);
+}
+
+esp_err_t network_manager_select_wifi(network_manager_handle_t handle, const char *ssid)
+{
+    return network_manager_submit_wifi_request(handle, NETWORK_REQUEST_SELECT_WIFI, ssid, NULL);
+}
+
+esp_err_t network_manager_connect_wifi(network_manager_handle_t handle, const char *ssid, const char *password)
+{
+    if (password == NULL) return ESP_ERR_INVALID_ARG;
+    return network_manager_submit_wifi_request(handle, NETWORK_REQUEST_CONNECT_WIFI, ssid, password);
+}
+
+esp_err_t network_manager_set_wifi_config(network_manager_handle_t handle, const char *ssid, const char *password)
+{
+    return network_manager_connect_wifi(handle, ssid, password);
 }
 
 esp_err_t network_manager_clear_wifi_config(network_manager_handle_t handle)
