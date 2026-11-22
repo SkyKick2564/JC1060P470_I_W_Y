@@ -261,7 +261,7 @@ static esp_err_t network_manager_save_wifi_profiles(
         NETWORK_MANAGER_NVS_WIFI_KEY, &saved, sizeof(saved));
     if (err != ESP_OK) return err;
 
-    /* Legacy cleanup is included in this explicit set_config() write. */
+    /* Remove the legacy single-profile key after a verified profile write. */
     err = nvs_erase_key(manager->nvs_handle,
         NETWORK_MANAGER_NVS_LEGACY_WIFI_KEY);
     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) return err;
@@ -850,105 +850,6 @@ static esp_err_t network_manager_process_request(
         if (!manager->initialized || !manager->started) return ESP_ERR_INVALID_STATE;
         return network_manager_begin_manual_connection(
             manager, &request->data.wifi_config, true);
-    }
-
-    case NETWORK_REQUEST_SET_CONFIG: {
-        if (!manager->initialized) {
-            return ESP_ERR_INVALID_STATE;
-        }
-
-        const network_saved_wifi_config_t *config =
-            &request->data.wifi_config;
-        network_saved_wifi_config_t candidate[NETWORK_MANAGER_MAX_SAVED_WIFI];
-        uint8_t candidate_count = manager->saved_profile_count;
-        bool updated = false;
-
-        memcpy(candidate, manager->saved_profiles,
-               candidate_count * sizeof(candidate[0]));
-
-        for (uint8_t i = 0; i < candidate_count; ++i) {
-            if (strcmp(candidate[i].ssid, config->ssid) == 0) {
-                candidate[i] = *config;
-                updated = true;
-                ESP_LOGI(TAG, "Updating saved Wi-Fi profile: %s", config->ssid);
-                break;
-            }
-        }
-
-        if (!updated) {
-            if (candidate_count < NETWORK_MANAGER_MAX_SAVED_WIFI) {
-                candidate[candidate_count++] = *config;
-                ESP_LOGI(TAG, "Adding saved Wi-Fi profile: %s", config->ssid);
-            } else {
-                candidate[NETWORK_MANAGER_MAX_SAVED_WIFI - 1] = *config;
-                ESP_LOGW(TAG, "Profile list full; replacing last profile with: %s",
-                         config->ssid);
-            }
-        }
-
-        err = network_manager_save_wifi_profiles(manager, candidate, candidate_count);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Saving Wi-Fi profiles failed: %s", esp_err_to_name(err));
-            return err;
-        }
-
-        memset(manager->saved_profiles, 0, sizeof(manager->saved_profiles));
-        memcpy(manager->saved_profiles, candidate,
-               candidate_count * sizeof(candidate[0]));
-        manager->saved_profile_count = candidate_count;
-        memcpy(manager->preferred_wifi_ssid, config->ssid,
-               sizeof(manager->preferred_wifi_ssid));
-
-        network_manager_post_event(NETWORK_EVENT_CONFIG_CHANGED);
-        ESP_LOGI(TAG, "Saved Wi-Fi profiles: %u/%u",
-                 (unsigned)manager->saved_profile_count,
-                 NETWORK_MANAGER_MAX_SAVED_WIFI);
-
-        /*
-         * If a previous switch is waiting for WIFI_EVENT_STA_DISCONNECTED,
-         * keep only the newest App-selected configuration.
-         */
-        if (manager->started && manager->wifi_config_switch_pending) {
-            manager->pending_wifi_config = *config;
-            break;
-        }
-
-        if (manager->started) {
-            bool wifi_connected;
-            xSemaphoreTake(manager->status_mutex, portMAX_DELAY);
-            wifi_connected = manager->status.wifi_connected;
-            xSemaphoreGive(manager->status_mutex);
-
-            if (wifi_connected || manager->wifi_connecting) {
-                manager->pending_wifi_config = *config;
-                manager->wifi_config_switch_pending = true;
-                manager->reconnect_scan_pending = false;
-                manager->ap_scan_pending = false;
-
-                err = wifi_manager_disconnect();
-                if (err == ESP_OK) {
-                    ESP_LOGI(TAG, "Disconnecting current Wi-Fi before switching to: %s",
-                             config->ssid);
-                    break;
-                }
-
-                manager->wifi_config_switch_pending = false;
-                memset(&manager->pending_wifi_config, 0,
-                       sizeof(manager->pending_wifi_config));
-                if (err != ESP_ERR_WIFI_NOT_CONNECT) {
-                    ESP_LOGE(TAG, "Wi-Fi disconnect before config switch failed: %s",
-                             esp_err_to_name(err));
-                    return err;
-                }
-            }
-
-            err = network_manager_apply_wifi_config(manager, config);
-            if (err != ESP_OK) {
-                network_manager_schedule_reconnect_scan(manager);
-                return err;
-            }
-        }
-        break;
     }
 
     case NETWORK_REQUEST_CLEAR_CONFIG:
