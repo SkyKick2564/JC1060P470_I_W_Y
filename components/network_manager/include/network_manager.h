@@ -31,7 +31,9 @@ typedef enum {
     NETWORK_EVENT_INTERNET_CONNECTED,
     NETWORK_EVENT_INTERNET_DISCONNECTED,
     NETWORK_EVENT_CONFIG_CHANGED,
-    NETWORK_EVENT_SCAN_UPDATED
+    NETWORK_EVENT_SCAN_UPDATED,
+    /* event_data points to a uint8_t Wi-Fi disconnect reason. */
+    NETWORK_EVENT_CONNECT_FAILED
 } network_event_id_t;
 
 /* Current Network Status */
@@ -74,20 +76,21 @@ esp_err_t network_manager_deinit(network_manager_handle_t handle);
 /*
  * Saved Wi-Fi Profiles
  *
- * Up to 20 profiles are stored in NVS. Calling set_wifi_config() adds a new
- * SSID or updates the password of an existing SSID. If the list is full,
- * the last profile is replaced. When the manager is started, set_wifi_config()
- * saves the profile and asynchronously switches the active connection to it.
- * A successful return means the switch was accepted, not that Wi-Fi is connected;
- * monitor the normal Wi-Fi status events for the connection result.
- * clear_wifi_config() removes all profiles and is only allowed while stopped.
+ * Up to 20 profiles are stored in NVS. Selecting a saved SSID uses its stored
+ * password. User-supplied credentials are saved only after GOT_IP. Failed
+ * attempts never overwrite an existing profile. clear_wifi_config() removes
+ * all profiles and is only allowed while stopped.
  */
 #define NETWORK_MANAGER_MAX_SAVED_WIFI 20
-esp_err_t network_manager_set_wifi_config(
-    network_manager_handle_t handle,
-    const char *ssid,
-    const char *password
-);
+/* Use stored credentials for an already-saved SSID. Returns ESP_ERR_NOT_FOUND
+ * when the SSID is unknown, so the UI can request a password. */
+esp_err_t network_manager_select_wifi(network_manager_handle_t handle, const char *ssid);
+
+/* User credentials are saved only after IP_EVENT_STA_GOT_IP. */
+esp_err_t network_manager_connect_wifi(network_manager_handle_t handle, const char *ssid, const char *password);
+
+/* Compatibility API; uses verified-save behavior. */
+esp_err_t network_manager_set_wifi_config(network_manager_handle_t handle, const char *ssid, const char *password);
 
 esp_err_t network_manager_clear_wifi_config(
     network_manager_handle_t handle
