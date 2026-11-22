@@ -34,6 +34,8 @@ typedef enum {
     NETWORK_REQUEST_START,
     NETWORK_REQUEST_STOP,
     NETWORK_REQUEST_SET_CONFIG,
+    NETWORK_REQUEST_SELECT_WIFI,
+    NETWORK_REQUEST_CONNECT_WIFI,
     NETWORK_REQUEST_CLEAR_CONFIG,
     NETWORK_REQUEST_START_SCAN,
     NETWORK_REQUEST_STOP_SCAN,
@@ -102,6 +104,9 @@ typedef struct network_manager {
     bool wifi_connecting;
     bool wifi_config_switch_pending;
     network_saved_wifi_config_t pending_wifi_config;
+    bool manual_connection_pending;
+    bool manual_profile_save_pending;
+    char rejected_wifi_ssid[33];
     char preferred_wifi_ssid[33];
 
     network_saved_wifi_config_t saved_profiles[NETWORK_MANAGER_MAX_SAVED_WIFI];
