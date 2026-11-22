@@ -319,6 +319,8 @@ static esp_err_t network_manager_commit_manual_profile(network_manager_t *manage
     }
 
     if (!manager->manual_profile_save_pending) {
+        memcpy(manager->preferred_wifi_ssid, manager->pending_wifi_config.ssid,
+               sizeof(manager->preferred_wifi_ssid));
         manager->manual_connection_pending = false;
         manager->manual_profile_save_pending = false;
         memset(&manager->pending_wifi_config, 0, sizeof(manager->pending_wifi_config));
@@ -653,6 +655,16 @@ static void network_manager_process_wifi_disconnected(
 
         esp_err_t err = network_manager_apply_wifi_config(manager, &config);
         if (err != ESP_OK) {
+            if (manager->manual_connection_pending) {
+                uint8_t event_reason = 0;
+                (void)esp_event_post(NETWORK_MANAGER_EVENT,
+                    NETWORK_EVENT_CONNECT_FAILED,
+                    &event_reason, sizeof(event_reason), 0);
+                manager->manual_connection_pending = false;
+                manager->manual_profile_save_pending = false;
+                memset(&manager->pending_wifi_config, 0,
+                       sizeof(manager->pending_wifi_config));
+            }
             network_manager_schedule_reconnect_scan(manager);
         }
         return;
