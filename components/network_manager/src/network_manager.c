@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "esp_http_client.h"
 #include "nvs_flash.h"
+#include "esp_heap_caps.h"
 
 #define NETWORK_MANAGER_HOSTED_TIMEOUT_MS 10000
 #define NETWORK_MANAGER_RECONNECT_SCAN_INTERVAL_MS 2000
@@ -283,6 +284,10 @@ static esp_err_t network_manager_erase_wifi_config(network_manager_t *manager)
 
 static esp_err_t network_manager_hw_deinit(network_manager_t *manager)
 {
+    if (manager == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     if (manager->ip_event_instance != NULL) {
         esp_err_t err = esp_event_handler_instance_unregister(
             IP_EVENT,
@@ -290,6 +295,8 @@ static esp_err_t network_manager_hw_deinit(network_manager_t *manager)
             manager->ip_event_instance
         );
         if (err != ESP_OK) {
+            ESP_LOGE(TAG, "IP event unregister failed: %s",
+                     esp_err_to_name(err));
             return err;
         }
         manager->ip_event_instance = NULL;
@@ -302,6 +309,8 @@ static esp_err_t network_manager_hw_deinit(network_manager_t *manager)
             manager->wifi_event_instance
         );
         if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Wi-Fi event unregister failed: %s",
+                     esp_err_to_name(err));
             return err;
         }
         manager->wifi_event_instance = NULL;
@@ -310,6 +319,8 @@ static esp_err_t network_manager_hw_deinit(network_manager_t *manager)
     if (manager->wifi_initialized) {
         esp_err_t err = wifi_manager_deinit();
         if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Wi-Fi deinit failed: %s",
+                     esp_err_to_name(err));
             return err;
         }
         manager->wifi_initialized = false;
@@ -342,11 +353,33 @@ static esp_err_t network_manager_hw_deinit(network_manager_t *manager)
         ESP_LOGI(TAG, "ESP-Hosted deinitialized");
     }
 
+    manager->initialized = false;
+    ESP_LOGI(TAG, "Network Manager hardware deinitialized");
+
     return ESP_OK;
+}
+
+static esp_err_t network_manager_hw_init_rollback(
+    network_manager_t *manager,
+    esp_err_t init_err)
+{
+    esp_err_t cleanup_err = network_manager_hw_deinit(manager);
+
+    if (cleanup_err != ESP_OK) {
+        ESP_LOGE(TAG,
+                 "Hardware initialization rollback failed: %s",
+                 esp_err_to_name(cleanup_err));
+    }
+
+    return init_err;
 }
 
 static esp_err_t network_manager_hw_init(network_manager_t *manager)
 {
+    if (manager == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     int hosted_result = eh_host_wait_auto_init_ready(
         NETWORK_MANAGER_HOSTED_TIMEOUT_MS
     );
@@ -360,7 +393,7 @@ static esp_err_t network_manager_hw_init(network_manager_t *manager)
     esp_err_t err = nvs_flash_init();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "NVS initialization failed: %s", esp_err_to_name(err));
-        return err;
+        return network_manager_hw_init_rollback(manager, err);
     }
 
     err = nvs_open(
@@ -370,27 +403,29 @@ static esp_err_t network_manager_hw_init(network_manager_t *manager)
     );
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS open failed: %s", esp_err_to_name(err));
-        return err;
+        return network_manager_hw_init_rollback(manager, err);
     }
     manager->nvs_opened = true;
 
     err = network_manager_load_wifi_config(manager);
     if (err != ESP_OK) {
-        return err;
+        ESP_LOGE(TAG, "Wi-Fi configuration load failed: %s",
+                 esp_err_to_name(err));
+        return network_manager_hw_init_rollback(manager, err);
     }
 
     err = network_interface_init_sta(&manager->sta_netif);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "STA interface initialization failed: %s",
                  esp_err_to_name(err));
-        return err;
+        return network_manager_hw_init_rollback(manager, err);
     }
     manager->netif_initialized = true;
 
     err = wifi_manager_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi initialization failed: %s", esp_err_to_name(err));
-        return err;
+        return network_manager_hw_init_rollback(manager, err);
     }
     manager->wifi_initialized = true;
 
@@ -404,7 +439,7 @@ static esp_err_t network_manager_hw_init(network_manager_t *manager)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi event registration failed: %s",
                  esp_err_to_name(err));
-        return err;
+        return network_manager_hw_init_rollback(manager, err);
     }
 
     err = esp_event_handler_instance_register(
@@ -417,7 +452,7 @@ static esp_err_t network_manager_hw_init(network_manager_t *manager)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "IP event registration failed: %s",
                  esp_err_to_name(err));
-        return err;
+        return network_manager_hw_init_rollback(manager, err);
     }
 
     manager->initialized = true;
@@ -649,13 +684,6 @@ static esp_err_t network_manager_process_request(
     switch (request->type) {
     case NETWORK_REQUEST_INIT:
         err = network_manager_hw_init(manager);
-        if (err != ESP_OK) {
-            esp_err_t cleanup_err = network_manager_hw_deinit(manager);
-            if (cleanup_err != ESP_OK) {
-                ESP_LOGE(TAG, "Initialization rollback failed: %s",
-                         esp_err_to_name(cleanup_err));
-            }
-        }
         break;
 
     case NETWORK_REQUEST_START:
@@ -920,10 +948,6 @@ static void network_manager_scan_and_reconnect(network_manager_t *manager)
     manager->ap_scan_pending = false;
     manager->reconnect_scan_pending = false;
 
-    if (!ap_scan_due && !reconnect_scan_due) {
-        return;
-    }
-
     ESP_LOGI(TAG, "Scanning for Wi-Fi access points");
 
     esp_err_t err = wifi_manager_scan();
@@ -1187,7 +1211,9 @@ static esp_err_t network_manager_submit(
         return ESP_ERR_INVALID_ARG;
     }
 
-    request->completed = xSemaphoreCreateBinary();
+    request->completed = xSemaphoreCreateBinaryStatic(
+        &request->completed_buffer
+    );
     if (request->completed == NULL) {
         return ESP_ERR_NO_MEM;
     }
@@ -1204,13 +1230,13 @@ static esp_err_t network_manager_submit(
     }
 
     if (xSemaphoreTake(request->completed, portMAX_DELAY) != pdTRUE) {
-        vSemaphoreDelete(request->completed);
-        request->completed = NULL;
-        return ESP_FAIL;
+        ESP_LOGE(TAG, "Failed to receive request completion");
+        abort();
     }
 
     vSemaphoreDelete(request->completed);
     request->completed = NULL;
+
     return request->result;
 }
 
@@ -1222,40 +1248,50 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
 
     *out_handle = NULL;
 
-    network_manager_t *manager = calloc(1, sizeof(network_manager_t));
+    network_manager_t *manager = heap_caps_calloc(
+        1,
+        sizeof(network_manager_t),
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT
+    );
     if (manager == NULL) {
         return ESP_ERR_NO_MEM;
     }
 
-    manager->status_mutex = xSemaphoreCreateMutex();
+    manager->status_mutex = xSemaphoreCreateMutexStatic(
+        &manager->status_mutex_buffer
+    );
     if (manager->status_mutex == NULL) {
-        free(manager);
+        heap_caps_free(manager);
         return ESP_ERR_NO_MEM;
     }
 
-    manager->queue = xQueueCreate(
+    manager->queue = xQueueCreateStatic(
         NETWORK_MANAGER_QUEUE_LENGTH,
-        sizeof(network_message_t)
+        sizeof(network_message_t),
+        manager->queue_storage,
+        &manager->queue_buffer
     );
     if (manager->queue == NULL) {
         vSemaphoreDelete(manager->status_mutex);
-        free(manager);
+        heap_caps_free(manager);
         return ESP_ERR_NO_MEM;
     }
 
     manager->status.state = NETWORK_STATE_UNINITIALIZED;
 
-    if (xTaskCreate(
-            network_manager_task,
-            "network_mgr",
-            NETWORK_MANAGER_TASK_STACK_SIZE,
-            manager,
-            NETWORK_MANAGER_TASK_PRIORITY,
-            &manager->task
-        ) != pdPASS) {
+    manager->task = xTaskCreateStatic(
+        network_manager_task,
+        "network_mgr",
+        NETWORK_MANAGER_TASK_STACK_SIZE,
+        manager,
+        NETWORK_MANAGER_TASK_PRIORITY,
+        manager->task_stack,
+        &manager->task_buffer
+    );
+    if (manager->task == NULL) {
         vQueueDelete(manager->queue);
         vSemaphoreDelete(manager->status_mutex);
-        free(manager);
+        heap_caps_free(manager);
         return ESP_ERR_NO_MEM;
     }
 
@@ -1327,7 +1363,7 @@ esp_err_t network_manager_deinit(network_manager_handle_t handle)
 
     vQueueDelete(handle->queue);
     vSemaphoreDelete(handle->status_mutex);
-    free(handle);
+    heap_caps_free(handle);
     return ESP_OK;
 }
 

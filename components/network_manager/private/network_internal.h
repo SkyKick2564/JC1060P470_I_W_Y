@@ -14,6 +14,9 @@
 
 #define NETWORK_MANAGER_QUEUE_LENGTH       16
 #define NETWORK_MANAGER_TASK_STACK_SIZE    6144
+#define NETWORK_MANAGER_TASK_STACK_DEPTH  \
+    (NETWORK_MANAGER_TASK_STACK_SIZE / sizeof(StackType_t))
+
 #define NETWORK_MANAGER_TASK_PRIORITY      5
 #define NETWORK_MANAGER_NVS_NAMESPACE          "network_mgr"
 #define NETWORK_MANAGER_NVS_WIFI_KEY           "wifi_profiles"
@@ -50,6 +53,7 @@ typedef struct {
 
 typedef struct {
     network_request_type_t type;
+    StaticSemaphore_t completed_buffer;
     SemaphoreHandle_t completed;
     esp_err_t result;
     union {
@@ -74,8 +78,18 @@ typedef struct {
 /* Internal Network Manager */
 typedef struct network_manager {
     esp_netif_t *sta_netif;
+
+    StaticQueue_t queue_buffer;
+    uint8_t queue_storage[
+        NETWORK_MANAGER_QUEUE_LENGTH * sizeof(network_message_t)
+    ];
     QueueHandle_t queue;
+
+    StaticTask_t task_buffer;
+    StackType_t task_stack[NETWORK_MANAGER_TASK_STACK_DEPTH];
     TaskHandle_t task;
+
+    StaticSemaphore_t status_mutex_buffer;
     SemaphoreHandle_t status_mutex;
 
     nvs_handle_t nvs_handle;
