@@ -641,6 +641,11 @@ static void network_manager_process_wifi_disconnected(
         memset(&manager->pending_wifi_config, 0,
                sizeof(manager->pending_wifi_config));
 
+        /* Keep manual credentials until GOT_IP so they can be committed. */
+        if (manager->manual_connection_pending) {
+            manager->pending_wifi_config = config;
+        }
+
         esp_err_t err = network_manager_apply_wifi_config(manager, &config);
         if (err != ESP_OK) {
             network_manager_schedule_reconnect_scan(manager);
