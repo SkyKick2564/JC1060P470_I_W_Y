@@ -28,7 +28,7 @@ typedef struct _objects_t {
     lv_obj_t *wifi_arc_2;
     lv_obj_t *wifi_arc_3;
     lv_obj_t *txt_clock;
-    lv_obj_t *content_container___;
+    lv_obj_t *content_container;
     lv_obj_t *home;
     lv_obj_t *card_network;
     lv_obj_t *camera_btn;
@@ -37,6 +37,10 @@ typedef struct _objects_t {
     lv_obj_t *container_media;
     lv_obj_t *video_image;
     lv_obj_t *setting;
+    lv_obj_t *header_container;
+    lv_obj_t *label_title;
+    lv_obj_t *arrow_txt;
+    lv_obj_t *settings_content;
     lv_obj_t *obj0;
     lv_obj_t *control_center_overlay;
     lv_obj_t *control_center_touch_area;

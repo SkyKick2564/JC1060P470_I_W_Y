@@ -11,6 +11,7 @@
     "fonts/ui_font_noto_sans_thai_40.c",
     "images.c",
     "images.h",
+    "images/ui_image_arrow_left_icon.c",
     "images/ui_image_camera_icon.c",
     "images/ui_image_lightning.c",
     "images/ui_image_media_icon.c",
