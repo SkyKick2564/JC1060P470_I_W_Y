@@ -26,4 +26,5 @@ idf_component_register(
         esp_lvgl_port
         esp_board_manager
         esp_lcd_touch
+        nvs_flash
 )
