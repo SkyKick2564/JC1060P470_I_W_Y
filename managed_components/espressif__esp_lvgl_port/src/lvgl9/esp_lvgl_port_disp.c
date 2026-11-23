@@ -236,29 +236,6 @@ esp_err_t lvgl_port_remove_disp(lv_display_t *disp)
     lvgl_port_display_ctx_t *disp_ctx = (lvgl_port_display_ctx_t *)lv_display_get_driver_data(disp);
 
     lvgl_port_lock(0);
-
-#if (SOC_MIPI_DSI_SUPPORTED && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 3, 0))
-    if (disp_ctx->disp_type == LVGL_PORT_DISP_TYPE_DSI) {
-        /*
-         * The DPI callback runs in ISR context and uses disp/disp_ctx plus
-         * trans_sem. Unregister it before deleting the LVGL display or freeing
-         * those objects; otherwise the next frame interrupt can use freed data.
-         */
-        const esp_lcd_dpi_panel_event_callbacks_t empty_callbacks = {0};
-        esp_err_t callback_err = esp_lcd_dpi_panel_register_event_callbacks(
-            disp_ctx->panel_handle, &empty_callbacks, NULL);
-        if (callback_err != ESP_OK) {
-            lvgl_port_unlock();
-            ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
-                     esp_err_to_name(callback_err));
-            return callback_err;
-        }
-
-        /* Allow any callback already executing on the other core to finish. */
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-#endif
-
     lv_disp_remove(disp);
     lvgl_port_unlock();
 
