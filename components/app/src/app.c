@@ -9,6 +9,9 @@
 #include "esp_board_manager.h"
 #include "esp_lvgl_port.h"
 #include "esp_lvgl_port_disp.h"
+#include "esp_lcd_mipi_dsi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "dev_display_lcd.h"
 #include "dev_lcd_touch.h"
@@ -16,6 +19,7 @@
 static const char *TAG = "APP";
 
 static lv_display_t *s_display = NULL;
+static esp_lcd_panel_handle_t s_panel_handle = NULL;
 
 static void show_settings_event(lv_event_t *event)
 {
@@ -40,6 +44,27 @@ esp_err_t app_lvgl_deinit(void)
         return ESP_FAIL;
     }
 
+    /*
+     * lvgl_port_add_disp_dsi() registers a DPI ISR callback with the panel.
+     * lvgl_port_remove_disp() frees the LVGL display context but the current
+     * esp_lvgl_port implementation does not unregister that callback.
+     * Clear it here, while the panel and display context are still alive.
+     */
+    if (s_panel_handle != NULL) {
+        const esp_lcd_dpi_panel_event_callbacks_t empty_callbacks = {0};
+        err = esp_lcd_dpi_panel_register_event_callbacks(
+            s_panel_handle, &empty_callbacks, NULL);
+        if (err != ESP_OK) {
+            lvgl_port_unlock();
+            ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
+                     esp_err_to_name(err));
+            return err;
+        }
+
+        /* Let a callback already executing on the other core finish. */
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
     /* Remove all five LVGL touch pointers before deinitializing GT911 */
     err = app_touch_multi_remove();
     if (err != ESP_OK) {
@@ -60,6 +85,7 @@ esp_err_t app_lvgl_deinit(void)
         }
 
         s_display = NULL;
+        s_panel_handle = NULL;
         ESP_LOGI(TAG, "Display removed");
     }
 
@@ -194,6 +220,7 @@ esp_err_t app_init(void)
     }
 
     s_display = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
+    s_panel_handle = lcd->panel_handle;
 
     if (s_display == NULL) {
         ESP_LOGE(TAG, "Failed to add LVGL DSI display");
