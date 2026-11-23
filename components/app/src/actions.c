@@ -248,6 +248,55 @@ static void action_widget_set_grid_cell(
         widget->object, row, LV_PART_MAIN);
 }
 
+static bool action_widget_pack_apps_in_old_rect(
+    home_widget_slot_t *widget,
+    int32_t reserved_column,
+    int32_t reserved_row)
+{
+    size_t app_index = 0;
+
+    /*
+     * If apps are the only reason a widget cannot move, pack the other
+     * shortcuts into the space the widget is about to vacate. The dragged
+     * shortcut keeps the exact cell under the finger.
+     */
+    for (int32_t row = widget->row;
+         row < widget->row + widget->row_span; row++) {
+        for (int32_t column = widget->column;
+             column < widget->column + widget->column_span; column++) {
+            if (column == reserved_column && row == reserved_row) {
+                continue;
+            }
+
+            while (app_index < APP_ICON_COUNT &&
+                   (s_app_icons[app_index].button == NULL ||
+                    s_app_icons[app_index].button == s_icon_drag.button)) {
+                app_index++;
+            }
+
+            if (app_index >= APP_ICON_COUNT) {
+                return true;
+            }
+
+            s_app_icons[app_index].column = column;
+            s_app_icons[app_index].row = row;
+            action_icon_set_grid_cell(
+                s_app_icons[app_index].button, column, row);
+            app_index++;
+        }
+    }
+
+    while (app_index < APP_ICON_COUNT) {
+        if (s_app_icons[app_index].button != NULL &&
+            s_app_icons[app_index].button != s_icon_drag.button) {
+            return false;
+        }
+        app_index++;
+    }
+
+    return true;
+}
+
 static void action_icon_set_button_color(lv_obj_t *button, bool pressed)
 {
     lv_obj_t *label;
@@ -435,7 +484,12 @@ static void action_icon_update_drop_cell(lv_point_t point)
 
             if (!action_widget_find_free_rect(
                     widget, column, row, &free_column, &free_row)) {
-                return;
+                if (!action_widget_pack_apps_in_old_rect(
+                        widget, column, row) ||
+                    !action_widget_find_free_rect(
+                        widget, column, row, &free_column, &free_row)) {
+                    return;
+                }
             }
 
             action_widget_set_grid_cell(widget, free_column, free_row);
