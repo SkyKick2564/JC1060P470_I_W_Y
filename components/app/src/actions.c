@@ -12,6 +12,7 @@ static struct {
     lv_coord_t start_x;
     lv_coord_t start_y;
     bool active;
+    bool long_pressed;
 } s_icon_drag;
 
 static void action_icon_set_button_color(lv_obj_t *button, bool pressed)
@@ -69,7 +70,19 @@ static void action_icon_finish(lv_obj_t *button)
 
 static void action_icon_pressed(lv_event_t *event)
 {
+    s_icon_drag.long_pressed = false;
     action_icon_set_button_color(lv_event_get_current_target(event), true);
+}
+
+static void action_icon_clicked(lv_event_t *event)
+{
+    /*
+     * LVGL sends LV_EVENT_CLICKED on release even after LONG_PRESSED.
+     * A long press is the drag gesture, not a normal click.
+     */
+    if (s_icon_drag.long_pressed) {
+        lv_event_stop_processing(event);
+    }
 }
 
 static void action_icon_long_pressed(lv_event_t *event)
@@ -101,6 +114,7 @@ static void action_icon_long_pressed(lv_event_t *event)
 
     s_icon_drag.button = button;
     s_icon_drag.indev = indev;
+    s_icon_drag.long_pressed = true;
     s_icon_drag.start_x = lv_obj_get_x(button);
     s_icon_drag.start_y = lv_obj_get_y(button);
     lv_indev_get_point(indev, &s_icon_drag.start_point);
@@ -161,6 +175,7 @@ static esp_err_t action_icon_attach(lv_obj_t *button)
     lv_obj_add_flag(button, LV_OBJ_FLAG_PRESS_LOCK);
 
     lv_obj_add_event_cb(button, action_icon_pressed, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(button, action_icon_clicked, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(button, action_icon_released, LV_EVENT_RELEASED, NULL);
     lv_obj_add_event_cb(button, action_icon_press_lost, LV_EVENT_PRESS_LOST, NULL);
     lv_obj_add_event_cb(button, action_icon_long_pressed, LV_EVENT_LONG_PRESSED, NULL);
