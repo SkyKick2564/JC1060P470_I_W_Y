@@ -518,8 +518,24 @@ static void action_icon_finish(lv_obj_t *button)
 
 static void action_icon_pressed(lv_event_t *event)
 {
+    lv_obj_t *button = lv_event_get_current_target(event);
+    lv_indev_t *indev = lv_event_get_indev(event);
+
+    /*
+     * A new press from the same pointer means the previous gesture has
+     * ended, even if RELEASED/PRESS_LOST was missed. Close that stale drag
+     * before the next long-press can reuse its old anchor coordinates.
+     * Do not let a second pointer steal an active drag.
+     */
+    if (s_icon_drag.active) {
+        if (indev == NULL || indev != s_icon_drag.indev) {
+            return;
+        }
+        action_icon_finish(s_icon_drag.button);
+    }
+
     s_icon_drag.long_pressed = false;
-    action_icon_set_button_color(lv_event_get_current_target(event), true);
+    action_icon_set_button_color(button, true);
 }
 
 static void action_icon_clicked(lv_event_t *event)
@@ -544,25 +560,24 @@ static void action_icon_long_pressed(lv_event_t *event)
         return;
     }
 
-    /*
-     * Recover from a missed release/press-lost event before starting
-     * another icon drag. Only one icon can own the drag state at a time.
-     */
-    if (s_icon_drag.active && s_icon_drag.button != button) {
-        action_icon_finish(s_icon_drag.button);
+    indev = lv_event_get_indev(event);
+    if (indev == NULL) {
+        return;
     }
 
+    /*
+     * Only the pointer that started a drag may finish/recover it. A second
+     * pointer must not replace the active gesture or its start coordinates.
+     */
     if (s_icon_drag.active) {
-        return;
+        if (s_icon_drag.indev != indev) {
+            return;
+        }
+        action_icon_finish(s_icon_drag.button);
     }
 
     slot = action_icon_find_slot(button);
     if (slot == NULL || lv_obj_get_parent(button) != objects.home) {
-        return;
-    }
-
-    indev = lv_event_get_indev(event);
-    if (indev == NULL) {
         return;
     }
 
@@ -705,12 +720,28 @@ static void action_icon_pressing(lv_event_t *event)
 
 static void action_icon_released(lv_event_t *event)
 {
-    action_icon_finish(lv_event_get_current_target(event));
+    lv_obj_t *button = lv_event_get_current_target(event);
+    lv_indev_t *indev = lv_event_get_indev(event);
+
+    if (s_icon_drag.active && s_icon_drag.button == button &&
+        (indev == NULL || indev == s_icon_drag.indev)) {
+        action_icon_finish(button);
+    } else if (!s_icon_drag.active) {
+        action_icon_set_button_color(button, false);
+    }
 }
 
 static void action_icon_press_lost(lv_event_t *event)
 {
-    action_icon_finish(lv_event_get_current_target(event));
+    lv_obj_t *button = lv_event_get_current_target(event);
+    lv_indev_t *indev = lv_event_get_indev(event);
+
+    if (s_icon_drag.active && s_icon_drag.button == button &&
+        (indev == NULL || indev == s_icon_drag.indev)) {
+        action_icon_finish(button);
+    } else if (!s_icon_drag.active) {
+        action_icon_set_button_color(button, false);
+    }
 }
 
 static esp_err_t action_icon_attach(lv_obj_t *button)
