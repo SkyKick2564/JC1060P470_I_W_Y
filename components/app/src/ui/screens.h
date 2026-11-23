@@ -41,8 +41,9 @@ typedef struct _objects_t {
     lv_obj_t *label_title;
     lv_obj_t *back_setting_btn;
     lv_obj_t *arrow_txt;
-    lv_obj_t *settings_content;
     lv_obj_t *obj0;
+    lv_obj_t *settings_content;
+    lv_obj_t *obj1;
     lv_obj_t *control_center_overlay;
     lv_obj_t *control_center_touch_area;
 } objects_t;
