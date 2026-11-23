@@ -101,6 +101,24 @@ devices:
     peripherals:
       - name: ledc_backlight
 
+  - name: camera
+    type: camera
+    sub_type: csi
+    version: default
+    config:
+      csi_config:
+        # OV02C10 on JC1060P470C_I_W_Y has no separately wired RESET/PWDN/XCLK.
+        reset_io: -1
+        pwdn_io: -1
+        # MIPI PHY power is already provided by the board's ldo_mipi peripheral.
+        dont_init_ldo: true
+        xclk_config:
+          xclk_pin: -1
+    peripherals:
+      - i2c_name: i2c_master
+        frequency: 100000
+      - ldo_name: ldo_mipi
+
   - name: fs_sdcard
     type: fs_fat
     sub_type: sdmmc
