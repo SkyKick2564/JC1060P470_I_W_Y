@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include "esp_board_device.h"
 #include "dev_audio_codec.h"
-#include "dev_camera.h"
 #include "dev_display_lcd.h"
 #include "dev_fs_fat.h"
 #include "dev_lcd_touch.h"
@@ -185,7 +184,7 @@ const static dev_display_lcd_config_t esp_bmgr_display_lcd_cfg = {
     .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
     .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
     .bits_per_pixel = 24,
-    .frame_format = DEV_DISPLAY_LCD_FRAME_FORMAT_BGR888,
+    .frame_format = DEV_DISPLAY_LCD_FRAME_FORMAT_RGB565_LE,
     .sub_cfg = {
         .dsi = {
             .dsi_name = "dsi_display",
@@ -201,8 +200,8 @@ const static dev_display_lcd_config_t esp_bmgr_display_lcd_cfg = {
                 .virtual_channel = 0,
                 .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
                 .dpi_clock_freq_mhz = 52,
-                .in_color_format = LCD_COLOR_FMT_RGB888,
-                .out_color_format = LCD_COLOR_FMT_RGB888,
+                .in_color_format = LCD_COLOR_FMT_RGB565,
+                .out_color_format = LCD_COLOR_FMT_RGB565,
                 .num_fbs = 3,
                 .flags = {
                     .disable_lp = false,
@@ -232,7 +231,7 @@ const static dev_lcd_touch_config_t esp_bmgr_lcd_touch_cfg = {
         .x_max = 1024,
         .y_max = 600,
         .rst_gpio_num = -1,
-        .int_gpio_num = 21,
+        .int_gpio_num = -1,
         .levels = {
             .reset = 0,
             .interrupt = 0,
@@ -269,24 +268,6 @@ const static dev_lcd_touch_config_t esp_bmgr_lcd_touch_cfg = {
     },
 };
 
-const static dev_camera_config_t esp_bmgr_camera_cfg = {
-    .name = "camera",
-    .type = "camera",
-    .sub_type = "csi",
-    .sub_cfg = {
-        .csi = {
-            .i2c_name = "i2c_master",
-            .i2c_freq = 100000,
-            .ldo_name = "ldo_mipi",
-            .reset_io = -1,
-            .pwdn_io = -1,
-            .dont_init_ldo = true,
-            .xclk_config = {
-            },
-        },
-    },
-};
-
 const static dev_ledc_ctrl_config_t esp_bmgr_lcd_brightness_cfg = {
     .name = "lcd_brightness",
     .type = "ledc_ctrl",
@@ -297,7 +278,7 @@ const static dev_ledc_ctrl_config_t esp_bmgr_lcd_brightness_cfg = {
 const static dev_fs_fat_config_t esp_bmgr_fs_sdcard_cfg = {
     .name = "fs_sdcard",
     .mount_point = "/sdcard",
-    .frequency = SDMMC_FREQ_HIGHSPEED,
+    .frequency = SDMMC_FREQ_DEFAULT,
     .vfs_config = {
         .format_if_mount_failed = false,
         .max_files = 5,
@@ -381,18 +362,6 @@ const esp_board_device_desc_t g_esp_board_devices[] = {
     },
     {
         .next = &g_esp_board_devices[5],
-        .name = "camera",
-        .chip = NULL,
-        .type = "camera",
-        .sub_type = "csi",
-        .cfg = &esp_bmgr_camera_cfg,
-        .cfg_size = sizeof(esp_bmgr_camera_cfg),
-        .init_skip = false,
-        .depends_on = NULL,
-        .depends_on_num = 0,
-    },
-    {
-        .next = &g_esp_board_devices[6],
         .name = "lcd_brightness",
         .chip = NULL,
         .type = "ledc_ctrl",

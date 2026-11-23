@@ -1912,6 +1912,60 @@
                           },
                           "group": "",
                           "groupIndex": 0
+                        },
+                        {
+                          "objID": "aafb2c08-d4e1-484b-9cee-4ff3a4fae063",
+                          "type": "LVGLLineWidget",
+                          "left": 50,
+                          "top": 63,
+                          "width": 924,
+                          "height": 0,
+                          "customInputs": [],
+                          "customOutputs": [],
+                          "style": {
+                            "objID": "8c66f4f9-089f-40ed-a405-c91454c04e89",
+                            "useStyle": "default",
+                            "conditionalStyles": [],
+                            "childStyles": []
+                          },
+                          "hiddenInEditor": true,
+                          "timeline": [],
+                          "eventHandlers": [],
+                          "leftUnit": "px",
+                          "topUnit": "px",
+                          "widthUnit": "content",
+                          "heightUnit": "content",
+                          "children": [],
+                          "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                          "hiddenFlagType": "literal",
+                          "clickableFlagType": "literal",
+                          "flagScrollbarMode": "",
+                          "flagScrollDirection": "",
+                          "scrollSnapX": "",
+                          "scrollSnapY": "",
+                          "checkedStateType": "literal",
+                          "disabledStateType": "literal",
+                          "states": "",
+                          "localStyles": {
+                            "objID": "d6c4d6d1-f995-4055-ae1d-ff6b84503ecc",
+                            "definition": {
+                              "MAIN": {
+                                "DEFAULT": {
+                                  "line_color": "#5C5C5C",
+                                  "line_opa": 255,
+                                  "line_width": 3
+                                }
+                              }
+                            }
+                          },
+                          "group": "",
+                          "groupIndex": 0,
+                          "points": "0,0  924,0",
+                          "invertY": false,
+                          "needleLength": 0,
+                          "value": 0,
+                          "valueType": "literal",
+                          "previewValue": 0
                         }
                       ],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",

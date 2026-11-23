@@ -63,7 +63,7 @@ devices:
         video_timing:
           h_size: 1024
           v_size: 600
-          hsync_back_porch: 160
+          hsync_back_porch: 136
           hsync_pulse_width: 24
           hsync_front_porch: 160
           vsync_back_porch: 21
