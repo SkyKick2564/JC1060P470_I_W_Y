@@ -172,9 +172,25 @@ static void action_icon_press_lost(lv_event_t *event)
 
 static esp_err_t action_icon_attach(lv_obj_t *button)
 {
+    lv_obj_t *image;
+
     if (button == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
+
+    image = lv_obj_get_child(button, 1);
+    if (image == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /*
+     * Button/theme state styles can propagate image recolor to child
+     * images. Force recolor off for every image state so LVGL can use
+     * its fast image blend path instead of recolor_only().
+     */
+    lv_obj_set_style_image_recolor_opa(
+        image, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_ANY
+    );
 
     lv_obj_add_flag(button, LV_OBJ_FLAG_PRESS_LOCK);
 
