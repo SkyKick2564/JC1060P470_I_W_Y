@@ -1,6 +1,7 @@
 #include "actions.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "lvgl.h"
 #include "ui.h"
