@@ -17,24 +17,29 @@ static struct {
 static void action_icon_set_button_color(lv_obj_t *button, bool pressed)
 {
     lv_obj_t *label;
+    lv_obj_t *image;
 
     if (button == NULL) {
         return;
     }
 
     label = lv_obj_get_child(button, 0);
-    if (label == NULL) {
+    image = lv_obj_get_child(button, 1);
+
+    if (label == NULL || image == NULL) {
         return;
     }
 
-    /*
-     * Do not recolor the icon image in the software renderer.
-     * The previous image-recolor style caused taskWDT in recolor_only()
-     * while LVGL was rendering the ARGB8888 icon.
-     */
     lv_obj_set_style_text_color(
         label,
         pressed ? lv_color_hex(0x6e6e6e) : lv_color_hex(0xffffff),
+        LV_PART_MAIN
+    );
+
+    lv_obj_set_style_image_recolor(image, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_image_recolor_opa(
+        image,
+        pressed ? LV_OPA_50 : LV_OPA_TRANSP,
         LV_PART_MAIN
     );
 }
