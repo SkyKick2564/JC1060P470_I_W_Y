@@ -252,20 +252,20 @@ esp_err_t app_init(void)
         return err;
     }
 
-    // // Settings button
-    // lv_obj_add_event_cb(
-    //     objects.setting_btn,
-    //     show_settings_event,
-    //     LV_EVENT_CLICKED,
-    //     NULL
-    // );
+    // Settings button
+    lv_obj_add_event_cb(
+        objects.setting_btn,
+        show_settings_event,
+        LV_EVENT_CLICKED,
+        NULL
+    );
 
-    // lv_obj_add_event_cb(
-    //     objects.back_setting_btn,
-    //     show_home_event,
-    //     LV_EVENT_CLICKED,
-    //     NULL
-    // );
+    lv_obj_add_event_cb(
+        objects.back_setting_btn,
+        show_home_event,
+        LV_EVENT_CLICKED,
+        NULL
+    );
     /* Allow LVGL task to start rendering */
     lvgl_port_unlock();
 
