@@ -132,8 +132,8 @@ static void action_icon_long_pressed(lv_event_t *event)
     lv_obj_set_style_transform_pivot_y(
         image, lv_obj_get_height(image) / 2, LV_PART_MAIN
     );
-    lv_obj_set_style_transform_scale_x(image, 360, LV_PART_MAIN);
-    lv_obj_set_style_transform_scale_y(image, 360, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_x(image, 320, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_y(image, 320, LV_PART_MAIN);
 }
 
 static void action_icon_pressing(lv_event_t *event)
@@ -211,6 +211,8 @@ static esp_err_t action_icon_attach(lv_obj_t *button)
         image, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_ANY
     );
 
+    /* Let the enlarged child image draw beyond the button bounds. */
+    lv_obj_add_flag(button, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
     lv_obj_add_flag(button, LV_OBJ_FLAG_PRESS_LOCK);
 
     lv_obj_add_event_cb(button, action_icon_pressed, LV_EVENT_PRESSED, NULL);
