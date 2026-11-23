@@ -32,7 +32,7 @@ typedef struct lvgl_port_ctx_s {
     SemaphoreHandle_t   timer_mux;
     EventGroupHandle_t  lvgl_events;
     esp_timer_handle_t  tick_timer;
-    bool                running;
+    volatile bool       running;
     int                 task_max_sleep_ms;
     int                 timer_period_ms;
 } lvgl_port_ctx_t;
@@ -131,9 +131,22 @@ esp_err_t lvgl_port_stop(void)
 
 esp_err_t lvgl_port_deinit(void)
 {
-    /* Stop running task */
-    if (lvgl_port_ctx.running) {
-        lvgl_port_ctx.running = false;
+    TaskHandle_t task = lvgl_port_ctx.lvgl_task;
+
+    if (task == NULL) {
+        return ESP_OK;
+    }
+
+    /* Request stop and wait until the LVGL task has released its resources. */
+    lvgl_port_ctx.running = false;
+
+    if (xTaskGetCurrentTaskHandle() == task) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5000)) == 0) {
+        ESP_LOGE(TAG, "Timed out waiting for LVGL task to stop");
+        return ESP_ERR_TIMEOUT;
     }
 
     return ESP_OK;
@@ -211,13 +224,13 @@ static void lvgl_port_task(void *arg)
 
     /* LVGL init */
     lv_init();
-    /* LVGL is initialized, notify lvgl_port_init() function about it */
-    xTaskNotifyGive(task_to_notify);
     /* Tick init */
     lvgl_port_tick_init();
 
     ESP_LOGI(TAG, "Starting LVGL task");
     lvgl_port_ctx.running = true;
+    /* Notify lvgl_port_init() only after the task is ready to run. */
+    xTaskNotifyGive(task_to_notify);
     while (lvgl_port_ctx.running) {
         /* Wait for queue or timeout (sleep task) */
         TickType_t wait = (pdMS_TO_TICKS(task_delay_ms) >= 1 ? pdMS_TO_TICKS(task_delay_ms) : 1);
@@ -255,8 +268,11 @@ static void lvgl_port_task(void *arg)
 
     ESP_LOGI(TAG, "Stopped LVGL task");
 
-    /* Deinit LVGL */
+    /* Deinit LVGL and release all port-owned resources. */
     lvgl_port_task_deinit();
+
+    /* Let lvgl_port_deinit() know that task cleanup is complete. */
+    xTaskNotifyGive(task_to_notify);
 
     /* Close task */
     vTaskDeleteWithCaps( NULL );
