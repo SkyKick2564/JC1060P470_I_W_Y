@@ -484,10 +484,30 @@ static void action_icon_update_drop_cell(lv_point_t point)
 
             if (!action_widget_find_free_rect(
                     widget, column, row, &free_column, &free_row)) {
-                if (!action_widget_pack_apps_in_old_rect(
-                        widget, column, row) ||
-                    !action_widget_find_free_rect(
-                        widget, column, row, &free_column, &free_row)) {
+                int32_t old_columns[APP_ICON_COUNT];
+                int32_t old_rows[APP_ICON_COUNT];
+
+                for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+                    old_columns[i] = s_app_icons[i].column;
+                    old_rows[i] = s_app_icons[i].row;
+                }
+
+                bool packed = action_widget_pack_apps_in_old_rect(
+                    widget, column, row);
+                bool found = packed && action_widget_find_free_rect(
+                    widget, column, row, &free_column, &free_row);
+
+                if (!found) {
+                    for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+                        s_app_icons[i].column = old_columns[i];
+                        s_app_icons[i].row = old_rows[i];
+                        if (s_app_icons[i].button != NULL &&
+                            s_app_icons[i].button != s_icon_drag.button) {
+                            action_icon_set_grid_cell(
+                                s_app_icons[i].button,
+                                old_columns[i], old_rows[i]);
+                        }
+                    }
                     return;
                 }
             }
