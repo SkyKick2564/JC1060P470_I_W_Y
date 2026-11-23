@@ -461,7 +461,9 @@ void create_screen_main() {
                                     lv_label_set_text_static(obj, "Settings");
                                 }
                                 {
+                                    // back_setting_btn
                                     lv_obj_t *obj = lv_button_create(parent_obj);
+                                    objects.back_setting_btn = obj;
                                     lv_obj_set_pos(obj, 3, 0);
                                     lv_obj_set_size(obj, 64, 64);
                                     lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -582,6 +584,7 @@ void delete_screen_main() {
     objects.setting = 0;
     objects.header_container = 0;
     objects.label_title = 0;
+    objects.back_setting_btn = 0;
     objects.arrow_txt = 0;
     objects.settings_content = 0;
     objects.obj0 = 0;

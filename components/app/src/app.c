@@ -16,6 +16,18 @@ static const char *TAG = "APP";
 
 static lv_display_t *s_display = NULL;
 
+static void show_settings_event(lv_event_t *event)
+{
+    lv_obj_add_flag(objects.home, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(objects.setting, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void show_home_event(lv_event_t *event)
+{
+    lv_obj_add_flag(objects.setting, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(objects.home, LV_OBJ_FLAG_HIDDEN);
+}
+
 esp_err_t app_lvgl_deinit(void)
 {
     esp_err_t err;

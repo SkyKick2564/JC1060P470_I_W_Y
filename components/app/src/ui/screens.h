@@ -39,6 +39,7 @@ typedef struct _objects_t {
     lv_obj_t *setting;
     lv_obj_t *header_container;
     lv_obj_t *label_title;
+    lv_obj_t *back_setting_btn;
     lv_obj_t *arrow_txt;
     lv_obj_t *settings_content;
     lv_obj_t *obj0;
