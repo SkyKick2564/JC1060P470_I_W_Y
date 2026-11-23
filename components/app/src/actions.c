@@ -609,7 +609,6 @@ static void action_icon_long_pressed(lv_event_t *event)
      * finger without changing the generated EEZ layout.
      */
     lv_obj_add_flag(button, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_move_foreground(button);
 
     lv_obj_set_style_transform_pivot_x(
         image, lv_obj_get_width(image) / 2, LV_PART_MAIN
