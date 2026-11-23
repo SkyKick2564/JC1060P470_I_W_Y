@@ -3,7 +3,8 @@
 
 static void set_settings_button_color(lv_event_t *e, bool pressed)
 {
-    lv_obj_t *button = lv_event_get_target(e);
+    /* Use the object whose callback is running, not the original event target. */
+    lv_obj_t *button = lv_event_get_current_target(e);
 
     /* Child 0 = Label */
     lv_obj_t *label = lv_obj_get_child(button, 0);
@@ -53,7 +54,7 @@ void action_settings_long_pressed(lv_event_t *e)
         return;
     }
 
-    lv_obj_t *button = lv_event_get_target(e);
+    lv_obj_t *button = lv_event_get_current_target(e);
     lv_obj_t *image = lv_obj_get_child(button, 1);
 
     if (image == NULL) {
@@ -96,7 +97,7 @@ void action_settings_long_pressed(lv_event_t *e)
 
 void action_settings_pressing(lv_event_t *e)
 {
-    lv_obj_t *button = lv_event_get_target(e);
+    lv_obj_t *button = lv_event_get_current_target(e);
 
     if (!button_drag.active ||
         button_drag.button != button) {
@@ -124,38 +125,43 @@ void action_settings_pressed(lv_event_t *e)
     set_settings_button_color(e, true);
 }
 
-void action_settings_released(lv_event_t *e)
+static void finish_settings_button_press(lv_event_t *e)
 {
     set_settings_button_color(e, false);
 
-    lv_obj_t *button = lv_event_get_target(e);
+    lv_obj_t *button = lv_event_get_current_target(e);
 
-    if (!button_drag.active ||
-        button_drag.button != button) {
+    if (!button_drag.active || button_drag.button != button) {
         return;
     }
 
     lv_obj_t *image = lv_obj_get_child(button, 1);
 
     if (image != NULL) {
-        lv_obj_set_style_transform_scale_x(
-            image, 256, LV_PART_MAIN
-        );
-
-        lv_obj_set_style_transform_scale_y(
-            image, 256, LV_PART_MAIN
-        );
+        lv_obj_set_style_transform_scale_x(image, 256, LV_PART_MAIN);
+        lv_obj_set_style_transform_scale_y(image, 256, LV_PART_MAIN);
     }
 
-    lv_obj_set_pos(
-        button,
-        button_drag.start_x,
-        button_drag.start_y
-    );
+    lv_obj_set_pos(button, button_drag.start_x, button_drag.start_y);
 
     button_drag.active = false;
     button_drag.button = NULL;
     button_drag.indev = NULL;
+}
+
+void action_settings_released(lv_event_t *e)
+{
+    finish_settings_button_press(e);
+}
+
+/*
+ * LVGL can send PRESS_LOST instead of RELEASED when the pressed object
+ * loses its input focus (for example, when its parent is hidden).
+ * Restore the visual state and release the shared drag lock in both cases.
+ */
+void action_settings_press_lost(lv_event_t *e)
+{
+    finish_settings_button_press(e);
 }
 
 /*
