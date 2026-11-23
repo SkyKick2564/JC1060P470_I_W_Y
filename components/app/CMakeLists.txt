@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "src/app.c"
         "src/app_touch_multi.c"
+        "src/app_icon_drag.c"
         "src/actions.c"
         "src/ui/ui.c"
         "src/ui/screens.c"
