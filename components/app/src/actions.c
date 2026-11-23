@@ -132,8 +132,8 @@ static void action_icon_long_pressed(lv_event_t *event)
     lv_obj_set_style_transform_pivot_y(
         image, lv_obj_get_height(image) / 2, LV_PART_MAIN
     );
-    lv_obj_set_style_transform_scale_x(image, 300, LV_PART_MAIN);
-    lv_obj_set_style_transform_scale_y(image, 300, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_x(image, 360, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_y(image, 360, LV_PART_MAIN);
 }
 
 static void action_icon_pressing(lv_event_t *event)
