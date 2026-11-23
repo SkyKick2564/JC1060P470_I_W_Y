@@ -6,10 +6,10 @@
 #include "lvgl.h"
 #include "ui.h"
 
-#define APP_GRID_COLUMNS          6
-#define APP_GRID_ROWS             3
-#define APP_GRID_FIRST_APP_COLUMN 3
-#define APP_ICON_COUNT            3
+#define APP_GRID_COLUMNS 6
+#define APP_GRID_ROWS    3
+#define APP_ICON_COUNT   3
+#define HOME_WIDGET_COUNT 2
 
 typedef struct {
     lv_obj_t *button;
@@ -17,7 +17,16 @@ typedef struct {
     int32_t row;
 } app_icon_slot_t;
 
+typedef struct {
+    lv_obj_t *object;
+    int32_t column;
+    int32_t row;
+    int32_t column_span;
+    int32_t row_span;
+} home_widget_slot_t;
+
 static app_icon_slot_t s_app_icons[APP_ICON_COUNT];
+static home_widget_slot_t s_home_widgets[HOME_WIDGET_COUNT];
 
 static struct {
     lv_obj_t *button;
@@ -114,13 +123,129 @@ static bool action_icon_get_cell_from_point(
     *column = (relative_x + gap_x / 2) / column_step;
     *row = (relative_y + gap_y / 2) / row_step;
 
-    if (*column < APP_GRID_FIRST_APP_COLUMN ||
-        *column >= APP_GRID_COLUMNS ||
+    if (*column < 0 || *column >= APP_GRID_COLUMNS ||
         *row < 0 || *row >= APP_GRID_ROWS) {
         return false;
     }
 
     return true;
+}
+
+static bool action_cell_in_rect(
+    int32_t column,
+    int32_t row,
+    int32_t rect_column,
+    int32_t rect_row,
+    int32_t column_span,
+    int32_t row_span)
+{
+    return column >= rect_column &&
+        column < rect_column + column_span &&
+        row >= rect_row &&
+        row < rect_row + row_span;
+}
+
+static home_widget_slot_t *action_widget_at_cell(
+    int32_t column,
+    int32_t row)
+{
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        home_widget_slot_t *widget = &s_home_widgets[i];
+        if (widget->object != NULL &&
+            action_cell_in_rect(
+                column, row, widget->column, widget->row,
+                widget->column_span, widget->row_span)) {
+            return widget;
+        }
+    }
+
+    return NULL;
+}
+
+static bool action_widget_rect_is_free(
+    home_widget_slot_t *moving_widget,
+    int32_t column,
+    int32_t row,
+    int32_t reserved_column,
+    int32_t reserved_row)
+{
+    if (column < 0 || row < 0 ||
+        column + moving_widget->column_span > APP_GRID_COLUMNS ||
+        row + moving_widget->row_span > APP_GRID_ROWS) {
+        return false;
+    }
+
+    for (int32_t y = row; y < row + moving_widget->row_span; y++) {
+        for (int32_t x = column; x < column + moving_widget->column_span; x++) {
+            if (x == reserved_column && y == reserved_row) {
+                return false;
+            }
+
+            for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+                app_icon_slot_t *app = &s_app_icons[i];
+                if (app->button != NULL &&
+                    app->button != s_icon_drag.button &&
+                    app->column == x && app->row == y) {
+                    return false;
+                }
+            }
+
+            for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+                home_widget_slot_t *other = &s_home_widgets[i];
+                if (other == moving_widget || other->object == NULL) {
+                    continue;
+                }
+                if (action_cell_in_rect(
+                        x, y, other->column, other->row,
+                        other->column_span, other->row_span)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+static bool action_widget_find_free_rect(
+    home_widget_slot_t *widget,
+    int32_t reserved_column,
+    int32_t reserved_row,
+    int32_t *new_column,
+    int32_t *new_row)
+{
+    /*
+     * Search the Grid in row-major order. The dragged icon's destination
+     * cell is reserved, and all other app/widget footprints remain occupied.
+     */
+    for (int32_t row = 0; row <= APP_GRID_ROWS - widget->row_span; row++) {
+        for (int32_t column = 0;
+             column <= APP_GRID_COLUMNS - widget->column_span;
+             column++) {
+            if (action_widget_rect_is_free(
+                    widget, column, row,
+                    reserved_column, reserved_row)) {
+                *new_column = column;
+                *new_row = row;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static void action_widget_set_grid_cell(
+    home_widget_slot_t *widget,
+    int32_t column,
+    int32_t row)
+{
+    widget->column = column;
+    widget->row = row;
+    lv_obj_set_style_grid_cell_column_pos(
+        widget->object, column, LV_PART_MAIN);
+    lv_obj_set_style_grid_cell_row_pos(
+        widget->object, row, LV_PART_MAIN);
 }
 
 static void action_icon_set_button_color(lv_obj_t *button, bool pressed)
@@ -289,9 +414,10 @@ static void action_icon_update_drop_cell(lv_point_t point)
     }
 
     /*
-     * If another app occupies the destination, move it into the cell the
-     * dragged app just left. This creates the same swap behavior as a
-     * mobile home screen. Empty cells are accepted as well.
+     * Dropping over another app swaps the two app cells. Dropping over a
+     * widget moves that whole widget footprint to a free rectangle first;
+     * the widget keeps its original span and the dragged app takes the
+     * selected cell in the space it vacated.
      */
     app_icon_slot_t *occupant = action_icon_find_slot_at(
         column, row, s_icon_drag.button);
@@ -301,6 +427,19 @@ static void action_icon_update_drop_cell(lv_point_t point)
         occupant->row = s_icon_drag.current_row;
         action_icon_set_grid_cell(
             occupant->button, occupant->column, occupant->row);
+    } else {
+        home_widget_slot_t *widget = action_widget_at_cell(column, row);
+        if (widget != NULL) {
+            int32_t free_column;
+            int32_t free_row;
+
+            if (!action_widget_find_free_rect(
+                    widget, column, row, &free_column, &free_row)) {
+                return;
+            }
+
+            action_widget_set_grid_cell(widget, free_column, free_row);
+        }
     }
 
     s_icon_drag.current_column = column;
@@ -641,6 +780,25 @@ esp_err_t app_actions_init(void)
     action_icon_init_slot(0, objects.camera_btn);
     action_icon_init_slot(1, objects.media_btn);
     action_icon_init_slot(2, objects.setting_btn);
+
+    s_home_widgets[0].object = objects.card_network;
+    s_home_widgets[1].object = objects.container_media;
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        home_widget_slot_t *widget = &s_home_widgets[i];
+        if (widget->object == NULL) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        widget->column = lv_obj_get_style_grid_cell_column_pos(
+            widget->object, LV_PART_MAIN);
+        widget->row = lv_obj_get_style_grid_cell_row_pos(
+            widget->object, LV_PART_MAIN);
+        widget->column_span = lv_obj_get_style_grid_cell_column_span(
+            widget->object, LV_PART_MAIN);
+        widget->row_span = lv_obj_get_style_grid_cell_row_span(
+            widget->object, LV_PART_MAIN);
+        if (widget->column_span < 1) widget->column_span = 1;
+        if (widget->row_span < 1) widget->row_span = 1;
+    }
 
     s_control_center_drag.target = NULL;
     s_control_center_drag.indev = NULL;
