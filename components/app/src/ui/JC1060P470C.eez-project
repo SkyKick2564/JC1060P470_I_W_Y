@@ -1691,7 +1691,11 @@
                           "grid_row_dsc_array": "FR(1) FR(1) FR(1)",
                           "grid_column_dsc_array": "FR(1) FR(1) FR(1) FR(1) FR(1) FR(1)",
                           "grid_column_align": "CENTER",
-                          "grid_row_align": "CENTER"
+                          "grid_row_align": "CENTER",
+                          "pad_top": 30,
+                          "pad_bottom": 30,
+                          "pad_left": 30,
+                          "pad_right": 30
                         }
                       }
                     }
