@@ -505,6 +505,15 @@ static void action_icon_finish(lv_obj_t *button)
             button, slot->column, slot->row);
     }
 
+    /*
+     * lv_obj_set_pos() stores X/Y as local style properties. Grid layout
+     * updates object coordinates directly but does not clear those styles.
+     * Leaving them behind lets a later style/layout refresh resurrect the
+     * previous drag coordinates when IGNORE_LAYOUT is enabled again.
+     */
+    lv_obj_remove_local_style_prop(button, LV_STYLE_X, LV_PART_MAIN);
+    lv_obj_remove_local_style_prop(button, LV_STYLE_Y, LV_PART_MAIN);
+
     lv_obj_remove_flag(button, LV_OBJ_FLAG_IGNORE_LAYOUT);
     if (objects.home != NULL) {
         lv_obj_update_layout(objects.home);
@@ -580,6 +589,9 @@ static void action_icon_long_pressed(lv_event_t *event)
     if (slot == NULL || lv_obj_get_parent(button) != objects.home) {
         return;
     }
+
+    /* Resolve any pending Grid layout before taking the next drag anchor. */
+    lv_obj_update_layout(objects.home);
 
     s_icon_drag.button = button;
     s_icon_drag.indev = indev;
