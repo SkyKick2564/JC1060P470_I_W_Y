@@ -132,8 +132,8 @@ static void action_icon_long_pressed(lv_event_t *event)
     lv_obj_set_style_transform_pivot_y(
         image, lv_obj_get_height(image) / 2, LV_PART_MAIN
     );
-    lv_obj_set_style_transform_scale_x(image, 282, LV_PART_MAIN);
-    lv_obj_set_style_transform_scale_y(image, 282, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_x(image, 360, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_y(image, 360, LV_PART_MAIN);
 }
 
 static void action_icon_pressing(lv_event_t *event)
@@ -199,11 +199,20 @@ static esp_err_t action_icon_attach(lv_obj_t *button)
      * image opacity; pressed feedback is handled with image opacity too.
      */
     lv_obj_remove_style_all(image);
+
+    /*
+     * The button can enter LV_STATE_PRESSED while its child image is
+     * rendered. Clear inherited recolor on both objects for every state;
+     * otherwise LVGL may still select recolor_only() for the child image.
+     */
     lv_obj_set_style_image_recolor_opa(
-        image, LV_OPA_TRANSP, LV_PART_MAIN
+        button, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_ANY
+    );
+    lv_obj_set_style_image_recolor_opa(
+        image, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_ANY
     );
     lv_obj_set_style_image_opa(
-        image, LV_OPA_COVER, LV_PART_MAIN
+        image, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_ANY
     );
 
     lv_obj_add_flag(button, LV_OBJ_FLAG_PRESS_LOCK);
