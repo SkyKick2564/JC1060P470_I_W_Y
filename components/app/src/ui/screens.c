@@ -296,6 +296,7 @@ void create_screen_main() {
                             lv_obj_set_pos(obj, 522, 20);
                             lv_obj_set_size(obj, 130, 130);
                             lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
+                            lv_obj_add_event_cb(obj, action_settings_press_lost, LV_EVENT_PRESS_LOST, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
@@ -328,6 +329,7 @@ void create_screen_main() {
                             lv_obj_set_pos(obj, 672, 20);
                             lv_obj_set_size(obj, 130, 130);
                             lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
+                            lv_obj_add_event_cb(obj, action_settings_press_lost, LV_EVENT_PRESS_LOST, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
@@ -360,6 +362,7 @@ void create_screen_main() {
                             lv_obj_set_pos(obj, 822, 20);
                             lv_obj_set_size(obj, 130, 130);
                             lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
+                            lv_obj_add_event_cb(obj, action_settings_press_lost, LV_EVENT_PRESS_LOST, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
