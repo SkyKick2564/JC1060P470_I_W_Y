@@ -153,11 +153,20 @@ static void action_icon_pressing(lv_event_t *event)
 
     lv_indev_get_point(indev, &point);
 
-    lv_obj_set_pos(
-        button,
-        s_icon_drag.start_x + point.x - s_icon_drag.start_point.x,
-        s_icon_drag.start_y + point.y - s_icon_drag.start_point.y
-    );
+    /*
+     * LV_EVENT_PRESSING is delivered repeatedly while the pointer is down.
+     * Do not invalidate and redraw the image on every input poll when the
+     * finger has not moved; this was continuously driving the software
+     * image renderer (recolor_only) and starving taskLVGL/IDLE0.
+     */
+    lv_coord_t new_x = s_icon_drag.start_x +
+        point.x - s_icon_drag.start_point.x;
+    lv_coord_t new_y = s_icon_drag.start_y +
+        point.y - s_icon_drag.start_point.y;
+
+    if (lv_obj_get_x(button) != new_x || lv_obj_get_y(button) != new_y) {
+        lv_obj_set_pos(button, new_x, new_y);
+    }
 }
 
 static void action_icon_released(lv_event_t *event)
