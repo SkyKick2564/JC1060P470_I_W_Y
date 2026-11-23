@@ -33,6 +33,10 @@ static app_icon_slot_t s_app_icons[APP_ICON_CAPACITY];
 static size_t s_app_icon_count;
 static home_widget_slot_t s_home_widgets[HOME_WIDGET_COUNT];
 
+static void action_icon_set_grid_cell(lv_obj_t *button, int32_t column, int32_t row);
+static void action_widget_set_grid_cell(home_widget_slot_t *widget, int32_t column, int32_t row);
+
+
 
 #define HOME_LAYOUT_NVS_NAMESPACE "ui_layout"
 #define HOME_LAYOUT_NVS_KEY       "positions"
@@ -1017,6 +1021,11 @@ esp_err_t app_actions_init(void)
 
     if (objects.home == NULL) {
         return ESP_ERR_INVALID_STATE;
+    }
+
+    err = nvs_flash_init();
+    if (err != ESP_OK) {
+        return err;
     }
 
     lv_obj_update_layout(objects.home);
