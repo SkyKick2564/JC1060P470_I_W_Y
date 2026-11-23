@@ -19,6 +19,9 @@ typedef struct {
     lv_obj_t *button;
     int32_t column;
     int32_t row;
+    int32_t default_column;
+    int32_t default_row;
+    bool restored;
 } app_icon_slot_t;
 
 typedef struct {
@@ -35,6 +38,7 @@ static home_widget_slot_t s_home_widgets[HOME_WIDGET_COUNT];
 
 static void action_icon_set_grid_cell(lv_obj_t *button, int32_t column, int32_t row);
 static void action_widget_set_grid_cell(home_widget_slot_t *widget, int32_t column, int32_t row);
+static void action_home_layout_place_new_icons(void);
 
 
 
@@ -112,6 +116,7 @@ static void action_home_layout_restore(void)
             if (action_icon_get_id(s_app_icons[j].button) == item->id) {
                 s_app_icons[j].column = item->column;
                 s_app_icons[j].row = item->row;
+                s_app_icons[j].restored = true;
                 action_icon_set_grid_cell(
                     s_app_icons[j].button, item->column, item->row);
             }
@@ -305,6 +310,90 @@ static home_widget_slot_t *action_widget_at_cell(
     }
 
     return NULL;
+}
+
+static bool action_home_cell_is_free(
+    int32_t column,
+    int32_t row,
+    lv_obj_t *ignore_button)
+{
+    if (column < 0 || column >= APP_GRID_COLUMNS ||
+        row < 0 || row >= APP_GRID_ROWS) {
+        return false;
+    }
+
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        const app_icon_slot_t *icon = &s_app_icons[i];
+        if (icon->button != NULL && icon->button != ignore_button &&
+            icon->column == column && icon->row == row) {
+            return false;
+        }
+    }
+
+    return action_widget_at_cell(column, row) == NULL;
+}
+
+static bool action_home_find_free_cell(
+    lv_obj_t *button,
+    int32_t *column,
+    int32_t *row)
+{
+    for (int32_t y = 0; y < APP_GRID_ROWS; y++) {
+        for (int32_t x = 0; x < APP_GRID_COLUMNS; x++) {
+            if (action_home_cell_is_free(x, y, button)) {
+                *column = x;
+                *row = y;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static void action_home_layout_place_new_icons(void)
+{
+    /*
+     * New shortcuts have no NVS entry. Keep their EEZ Grid cell as the
+     * preferred default, but temporarily release all new shortcuts from
+     * occupancy checks so duplicate defaults can be resolved deterministically.
+     * Restored shortcuts and widgets remain reserved at their saved positions.
+     */
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        if (!s_app_icons[i].restored) {
+            s_app_icons[i].column = -1;
+            s_app_icons[i].row = -1;
+        }
+    }
+
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        app_icon_slot_t *icon = &s_app_icons[i];
+        int32_t column = icon->default_column;
+        int32_t row = icon->default_row;
+
+        if (icon->restored) {
+            continue;
+        }
+
+        if (!action_home_cell_is_free(column, row, icon->button) &&
+            !action_home_find_free_cell(icon->button, &column, &row)) {
+            /*
+             * The 6x3 Grid is full. Keep the EEZ-assigned default rather than
+             * assigning an invalid Grid cell; the project must provide a free
+             * cell before adding more shortcuts than the Grid can contain.
+             */
+            column = icon->default_column;
+            row = icon->default_row;
+        }
+
+        icon->column = column;
+        icon->row = row;
+        action_icon_set_grid_cell(icon->button, column, row);
+    }
+
+    if (objects.home != NULL) {
+        lv_obj_update_layout(objects.home);
+    }
 }
 
 static bool action_widget_rect_is_free(
@@ -620,6 +709,13 @@ static void action_icon_long_pressed(lv_event_t *event)
      */
     lv_obj_add_flag(button, LV_OBJ_FLAG_IGNORE_LAYOUT);
 
+    /*
+     * Re-apply the exact Grid-resolved anchor immediately after detaching
+     * this child from Grid positioning. This prevents the first rendered
+     * frame of the enlarged shortcut from using stale generated X/Y values.
+     */
+    lv_obj_set_pos(button, s_icon_drag.start_x, s_icon_drag.start_y);
+
     lv_obj_set_style_transform_pivot_x(
         image, lv_obj_get_width(image) / 2, LV_PART_MAIN
     );
@@ -844,6 +940,11 @@ static void action_icon_discover_home_apps(void)
             lv_obj_get_style_grid_cell_column_pos(child, LV_PART_MAIN);
         s_app_icons[s_app_icon_count].row =
             lv_obj_get_style_grid_cell_row_pos(child, LV_PART_MAIN);
+        s_app_icons[s_app_icon_count].default_column =
+            s_app_icons[s_app_icon_count].column;
+        s_app_icons[s_app_icon_count].default_row =
+            s_app_icons[s_app_icon_count].row;
+        s_app_icons[s_app_icon_count].restored = false;
         s_app_icon_count++;
     }
 }
@@ -1102,6 +1203,8 @@ esp_err_t app_actions_init(void)
     }
 
     action_home_layout_restore();
+    action_home_layout_place_new_icons();
+    action_home_layout_save();
 
     s_control_center_drag.target = NULL;
     s_control_center_drag.indev = NULL;
