@@ -201,6 +201,16 @@ static esp_err_t action_icon_attach(lv_obj_t *button)
     lv_obj_remove_style_all(image);
 
     /*
+     * The generated EEZ layout places the 80px image at x=5 inside a
+     * 130px button, while the label is centered. Center the image in the
+     * same button so the icon and its caption share a vertical centerline.
+     */
+    lv_obj_set_x(
+        image,
+        (lv_obj_get_content_width(button) - lv_obj_get_width(image)) / 2
+    );
+
+    /*
      * The button can enter LV_STATE_PRESSED while its child image is
      * rendered. Clear inherited recolor on both objects for every state;
      * otherwise LVGL may still select recolor_only() for the child image.
