@@ -193,23 +193,9 @@ static esp_err_t action_icon_attach(lv_obj_t *button)
     }
 
     /*
-     * Remove theme/local styles from the icon image itself. A non-zero
-     * image_recolor_opa sends LVGL through recolor_only(), which is where
-     * taskLVGL is getting stuck on this target. Re-apply only the normal
-     * image opacity; pressed feedback is handled with image opacity too.
+     * Preserve all EEZ-generated styles and layout. Only override the
+     * recolor properties that can trigger LVGL's slow software recolor path.
      */
-    lv_obj_remove_style_all(image);
-
-    /*
-     * The generated EEZ layout places the 80px image at x=5 inside a
-     * 130px button, while the label is centered. Center the image in the
-     * same button so the icon and its caption share a vertical centerline.
-     */
-    lv_obj_set_x(
-        image,
-        (lv_obj_get_content_width(button) - lv_obj_get_width(image)) / 2
-    );
-
     /*
      * The button can enter LV_STATE_PRESSED while its child image is
      * rendered. Clear inherited recolor on both objects for every state;
