@@ -5,15 +5,122 @@
 #include "lvgl.h"
 #include "ui.h"
 
+#define APP_GRID_COLUMNS          6
+#define APP_GRID_ROWS             3
+#define APP_GRID_FIRST_APP_COLUMN 3
+#define APP_ICON_COUNT            3
+
+typedef struct {
+    lv_obj_t *button;
+    int32_t column;
+    int32_t row;
+} app_icon_slot_t;
+
+static app_icon_slot_t s_app_icons[APP_ICON_COUNT];
+
 static struct {
     lv_obj_t *button;
     lv_indev_t *indev;
     lv_point_t start_point;
     lv_coord_t start_x;
     lv_coord_t start_y;
+    int32_t current_column;
+    int32_t current_row;
     bool active;
     bool long_pressed;
 } s_icon_drag;
+
+static app_icon_slot_t *action_icon_find_slot(lv_obj_t *button)
+{
+    for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+        if (s_app_icons[i].button == button) {
+            return &s_app_icons[i];
+        }
+    }
+
+    return NULL;
+}
+
+static app_icon_slot_t *action_icon_find_slot_at(
+    int32_t column,
+    int32_t row,
+    lv_obj_t *ignore_button)
+{
+    for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+        if (s_app_icons[i].button != NULL &&
+            s_app_icons[i].button != ignore_button &&
+            s_app_icons[i].column == column &&
+            s_app_icons[i].row == row) {
+            return &s_app_icons[i];
+        }
+    }
+
+    return NULL;
+}
+
+static void action_icon_set_grid_cell(
+    lv_obj_t *button,
+    int32_t column,
+    int32_t row)
+{
+    lv_obj_set_style_grid_cell_column_pos(
+        button, column, LV_PART_MAIN);
+    lv_obj_set_style_grid_cell_row_pos(
+        button, row, LV_PART_MAIN);
+}
+
+static bool action_icon_get_cell_from_point(
+    lv_point_t point,
+    int32_t *column,
+    int32_t *row)
+{
+    lv_obj_t *grid = objects.home;
+    lv_area_t content_area;
+
+    if (grid == NULL || column == NULL || row == NULL) {
+        return false;
+    }
+
+    lv_obj_get_content_coords(grid, &content_area);
+
+    int32_t content_width = lv_obj_get_content_width(grid);
+    int32_t content_height = lv_obj_get_content_height(grid);
+    int32_t gap_x = lv_obj_get_style_pad_column(grid, LV_PART_MAIN);
+    int32_t gap_y = lv_obj_get_style_pad_row(grid, LV_PART_MAIN);
+
+    int32_t track_width =
+        (content_width - gap_x * (APP_GRID_COLUMNS - 1)) /
+        APP_GRID_COLUMNS;
+    int32_t track_height =
+        (content_height - gap_y * (APP_GRID_ROWS - 1)) /
+        APP_GRID_ROWS;
+
+    if (track_width <= 0 || track_height <= 0) {
+        return false;
+    }
+
+    int32_t relative_x = point.x - content_area.x1;
+    int32_t relative_y = point.y - content_area.y1;
+
+    if (relative_x < 0 || relative_y < 0 ||
+        relative_x >= content_width || relative_y >= content_height) {
+        return false;
+    }
+
+    int32_t column_step = track_width + gap_x;
+    int32_t row_step = track_height + gap_y;
+
+    *column = (relative_x + gap_x / 2) / column_step;
+    *row = (relative_y + gap_y / 2) / row_step;
+
+    if (*column < APP_GRID_FIRST_APP_COLUMN ||
+        *column >= APP_GRID_COLUMNS ||
+        *row < 0 || *row >= APP_GRID_ROWS) {
+        return false;
+    }
+
+    return true;
+}
 
 static void action_icon_set_button_color(lv_obj_t *button, bool pressed)
 {
@@ -65,7 +172,23 @@ static void action_icon_finish(lv_obj_t *button)
         lv_obj_set_style_transform_scale_y(image, 256, LV_PART_MAIN);
     }
 
-    lv_obj_set_pos(button, s_icon_drag.start_x, s_icon_drag.start_y);
+    /*
+     * Commit the dragged icon to its current Grid cell before returning it
+     * to the Grid layout. The other icon, if any, has already been moved
+     * into the cell that the dragged icon left.
+     */
+    app_icon_slot_t *slot = action_icon_find_slot(button);
+    if (slot != NULL) {
+        slot->column = s_icon_drag.current_column;
+        slot->row = s_icon_drag.current_row;
+        action_icon_set_grid_cell(
+            button, slot->column, slot->row);
+    }
+
+    lv_obj_remove_flag(button, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    if (objects.home != NULL) {
+        lv_obj_update_layout(objects.home);
+    }
 
     s_icon_drag.active = false;
     s_icon_drag.button = NULL;
@@ -94,6 +217,7 @@ static void action_icon_long_pressed(lv_event_t *event)
     lv_obj_t *button = lv_event_get_current_target(event);
     lv_obj_t *image = lv_obj_get_child(button, 1);
     lv_indev_t *indev;
+    app_icon_slot_t *slot;
 
     if (image == NULL) {
         return;
@@ -111,6 +235,11 @@ static void action_icon_long_pressed(lv_event_t *event)
         return;
     }
 
+    slot = action_icon_find_slot(button);
+    if (slot == NULL || lv_obj_get_parent(button) != objects.home) {
+        return;
+    }
+
     indev = lv_event_get_indev(event);
     if (indev == NULL) {
         return;
@@ -121,9 +250,17 @@ static void action_icon_long_pressed(lv_event_t *event)
     s_icon_drag.long_pressed = true;
     s_icon_drag.start_x = lv_obj_get_x(button);
     s_icon_drag.start_y = lv_obj_get_y(button);
+    s_icon_drag.current_column = slot->column;
+    s_icon_drag.current_row = slot->row;
     lv_indev_get_point(indev, &s_icon_drag.start_point);
     s_icon_drag.active = true;
 
+    /*
+     * A Grid normally owns the position of its children. Ignore its layout
+     * only while this icon is being dragged, so it can float under the
+     * finger without changing the generated EEZ layout.
+     */
+    lv_obj_add_flag(button, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_move_foreground(button);
 
     lv_obj_set_style_transform_pivot_x(
@@ -134,6 +271,43 @@ static void action_icon_long_pressed(lv_event_t *event)
     );
     lv_obj_set_style_transform_scale_x(image, 300, LV_PART_MAIN);
     lv_obj_set_style_transform_scale_y(image, 300, LV_PART_MAIN);
+}
+
+static void action_icon_update_drop_cell(lv_point_t point)
+{
+    int32_t column;
+    int32_t row;
+
+    if (!action_icon_get_cell_from_point(point, &column, &row)) {
+        return;
+    }
+
+    if (column == s_icon_drag.current_column &&
+        row == s_icon_drag.current_row) {
+        return;
+    }
+
+    /*
+     * If another app occupies the destination, move it into the cell the
+     * dragged app just left. This creates the same swap behavior as a
+     * mobile home screen. Empty cells are accepted as well.
+     */
+    app_icon_slot_t *occupant = action_icon_find_slot_at(
+        column, row, s_icon_drag.button);
+
+    if (occupant != NULL) {
+        occupant->column = s_icon_drag.current_column;
+        occupant->row = s_icon_drag.current_row;
+        action_icon_set_grid_cell(
+            occupant->button, occupant->column, occupant->row);
+    }
+
+    s_icon_drag.current_column = column;
+    s_icon_drag.current_row = row;
+
+    if (objects.home != NULL) {
+        lv_obj_update_layout(objects.home);
+    }
 }
 
 static void action_icon_pressing(lv_event_t *event)
@@ -154,10 +328,8 @@ static void action_icon_pressing(lv_event_t *event)
     lv_indev_get_point(indev, &point);
 
     /*
-     * LV_EVENT_PRESSING is delivered repeatedly while the pointer is down.
-     * Do not invalidate and redraw the image on every input poll when the
-     * finger has not moved; this was continuously driving the software
-     * image renderer (recolor_only) and starving taskLVGL/IDLE0.
+     * Move only when the pointer changes position. IGNORE_LAYOUT is set
+     * during the drag, so lv_obj_set_pos() is no longer overridden by Grid.
      */
     lv_coord_t new_x = s_icon_drag.start_x +
         point.x - s_icon_drag.start_point.x;
@@ -167,6 +339,8 @@ static void action_icon_pressing(lv_event_t *event)
     if (lv_obj_get_x(button) != new_x || lv_obj_get_y(button) != new_y) {
         lv_obj_set_pos(button, new_x, new_y);
     }
+
+    action_icon_update_drop_cell(point);
 }
 
 static void action_icon_released(lv_event_t *event)
@@ -223,6 +397,16 @@ static esp_err_t action_icon_attach(lv_obj_t *button)
     return ESP_OK;
 }
 
+static void action_icon_init_slot(
+    size_t index,
+    lv_obj_t *button)
+{
+    s_app_icons[index].button = button;
+    s_app_icons[index].column =
+        lv_obj_get_style_grid_cell_column_pos(button, LV_PART_MAIN);
+    s_app_icons[index].row =
+        lv_obj_get_style_grid_cell_row_pos(button, LV_PART_MAIN);
+}
 
 /* Control Center drag and snap behavior */
 #define CONTROL_CENTER_HIDDEN_Y       (-600)
@@ -444,6 +628,18 @@ esp_err_t app_actions_init(void)
     s_icon_drag.indev = NULL;
     s_icon_drag.active = false;
     s_icon_drag.long_pressed = false;
+
+    if (objects.home == NULL ||
+        objects.camera_btn == NULL ||
+        objects.media_btn == NULL ||
+        objects.setting_btn == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    lv_obj_update_layout(objects.home);
+    action_icon_init_slot(0, objects.camera_btn);
+    action_icon_init_slot(1, objects.media_btn);
+    action_icon_init_slot(2, objects.setting_btn);
 
     s_control_center_drag.target = NULL;
     s_control_center_drag.indev = NULL;
