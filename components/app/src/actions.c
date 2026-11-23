@@ -136,46 +136,11 @@ static void action_home_layout_restore(void)
 
 static void action_home_layout_save(void)
 {
-    nvs_handle_t nvs;
-    home_layout_blob_t blob = {
-        .magic = HOME_LAYOUT_MAGIC,
-        .version = HOME_LAYOUT_VERSION,
-        .count = 0
-    };
-
-    for (size_t i = 0; i < s_app_icon_count &&
-         blob.count < APP_ICON_CAPACITY; i++) {
-        uint32_t id = action_icon_get_id(s_app_icons[i].button);
-        if (id == 0) {
-            continue;
-        }
-        blob.items[blob.count++] = (home_layout_item_t) {
-            .id = id,
-            .column = (int8_t)s_app_icons[i].column,
-            .row = (int8_t)s_app_icons[i].row
-        };
-    }
-
-    for (size_t i = 0; i < HOME_WIDGET_COUNT &&
-         blob.count < (APP_ICON_CAPACITY + HOME_WIDGET_COUNT); i++) {
-        if (s_home_widgets[i].object == NULL) {
-            continue;
-        }
-        blob.items[blob.count++] = (home_layout_item_t) {
-            .id = HOME_LAYOUT_WIDGET_BASE + i,
-            .column = (int8_t)s_home_widgets[i].column,
-            .row = (int8_t)s_home_widgets[i].row
-        };
-    }
-
-    if (nvs_open(HOME_LAYOUT_NVS_NAMESPACE, NVS_READWRITE, &nvs) != ESP_OK) {
-        return;
-    }
-
-    if (nvs_set_blob(nvs, HOME_LAYOUT_NVS_KEY, &blob, sizeof(blob)) == ESP_OK) {
-        nvs_commit(nvs);
-    }
-    nvs_close(nvs);
+    /*
+     * Temporarily disabled while investigating the display flash during
+     * repeated icon moves. Keep the call site intact; no NVS write/commit
+     * is performed when an icon drag finishes.
+     */
 }
 
 static struct {
@@ -236,11 +201,18 @@ static bool action_icon_get_cell_from_point(
 {
     lv_obj_t *grid = objects.home;
     lv_area_t content_area;
+    int32_t column_widths[APP_GRID_COLUMNS];
+    int32_t row_heights[APP_GRID_ROWS];
 
     if (grid == NULL || column == NULL || row == NULL) {
         return false;
     }
 
+    /*
+     * LVGL's Grid content coordinates already exclude the container padding.
+     * Keep that origin so the 30 px home-screen padding remains part of the
+     * coordinate calculation rather than treating the screen origin as Grid 0.
+     */
     lv_obj_get_content_coords(grid, &content_area);
 
     int32_t content_width = lv_obj_get_content_width(grid);
@@ -248,37 +220,67 @@ static bool action_icon_get_cell_from_point(
     int32_t gap_x = lv_obj_get_style_pad_column(grid, LV_PART_MAIN);
     int32_t gap_y = lv_obj_get_style_pad_row(grid, LV_PART_MAIN);
 
-    int32_t track_width =
-        (content_width - gap_x * (APP_GRID_COLUMNS - 1)) /
-        APP_GRID_COLUMNS;
-    int32_t track_height =
-        (content_height - gap_y * (APP_GRID_ROWS - 1)) /
-        APP_GRID_ROWS;
-
-    if (track_width <= 0 || track_height <= 0) {
+    int32_t free_width = content_width - gap_x * (APP_GRID_COLUMNS - 1);
+    int32_t free_height = content_height - gap_y * (APP_GRID_ROWS - 1);
+    if (free_width <= 0 || free_height <= 0) {
         return false;
+    }
+
+    /*
+     * Match LVGL 9.5 calc_cols()/calc_rows() for equal LV_GRID_FR(1)
+     * tracks: round each share to nearest, then distribute the remaining
+     * pixels over the tracks that have not yet been calculated.
+     */
+    int32_t remaining_fr = APP_GRID_COLUMNS;
+    for (int32_t i = 0; i < APP_GRID_COLUMNS; i++) {
+        column_widths[i] = (free_width + remaining_fr / 2) / remaining_fr;
+        free_width -= column_widths[i];
+        remaining_fr--;
+    }
+
+    remaining_fr = APP_GRID_ROWS;
+    for (int32_t i = 0; i < APP_GRID_ROWS; i++) {
+        row_heights[i] = (free_height + remaining_fr / 2) / remaining_fr;
+        free_height -= row_heights[i];
+        remaining_fr--;
     }
 
     int32_t relative_x = point.x - content_area.x1;
     int32_t relative_y = point.y - content_area.y1;
-
     if (relative_x < 0 || relative_y < 0 ||
         relative_x >= content_width || relative_y >= content_height) {
         return false;
     }
 
-    int32_t column_step = track_width + gap_x;
-    int32_t row_step = track_height + gap_y;
-
-    *column = (relative_x + gap_x / 2) / column_step;
-    *row = (relative_y + gap_y / 2) / row_step;
-
-    if (*column < 0 || *column >= APP_GRID_COLUMNS ||
-        *row < 0 || *row >= APP_GRID_ROWS) {
-        return false;
+    /*
+     * Resolve the boundary halfway through each inter-track gap, matching
+     * the existing drop behavior while using LVGL's actual rounded track
+     * widths/heights instead of one truncated average size.
+     */
+    int32_t track_start = 0;
+    *column = -1;
+    for (int32_t i = 0; i < APP_GRID_COLUMNS; i++) {
+        int32_t boundary = track_start + column_widths[i] + gap_x / 2;
+        if (relative_x < boundary || i == APP_GRID_COLUMNS - 1) {
+            *column = i;
+            break;
+        }
+        track_start += column_widths[i] + gap_x;
     }
 
-    return true;
+    track_start = 0;
+    *row = -1;
+    for (int32_t i = 0; i < APP_GRID_ROWS; i++) {
+        int32_t boundary = track_start + row_heights[i] + gap_y / 2;
+        if (relative_y < boundary || i == APP_GRID_ROWS - 1) {
+            *row = i;
+            break;
+        }
+        track_start += row_heights[i] + gap_y;
+    }
+
+    return *column >= 0 && *column < APP_GRID_COLUMNS &&
+        *row >= 0 && *row < APP_GRID_ROWS;
 }
 
 static bool action_cell_in_rect(
