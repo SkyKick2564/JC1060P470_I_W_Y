@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include "esp_board_device.h"
 #include "dev_audio_codec.h"
+#include "dev_camera.h"
 #include "dev_display_lcd.h"
 #include "dev_fs_fat.h"
 #include "dev_lcd_touch.h"
@@ -231,7 +232,7 @@ const static dev_lcd_touch_config_t esp_bmgr_lcd_touch_cfg = {
         .x_max = 1024,
         .y_max = 600,
         .rst_gpio_num = -1,
-        .int_gpio_num = -1,
+        .int_gpio_num = 21,
         .levels = {
             .reset = 0,
             .interrupt = 0,
@@ -273,6 +274,24 @@ const static dev_ledc_ctrl_config_t esp_bmgr_lcd_brightness_cfg = {
     .type = "ledc_ctrl",
     .ledc_name = "ledc_backlight",
     .default_percent = 100,
+};
+
+const static dev_camera_config_t esp_bmgr_camera_cfg = {
+    .name = "camera",
+    .type = "camera",
+    .sub_type = "csi",
+    .sub_cfg = {
+        .csi = {
+            .i2c_name = "i2c_master",
+            .i2c_freq = 100000,
+            .ldo_name = "ldo_mipi",
+            .reset_io = -1,
+            .pwdn_io = -1,
+            .dont_init_ldo = true,
+            .xclk_config = {
+            },
+        },
+    },
 };
 
 const static dev_fs_fat_config_t esp_bmgr_fs_sdcard_cfg = {
@@ -368,6 +387,18 @@ const esp_board_device_desc_t g_esp_board_devices[] = {
         .sub_type = NULL,
         .cfg = &esp_bmgr_lcd_brightness_cfg,
         .cfg_size = sizeof(esp_bmgr_lcd_brightness_cfg),
+        .init_skip = false,
+        .depends_on = NULL,
+        .depends_on_num = 0,
+    },
+    {
+        .next = &g_esp_board_devices[6],
+        .name = "camera",
+        .chip = NULL,
+        .type = "camera",
+        .sub_type = "csi",
+        .cfg = &esp_bmgr_camera_cfg,
+        .cfg_size = sizeof(esp_bmgr_camera_cfg),
         .init_skip = false,
         .depends_on = NULL,
         .depends_on_num = 0,
