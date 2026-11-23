@@ -201,7 +201,7 @@ static app_icon_slot_t *action_icon_find_slot_at(
     int32_t row,
     lv_obj_t *ignore_button)
 {
-    for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+    for (size_t i = 0; i < s_app_icon_count; i++) {
         if (s_app_icons[i].button != NULL &&
             s_app_icons[i].button != ignore_button &&
             s_app_icons[i].column == column &&
@@ -326,7 +326,7 @@ static bool action_widget_rect_is_free(
                 return false;
             }
 
-            for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+            for (size_t i = 0; i < s_app_icon_count; i++) {
                 app_icon_slot_t *app = &s_app_icons[i];
                 if (app->button != NULL &&
                     app->button != s_icon_drag.button &&
@@ -413,13 +413,13 @@ static bool action_widget_pack_apps_in_old_rect(
                 continue;
             }
 
-            while (app_index < APP_ICON_COUNT &&
+            while (app_index < s_app_icon_count &&
                    (s_app_icons[app_index].button == NULL ||
                     s_app_icons[app_index].button == s_icon_drag.button)) {
                 app_index++;
             }
 
-            if (app_index >= APP_ICON_COUNT) {
+            if (app_index >= s_app_icon_count) {
                 return true;
             }
 
@@ -431,7 +431,7 @@ static bool action_widget_pack_apps_in_old_rect(
         }
     }
 
-    while (app_index < APP_ICON_COUNT) {
+    while (app_index < s_app_icon_count) {
         if (s_app_icons[app_index].button != NULL &&
             s_app_icons[app_index].button != s_icon_drag.button) {
             return false;
@@ -630,10 +630,10 @@ static void action_icon_update_drop_cell(lv_point_t point)
 
             if (!action_widget_find_free_rect(
                     widget, column, row, &free_column, &free_row)) {
-                int32_t old_columns[APP_ICON_COUNT];
-                int32_t old_rows[APP_ICON_COUNT];
+                int32_t old_columns[APP_ICON_CAPACITY];
+                int32_t old_rows[APP_ICON_CAPACITY];
 
-                for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+                for (size_t i = 0; i < s_app_icon_count; i++) {
                     old_columns[i] = s_app_icons[i].column;
                     old_rows[i] = s_app_icons[i].row;
                 }
@@ -644,7 +644,7 @@ static void action_icon_update_drop_cell(lv_point_t point)
                     widget, column, row, &free_column, &free_row);
 
                 if (!found) {
-                    for (size_t i = 0; i < APP_ICON_COUNT; i++) {
+                    for (size_t i = 0; i < s_app_icon_count; i++) {
                         s_app_icons[i].column = old_columns[i];
                         s_app_icons[i].row = old_rows[i];
                         if (s_app_icons[i].button != NULL &&
