@@ -1,5 +1,6 @@
 #include "app.h"
 #include "app_touch_multi.h"
+#include "app_icon_drag.h"
 #include "esp_err.h"
 #include "esp_log.h"
 
@@ -241,6 +242,15 @@ esp_err_t app_init(void)
 
     // /* Initialize EEZ UI */
     ui_init();
+
+    /* Install app-owned handlers after EEZ has created all UI objects. */
+    err = app_icon_drag_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize home icon drag: %s",
+                 esp_err_to_name(err));
+        lvgl_port_unlock();
+        return err;
+    }
 
     // // Settings button
     // lv_obj_add_event_cb(
