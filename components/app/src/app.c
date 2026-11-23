@@ -168,14 +168,18 @@ esp_err_t app_init(void)
             .buff_dma = false,
             .sw_rotate = false,
             .full_refresh = false,
-            .direct_mode = false,
+            .direct_mode = true,
         },
     };
 
-    /* Configure MIPI-DSI display */
+    /*
+     * The JD9165 DSI panel is configured with three frame buffers.
+     * Render directly into the panel frame buffers and wait for the
+     * frame-buffer-complete callback before LVGL reuses a buffer.
+     */
     const lvgl_port_display_dsi_cfg_t dsi_cfg = {
         .flags = {
-            .avoid_tearing = false,
+            .avoid_tearing = true,
         },
     };
 
