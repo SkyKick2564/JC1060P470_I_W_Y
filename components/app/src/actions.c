@@ -955,9 +955,7 @@ static void action_control_center_finish(lv_event_t *event)
     lv_obj_t *overlay = objects.control_center_overlay;
     if (overlay == NULL || s_control_center_drag.indev == NULL) {
         s_control_center_drag.active = false;
-        action_home_layout_restore();
-
-    s_control_center_drag.target = NULL;
+        s_control_center_drag.target = NULL;
         s_control_center_drag.indev = NULL;
         return;
     }
@@ -1050,6 +1048,8 @@ esp_err_t app_actions_init(void)
         if (widget->column_span < 1) widget->column_span = 1;
         if (widget->row_span < 1) widget->row_span = 1;
     }
+
+    action_home_layout_restore();
 
     s_control_center_drag.target = NULL;
     s_control_center_drag.indev = NULL;
