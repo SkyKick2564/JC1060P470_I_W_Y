@@ -1,7 +1,5 @@
 {
   "files": [
-    "actions.c",
-    "actions.h",
     "fonts.h",
     "fonts/ui_font_noto_sans_thai18.c",
     "fonts/ui_font_noto_sans_thai_22.c",

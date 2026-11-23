@@ -295,10 +295,6 @@ void create_screen_main() {
                             objects.camera_btn = obj;
                             lv_obj_set_pos(obj, 522, 20);
                             lv_obj_set_size(obj, 130, 130);
-                            lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
                             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_opa(obj, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -327,10 +323,6 @@ void create_screen_main() {
                             objects.media_btn = obj;
                             lv_obj_set_pos(obj, 672, 20);
                             lv_obj_set_size(obj, 130, 130);
-                            lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
                             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_opa(obj, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -359,10 +351,6 @@ void create_screen_main() {
                             objects.setting_btn = obj;
                             lv_obj_set_pos(obj, 822, 20);
                             lv_obj_set_size(obj, 130, 130);
-                            lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
                             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_color(obj, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_obj_set_style_text_opa(obj, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -528,9 +516,6 @@ void create_screen_main() {
             lv_obj_set_style_pad_bottom(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_add_event_cb(obj, action_control_center_pressed, LV_EVENT_PRESSED, (void *)0);
-            lv_obj_add_event_cb(obj, action_control_center_pressing, LV_EVENT_PRESSING, (void *)0);
-            lv_obj_add_event_cb(obj, action_control_center_released, LV_EVENT_RELEASED, (void *)0);
             lv_obj_set_style_bg_color(obj, lv_color_hex(0x535353), LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_bg_opa(obj, 240, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -546,9 +531,6 @@ void create_screen_main() {
             lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_pad_bottom(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_add_event_cb(obj, action_control_center_pressed, LV_EVENT_PRESSED, (void *)0);
-            lv_obj_add_event_cb(obj, action_control_center_pressing, LV_EVENT_PRESSING, (void *)0);
-            lv_obj_add_event_cb(obj, action_control_center_released, LV_EVENT_RELEASED, (void *)0);
             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_bg_color(obj, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);

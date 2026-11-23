@@ -44,11 +44,6 @@
           "template": "#include <string.h>\n\n#include \"screens.h\"\n#include \"images.h\"\n#include \"fonts.h\"\n#include \"actions.h\"\n#include \"vars.h\"\n#include \"styles.h\"\n#include \"ui.h\"\n\n//${eez-studio LVGL_SCREENS_DEF}\n//${eez-studio LVGL_SCREENS_DEF_EXT}"
         },
         {
-          "objID": "e8fa876c-8113-4982-97fb-954d8ef4c889",
-          "fileName": "actions.h",
-          "template": "#ifndef EEZ_LVGL_UI_EVENTS_H\r\n#define EEZ_LVGL_UI_EVENTS_H\r\n\r\n//${eez-studio LVGL_INCLUDE}\r\n\r\n#ifdef __cplusplus\r\nextern \"C\" {\r\n#endif\r\n\r\n//${eez-studio LVGL_ACTIONS_DECL}\r\n\r\n#ifdef __cplusplus\r\n}\r\n#endif\r\n\r\n#endif /*EEZ_LVGL_UI_EVENTS_H*/"
-        },
-        {
           "objID": "d4f95758-9ae6-476b-9925-5bbbcd4e21ff",
           "fileName": "vars.h",
           "template": "#ifndef EEZ_LVGL_UI_VARS_H\r\n#define EEZ_LVGL_UI_VARS_H\r\n\r\n#include <stdint.h>\r\n#include <stdbool.h>\r\n\r\n#ifdef __cplusplus\r\nextern \"C\" {\r\n#endif\r\n\r\n// enum declarations\r\n\r\n//${eez-studio FLOW_ENUMS}\r\n\r\n// Flow global variables\r\n\r\n//${eez-studio FLOW_GLOBAL_VARIABLES_ENUM}\r\n\r\n// Native global variables\r\n\r\n//${eez-studio LVGL_VARS_DECL}\r\n\r\n#ifdef __cplusplus\r\n}\r\n#endif\r\n\r\n#endif /*EEZ_LVGL_UI_VARS_H*/"
@@ -92,11 +87,6 @@
           "objID": "b496009f-11d0-43a6-ccf2-36f65d85a307",
           "fileName": "ui.c",
           "template": "#if defined(EEZ_FOR_LVGL)\n#include <eez/core/vars.h>\n#endif\n\n#include \"ui.h\"\n#include \"screens.h\"\n#include \"images.h\"\n#include \"actions.h\"\n#include \"vars.h\"\n\n//${eez-studio GUI_ASSETS_DEF}\n\n//${eez-studio LVGL_NATIVE_VARS_TABLE_DEF}\n\n//${eez-studio LVGL_ACTIONS_ARRAY_DEF}\n\n#if defined(EEZ_FOR_LVGL)\n\nvoid ui_init() {\n    eez_flow_init(assets, sizeof(assets), (lv_obj_t **)&objects, sizeof(objects), images, sizeof(images), actions);\n}\n\nvoid ui_tick() {\n    eez_flow_tick();\n    tick_screen(g_currentScreen);\n}\n\n#else\n\n#include <string.h>\n\nstatic int16_t currentScreen = -1;\n\nstatic lv_obj_t *getLvglObjectFromIndex(int32_t index) {\n    if (index == -1) {\n        return 0;\n    }\n    return ((lv_obj_t **)&objects)[index];\n}\n\nvoid loadScreen(enum ScreensEnum screenId) {\n    currentScreen = screenId - 1;\n    lv_obj_t *screen = getLvglObjectFromIndex(currentScreen);\n    /* Load immediately; do not fade the screen in. */\n    lv_scr_load(screen);\n}\n\nvoid ui_init() {\n    create_screens();\n//${eez-studio LVGL_LOAD_FIRST_SCREEN}\n}\n\nvoid ui_tick() {\n    tick_screen(currentScreen);\n}\n\n#endif\n"
-        },
-        {
-          "objID": "f0ffc2dd-a3a1-4160-f190-d6a775c12f5f",
-          "fileName": "actions.c",
-          "template": "\n#include \"actions.h\"\n#include \"screens.h\"\n\nstatic void set_settings_button_color(lv_event_t *e, bool pressed)\n{\n    lv_obj_t *button = lv_event_get_target(e);\n\n    /* Child 0 = Label */\n    lv_obj_t *label = lv_obj_get_child(button, 0);\n\n    /* Child 1 = Image */\n    lv_obj_t *image = lv_obj_get_child(button, 1);\n\n    if (label == NULL || image == NULL) {\n        return;\n    }\n\n    lv_obj_set_style_text_color(\n        label,\n        pressed ? lv_color_hex(0x6e6e6e) : lv_color_hex(0xffffff),\n        LV_PART_MAIN\n    );\n\n    lv_obj_set_style_image_recolor(\n        image,\n        lv_color_black(),\n        LV_PART_MAIN\n    );\n\n    lv_obj_set_style_image_recolor_opa(\n        image,\n        pressed ? LV_OPA_50 : LV_OPA_TRANSP,\n        LV_PART_MAIN\n    );\n}\n\n/*\n * Drag state:\n * อนุญาตให้ลากได้ครั้งละหนึ่ง Button เท่านั้น\n */\nstatic struct {\n    lv_obj_t *button;\n    lv_indev_t *indev;\n    lv_point_t start_point;\n    lv_coord_t start_x;\n    lv_coord_t start_y;\n    bool active;\n} button_drag;\n\nvoid action_settings_long_pressed(lv_event_t *e)\n{\n    if (button_drag.active) {\n        return;\n    }\n\n    lv_obj_t *button = lv_event_get_target(e);\n    lv_obj_t *image = lv_obj_get_child(button, 1);\n\n    if (image == NULL) {\n        return;\n    }\n\n    lv_indev_t *indev = lv_indev_active();\n\n    if (indev == NULL) {\n        return;\n    }\n\n    button_drag.button = button;\n    button_drag.indev = indev;\n    button_drag.start_x = lv_obj_get_x(button);\n    button_drag.start_y = lv_obj_get_y(button);\n\n    lv_indev_get_point(indev, &button_drag.start_point);\n\n    button_drag.active = true;\n\n    lv_obj_move_foreground(button);\n\n    lv_obj_set_style_transform_pivot_x(\n        image, lv_obj_get_width(image) / 2, LV_PART_MAIN\n    );\n\n    lv_obj_set_style_transform_pivot_y(\n        image, lv_obj_get_height(image) / 2, LV_PART_MAIN\n    );\n\n    lv_obj_set_style_transform_scale_x(\n        image, 282, LV_PART_MAIN\n    );\n\n    lv_obj_set_style_transform_scale_y(\n        image, 282, LV_PART_MAIN\n    );\n}\n\nvoid action_settings_pressing(lv_event_t *e)\n{\n    lv_obj_t *button = lv_event_get_target(e);\n\n    if (!button_drag.active ||\n        button_drag.button != button) {\n        return;\n    }\n\n    lv_indev_t *indev = lv_indev_active();\n\n    if (indev == NULL || indev != button_drag.indev) {\n        return;\n    }\n\n    lv_point_t point;\n    lv_indev_get_point(indev, &point);\n\n    lv_obj_set_pos(\n        button,\n        button_drag.start_x + point.x - button_drag.start_point.x,\n        button_drag.start_y + point.y - button_drag.start_point.y\n    );\n}\n\nvoid action_settings_pressed(lv_event_t *e)\n{\n    set_settings_button_color(e, true);\n}\n\nvoid action_settings_released(lv_event_t *e)\n{\n    set_settings_button_color(e, false);\n\n    lv_obj_t *button = lv_event_get_target(e);\n\n    if (!button_drag.active ||\n        button_drag.button != button) {\n        return;\n    }\n\n    lv_obj_t *image = lv_obj_get_child(button, 1);\n\n    if (image != NULL) {\n        lv_obj_set_style_transform_scale_x(\n            image, 256, LV_PART_MAIN\n        );\n\n        lv_obj_set_style_transform_scale_y(\n            image, 256, LV_PART_MAIN\n        );\n    }\n\n    lv_obj_set_pos(\n        button,\n        button_drag.start_x,\n        button_drag.start_y\n    );\n\n    button_drag.active = false;\n    button_drag.button = NULL;\n    button_drag.indev = NULL;\n}\n\n/*\n * Control Center\n * Direct drag + constant-speed linear snap.\n * Background opacity follows overlay position.\n */\n\n#define CONTROL_CENTER_HIDDEN_Y       (-600)\n#define CONTROL_CENTER_OPEN_Y         (0)\n\n#define CONTROL_CENTER_ANIM_SPEED     (2000)\n\n#define CONTROL_CENTER_FLICK_SPEED    (650)\n#define CONTROL_CENTER_FLICK_MIN_MOVE (18)\n\nstatic struct {\n    lv_obj_t *target;\n    lv_indev_t *indev;\n    lv_point_t start_point;\n    lv_point_t last_point;\n    lv_coord_t start_y;\n    uint32_t last_tick;\n    int32_t velocity_y;\n    bool active;\n} control_center_drag;\n\n/*\n * เก็บค่า Max Opacity จาก EEZ Studio\n * อ่านจาก Style ของ Overlay ก่อนเริ่มปรับค่า\n */\nstatic lv_opa_t control_center_max_opa = LV_OPA_COVER;\nstatic bool control_center_opa_initialized = false;\n\nstatic void control_center_init_opacity(void)\n{\n    if (control_center_opa_initialized ||\n        objects.control_center_overlay == NULL) {\n        return;\n    }\n\n    control_center_max_opa = lv_obj_get_style_bg_opa(\n        objects.control_center_overlay,\n        LV_PART_MAIN\n    );\n\n    control_center_opa_initialized = true;\n}\n\n/*\n * ปรับ Opacity ตามตำแหน่ง Overlay\n *\n * y = -600 : opacity 0\n * y = 0    : opacity เท่ากับ Max จาก EEZ\n */\nstatic void control_center_update_opacity(lv_coord_t y)\n{\n    lv_obj_t *overlay = objects.control_center_overlay;\n\n    if (overlay == NULL) {\n        return;\n    }\n\n    control_center_init_opacity();\n\n    int32_t progress = y - CONTROL_CENTER_HIDDEN_Y;\n\n    if (progress < 0) {\n        progress = 0;\n    }\n    else if (progress >\n             (CONTROL_CENTER_OPEN_Y - CONTROL_CENTER_HIDDEN_Y)) {\n        progress =\n            CONTROL_CENTER_OPEN_Y - CONTROL_CENTER_HIDDEN_Y;\n    }\n\n    int32_t opacity =\n        ((int32_t)control_center_max_opa * progress) /\n        (CONTROL_CENTER_OPEN_Y - CONTROL_CENTER_HIDDEN_Y);\n\n    lv_obj_set_style_bg_opa(\n        overlay,\n        (lv_opa_t)opacity,\n        LV_PART_MAIN\n    );\n}\n\nstatic bool control_center_is_event_target(lv_obj_t *target)\n{\n    return target != NULL &&\n           (target == objects.control_center_overlay ||\n            target == objects.control_center_touch_area);\n}\n\nstatic void control_center_anim_exec(void *obj, int32_t y)\n{\n    lv_obj_t *overlay = (lv_obj_t *)obj;\n\n    lv_obj_set_y(overlay, (lv_coord_t)y);\n    control_center_update_opacity((lv_coord_t)y);\n}\n\n/*\n * ใช้ความเร็วคงที่ทั้งเปิดและปิด\n * Linear animation ไม่มีการชะลอช่วงท้าย\n */\nstatic void control_center_animate(lv_coord_t target_y)\n{\n    lv_obj_t *overlay = objects.control_center_overlay;\n\n    if (overlay == NULL) {\n        return;\n    }\n\n    lv_coord_t current_y = lv_obj_get_y(overlay);\n    int32_t distance = target_y - current_y;\n\n    lv_anim_delete(overlay, control_center_anim_exec);\n\n    if (distance == 0) {\n        control_center_update_opacity(target_y);\n        return;\n    }\n\n    int32_t abs_distance =\n        (distance >= 0) ? distance : -distance;\n\n    int32_t duration =\n        (abs_distance * 1000) / CONTROL_CENTER_ANIM_SPEED;\n\n    if (duration < 1) {\n        duration = 1;\n    }\n\n    lv_anim_t anim;\n    lv_anim_init(&anim);\n    lv_anim_set_var(&anim, overlay);\n    lv_anim_set_exec_cb(&anim, control_center_anim_exec);\n    lv_anim_set_values(&anim, current_y, target_y);\n    lv_anim_set_duration(&anim, (uint32_t)duration);\n    lv_anim_set_path_cb(&anim, lv_anim_path_linear);\n    lv_anim_start(&anim);\n}\n\n/*\n * คำนวณความเร็วแนวตั้ง\n * บวก = ปัดลง, ลบ = ปัดขึ้น\n */\nstatic void control_center_update_velocity(lv_point_t point, uint32_t now)\n{\n    uint32_t elapsed = now - control_center_drag.last_tick;\n\n    if (elapsed > 0) {\n        int32_t delta_y = point.y - control_center_drag.last_point.y;\n        int32_t new_velocity =\n            (delta_y * 1000) / (int32_t)elapsed;\n\n        control_center_drag.velocity_y =\n            (control_center_drag.velocity_y * 2 + new_velocity) / 3;\n    }\n\n    control_center_drag.last_point = point;\n    control_center_drag.last_tick = now;\n}\n\nvoid action_control_center_pressed(lv_event_t *e)\n{\n    lv_obj_t *target = lv_event_get_target(e);\n\n    if (objects.control_center_overlay == NULL ||\n        !control_center_is_event_target(target) ||\n        control_center_drag.active) {\n        return;\n    }\n\n    control_center_init_opacity();\n\n    lv_indev_t *indev = lv_indev_active();\n\n    if (indev == NULL) {\n        return;\n    }\n\n    lv_anim_delete(\n        objects.control_center_overlay,\n        control_center_anim_exec\n    );\n\n    control_center_drag.target = target;\n    control_center_drag.indev = indev;\n    control_center_drag.start_y =\n        lv_obj_get_y(objects.control_center_overlay);\n\n    lv_indev_get_point(indev, &control_center_drag.start_point);\n\n    control_center_drag.last_point =\n        control_center_drag.start_point;\n\n    control_center_drag.last_tick = lv_tick_get();\n    control_center_drag.velocity_y = 0;\n    control_center_drag.active = true;\n\n    lv_obj_move_foreground(objects.control_center_overlay);\n}\n\nvoid action_control_center_pressing(lv_event_t *e)\n{\n    if (!control_center_drag.active ||\n        !control_center_is_event_target(lv_event_get_target(e))) {\n        return;\n    }\n\n    lv_indev_t *indev = lv_indev_active();\n\n    if (indev == NULL || indev != control_center_drag.indev) {\n        return;\n    }\n\n    lv_point_t point;\n    lv_indev_get_point(indev, &point);\n\n    control_center_update_velocity(point, lv_tick_get());\n\n    lv_coord_t new_y =\n        control_center_drag.start_y +\n        point.y - control_center_drag.start_point.y;\n\n    if (new_y < CONTROL_CENTER_HIDDEN_Y) {\n        new_y = CONTROL_CENTER_HIDDEN_Y;\n    }\n    else if (new_y > CONTROL_CENTER_OPEN_Y) {\n        new_y = CONTROL_CENTER_OPEN_Y;\n    }\n\n    lv_obj_t *overlay = objects.control_center_overlay;\n\n    if (overlay != NULL && lv_obj_get_y(overlay) != new_y) {\n        lv_obj_set_y(overlay, new_y);\n        control_center_update_opacity(new_y);\n    }\n}\n\nvoid action_control_center_released(lv_event_t *e)\n{\n    if (!control_center_drag.active ||\n        !control_center_is_event_target(lv_event_get_target(e))) {\n        return;\n    }\n\n    lv_obj_t *overlay = objects.control_center_overlay;\n\n    if (overlay == NULL) {\n        control_center_drag.active = false;\n        control_center_drag.target = NULL;\n        control_center_drag.indev = NULL;\n        return;\n    }\n\n    lv_point_t point;\n    lv_indev_get_point(control_center_drag.indev, &point);\n\n    control_center_update_velocity(point, lv_tick_get());\n\n    lv_coord_t current_y = lv_obj_get_y(overlay);\n\n    int32_t total_move =\n        point.y - control_center_drag.start_point.y;\n\n    int32_t velocity_y = control_center_drag.velocity_y;\n\n    bool fast_down =\n        total_move >= CONTROL_CENTER_FLICK_MIN_MOVE &&\n        velocity_y >= CONTROL_CENTER_FLICK_SPEED;\n\n    bool fast_up =\n        total_move <= -CONTROL_CENTER_FLICK_MIN_MOVE &&\n        velocity_y <= -CONTROL_CENTER_FLICK_SPEED;\n\n    lv_coord_t destination;\n\n    if (fast_down) {\n        destination = CONTROL_CENTER_OPEN_Y;\n    }\n    else if (fast_up) {\n        destination = CONTROL_CENTER_HIDDEN_Y;\n    }\n    else {\n        destination =\n            (current_y > (CONTROL_CENTER_HIDDEN_Y / 2))\n            ? CONTROL_CENTER_OPEN_Y\n            : CONTROL_CENTER_HIDDEN_Y;\n    }\n\n    control_center_drag.active = false;\n    control_center_drag.target = NULL;\n    control_center_drag.indev = NULL;\n    control_center_drag.velocity_y = 0;\n\n    control_center_animate(destination);\n}\n"
         }
       ],
       "destinationFolder": ".",
@@ -119,71 +109,7 @@
     "structures": [],
     "enums": []
   },
-  "actions": [
-    {
-      "objID": "fe6555cb-cc7a-408e-ff9f-8eb222e21c56",
-      "components": [],
-      "connectionLines": [],
-      "localVariables": [],
-      "componentGroups": [],
-      "userProperties": [],
-      "name": "settings_pressed"
-    },
-    {
-      "objID": "a6168065-1abf-4972-f552-9780dc01134e",
-      "components": [],
-      "connectionLines": [],
-      "localVariables": [],
-      "componentGroups": [],
-      "userProperties": [],
-      "name": "settings_released"
-    },
-    {
-      "objID": "c7ba2688-d8d8-449b-853e-64a02c85be6d",
-      "components": [],
-      "connectionLines": [],
-      "localVariables": [],
-      "componentGroups": [],
-      "userProperties": [],
-      "name": "settings_long_pressed"
-    },
-    {
-      "objID": "e0ffec35-a9b3-420e-b30d-e0423a060dd8",
-      "components": [],
-      "connectionLines": [],
-      "localVariables": [],
-      "componentGroups": [],
-      "userProperties": [],
-      "name": "settings_pressing"
-    },
-    {
-      "objID": "bd1a0e5a-e011-49ab-8e18-6e998b55f31f",
-      "components": [],
-      "connectionLines": [],
-      "localVariables": [],
-      "componentGroups": [],
-      "userProperties": [],
-      "name": "control_center_pressed"
-    },
-    {
-      "objID": "9266e58e-66f7-4ab4-a991-49ee2e62b8f5",
-      "components": [],
-      "connectionLines": [],
-      "localVariables": [],
-      "componentGroups": [],
-      "userProperties": [],
-      "name": "control_center_pressing"
-    },
-    {
-      "objID": "47177e6c-8a8c-4d5c-be4f-6541b36e0415",
-      "components": [],
-      "connectionLines": [],
-      "localVariables": [],
-      "componentGroups": [],
-      "userProperties": [],
-      "name": "control_center_released"
-    }
-  ],
+  "actions": [],
   "userPages": [
     {
       "objID": "4b40eba7-b31a-468a-b887-11dfd0b6637f",
@@ -1127,36 +1053,7 @@
                       },
                       "hiddenInEditor": false,
                       "timeline": [],
-                      "eventHandlers": [
-                        {
-                          "objID": "df58eda9-700c-4003-84ba-3d246765ace3",
-                          "eventName": "RELEASED",
-                          "handlerType": "action",
-                          "action": "settings_released",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "9f4604cb-f869-4188-d442-1bfef3771880",
-                          "eventName": "PRESSED",
-                          "handlerType": "action",
-                          "action": "settings_pressed",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "da0610d6-e5fa-4f49-b8e8-2c988680e04a",
-                          "eventName": "LONG_PRESSED",
-                          "handlerType": "action",
-                          "action": "settings_long_pressed",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "ab6e2284-17e4-4e26-92c5-f95dd180d182",
-                          "eventName": "PRESSING",
-                          "handlerType": "action",
-                          "action": "settings_pressing",
-                          "userData": 0
-                        }
-                      ],
+                      "eventHandlers": [],
                       "identifier": "camera_btn",
                       "leftUnit": "px",
                       "topUnit": "px",
@@ -1312,36 +1209,7 @@
                       },
                       "hiddenInEditor": false,
                       "timeline": [],
-                      "eventHandlers": [
-                        {
-                          "objID": "1d701655-f38a-4a61-b833-7e0ebe5d530f",
-                          "eventName": "RELEASED",
-                          "handlerType": "action",
-                          "action": "settings_released",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "d1f1174a-9e63-4cee-82e3-72113f49ccdf",
-                          "eventName": "PRESSED",
-                          "handlerType": "action",
-                          "action": "settings_pressed",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "c41f8df4-631b-44d3-be87-806ebf9a4b1c",
-                          "eventName": "LONG_PRESSED",
-                          "handlerType": "action",
-                          "action": "settings_long_pressed",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "6329da5b-8bed-4a46-a8fe-0c6155bc02be",
-                          "eventName": "PRESSING",
-                          "handlerType": "action",
-                          "action": "settings_pressing",
-                          "userData": 0
-                        }
-                      ],
+                      "eventHandlers": [],
                       "identifier": "media_btn",
                       "leftUnit": "px",
                       "topUnit": "px",
@@ -1497,36 +1365,7 @@
                       },
                       "hiddenInEditor": false,
                       "timeline": [],
-                      "eventHandlers": [
-                        {
-                          "objID": "ca65c45f-ead2-4a8b-fada-fd457fca2f92",
-                          "eventName": "RELEASED",
-                          "handlerType": "action",
-                          "action": "settings_released",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "76dda024-3e83-4a9a-a5cc-2a38bbc700d5",
-                          "eventName": "PRESSED",
-                          "handlerType": "action",
-                          "action": "settings_pressed",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "53e604b3-465e-400a-94ab-c7ac5ca67469",
-                          "eventName": "LONG_PRESSED",
-                          "handlerType": "action",
-                          "action": "settings_long_pressed",
-                          "userData": 0
-                        },
-                        {
-                          "objID": "75afccbf-f860-45b1-eb95-26bb44f2b372",
-                          "eventName": "PRESSING",
-                          "handlerType": "action",
-                          "action": "settings_pressing",
-                          "userData": 0
-                        }
-                      ],
+                      "eventHandlers": [],
                       "identifier": "setting_btn",
                       "leftUnit": "px",
                       "topUnit": "px",
@@ -2179,29 +2018,7 @@
                 "childStyles": []
               },
               "timeline": [],
-              "eventHandlers": [
-                {
-                  "objID": "6614ece7-8d9c-4a54-d4da-c89fb3dccf62",
-                  "eventName": "PRESSED",
-                  "handlerType": "action",
-                  "action": "control_center_pressed",
-                  "userData": 0
-                },
-                {
-                  "objID": "5cb3b32c-cec4-4a27-b6a9-97a20360f1a8",
-                  "eventName": "PRESSING",
-                  "handlerType": "action",
-                  "action": "control_center_pressing",
-                  "userData": 0
-                },
-                {
-                  "objID": "3afb5723-0d89-47c4-8473-357289092af5",
-                  "eventName": "RELEASED",
-                  "handlerType": "action",
-                  "action": "control_center_released",
-                  "userData": 0
-                }
-              ],
+              "eventHandlers": [],
               "identifier": "control_center_overlay",
               "leftUnit": "px",
               "topUnit": "px",
@@ -2250,29 +2067,7 @@
                 "childStyles": []
               },
               "timeline": [],
-              "eventHandlers": [
-                {
-                  "objID": "e4ef4a8b-f17e-471e-f3cf-c4dbc97d1297",
-                  "eventName": "PRESSED",
-                  "handlerType": "action",
-                  "action": "control_center_pressed",
-                  "userData": 0
-                },
-                {
-                  "objID": "1a2e0f61-0075-482f-9429-df60dc430acf",
-                  "eventName": "PRESSING",
-                  "handlerType": "action",
-                  "action": "control_center_pressing",
-                  "userData": 0
-                },
-                {
-                  "objID": "c90e8ddd-44cc-4624-a084-95345a246de8",
-                  "eventName": "RELEASED",
-                  "handlerType": "action",
-                  "action": "control_center_released",
-                  "userData": 0
-                }
-              ],
+              "eventHandlers": [],
               "identifier": "control_center_touch_area",
               "leftUnit": "px",
               "topUnit": "px",

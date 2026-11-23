@@ -7,7 +7,6 @@ idf_component_register(
         "src/ui/screens.c"
         "src/ui/styles.c"
         "src/ui/images.c"
-        "src/ui/actions.c"
         "src/ui/fonts/ui_font_noto_sans_thai18.c"
         "src/ui/fonts/ui_font_noto_sans_thai_22.c"
         "src/ui/fonts/ui_font_noto_sans_thai_24.c"
