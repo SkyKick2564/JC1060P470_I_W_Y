@@ -184,12 +184,17 @@ static esp_err_t action_icon_attach(lv_obj_t *button)
     }
 
     /*
-     * Button/theme state styles can propagate image recolor to child
-     * images. Force recolor off for every image state so LVGL can use
-     * its fast image blend path instead of recolor_only().
+     * Remove theme/local styles from the icon image itself. A non-zero
+     * image_recolor_opa sends LVGL through recolor_only(), which is where
+     * taskLVGL is getting stuck on this target. Re-apply only the normal
+     * image opacity; pressed feedback is handled with image opacity too.
      */
+    lv_obj_remove_style_all(image);
     lv_obj_set_style_image_recolor_opa(
-        image, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_ANY
+        image, LV_OPA_TRANSP, LV_PART_MAIN
+    );
+    lv_obj_set_style_image_opa(
+        image, LV_OPA_COVER, LV_PART_MAIN
     );
 
     lv_obj_add_flag(button, LV_OBJ_FLAG_PRESS_LOCK);
