@@ -590,7 +590,17 @@ static void action_icon_long_pressed(lv_event_t *event)
         return;
     }
 
-    /* Resolve any pending Grid layout before taking the next drag anchor. */
+    /*
+     * EEZ-generated Grid children also receive an initial lv_obj_set_pos().
+     * Those X/Y local styles remain after Grid has positioned the child.
+     * Clear them while Grid still owns the position; otherwise enabling
+     * IGNORE_LAYOUT below can briefly restore the generated coordinates
+     * (often 0,0) before the first PRESSING event moves the icon.
+     */
+    lv_obj_remove_local_style_prop(button, LV_STYLE_X, LV_PART_MAIN);
+    lv_obj_remove_local_style_prop(button, LV_STYLE_Y, LV_PART_MAIN);
+
+    /* Resolve Grid layout after clearing generated X/Y, then take the anchor. */
     lv_obj_update_layout(objects.home);
 
     s_icon_drag.button = button;
