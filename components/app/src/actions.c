@@ -37,10 +37,14 @@ static void action_icon_set_button_color(lv_obj_t *button, bool pressed)
         LV_PART_MAIN
     );
 
-    lv_obj_set_style_image_recolor(image, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_image_recolor_opa(
+    /*
+     * Avoid LVGL software image recolor: the renderer was stalling in
+     * recolor_only() and starving IDLE0. Keep pressed feedback by fading
+     * the image instead of running the recolor path.
+     */
+    lv_obj_set_style_image_opa(
         image,
-        pressed ? LV_OPA_50 : LV_OPA_TRANSP,
+        pressed ? LV_OPA_50 : LV_OPA_COVER,
         LV_PART_MAIN
     );
 }
@@ -404,6 +408,7 @@ esp_err_t app_actions_init(void)
     s_icon_drag.button = NULL;
     s_icon_drag.indev = NULL;
     s_icon_drag.active = false;
+    s_icon_drag.long_pressed = false;
 
     s_control_center_drag.target = NULL;
     s_control_center_drag.indev = NULL;
