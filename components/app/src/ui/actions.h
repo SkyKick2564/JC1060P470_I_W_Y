@@ -9,6 +9,7 @@ extern "C" {
 
 extern void action_settings_pressed(lv_event_t * e);
 extern void action_settings_released(lv_event_t * e);
+extern void action_settings_press_lost(lv_event_t * e);
 extern void action_settings_long_pressed(lv_event_t * e);
 extern void action_settings_pressing(lv_event_t * e);
 extern void action_control_center_pressed(lv_event_t * e);
