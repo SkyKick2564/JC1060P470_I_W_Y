@@ -17,29 +17,24 @@ static struct {
 static void action_icon_set_button_color(lv_obj_t *button, bool pressed)
 {
     lv_obj_t *label;
-    lv_obj_t *image;
 
     if (button == NULL) {
         return;
     }
 
     label = lv_obj_get_child(button, 0);
-    image = lv_obj_get_child(button, 1);
-
-    if (label == NULL || image == NULL) {
+    if (label == NULL) {
         return;
     }
 
+    /*
+     * Do not recolor the icon image in the software renderer.
+     * The previous image-recolor style caused taskWDT in recolor_only()
+     * while LVGL was rendering the ARGB8888 icon.
+     */
     lv_obj_set_style_text_color(
         label,
         pressed ? lv_color_hex(0x6e6e6e) : lv_color_hex(0xffffff),
-        LV_PART_MAIN
-    );
-
-    lv_obj_set_style_image_recolor(image, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_image_recolor_opa(
-        image,
-        pressed ? LV_OPA_50 : LV_OPA_TRANSP,
         LV_PART_MAIN
     );
 }
@@ -78,11 +73,23 @@ static void action_icon_long_pressed(lv_event_t *event)
     lv_obj_t *image = lv_obj_get_child(button, 1);
     lv_indev_t *indev;
 
-    if (s_icon_drag.active || image == NULL) {
+    if (image == NULL) {
         return;
     }
 
-    indev = lv_indev_active();
+    /*
+     * Recover from a missed release/press-lost event before starting
+     * another icon drag. Only one icon can own the drag state at a time.
+     */
+    if (s_icon_drag.active && s_icon_drag.button != button) {
+        action_icon_finish(s_icon_drag.button);
+    }
+
+    if (s_icon_drag.active) {
+        return;
+    }
+
+    indev = lv_event_get_indev(event);
     if (indev == NULL) {
         return;
     }
@@ -116,7 +123,7 @@ static void action_icon_pressing(lv_event_t *event)
         return;
     }
 
-    indev = lv_indev_active();
+    indev = lv_event_get_indev(event);
     if (indev == NULL || indev != s_icon_drag.indev) {
         return;
     }
