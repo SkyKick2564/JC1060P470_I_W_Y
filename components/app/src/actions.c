@@ -68,11 +68,11 @@ static uint32_t action_icon_get_id(lv_obj_t *button)
     }
 
     name = lv_label_get_text(label);
-    if (name == NULL || name[0] == '\\0') {
+    if (name == NULL || name[0] == '\0') {
         return 0;
     }
 
-    while (*name != '\\0') {
+    while (*name != '\0') {
         hash ^= (uint8_t)*name++;
         hash *= 16777619UL;
     }
