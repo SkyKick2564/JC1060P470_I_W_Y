@@ -327,10 +327,7 @@ void create_screen_main() {
                             objects.media_btn = obj;
                             lv_obj_set_pos(obj, 672, 20);
                             lv_obj_set_size(obj, 130, 130);
-                            /* Keep the pointer captured while the icon is dragged. */
-                            lv_obj_add_flag(obj, LV_OBJ_FLAG_PRESS_LOCK);
                             lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_press_lost, LV_EVENT_PRESS_LOST, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
@@ -362,10 +359,7 @@ void create_screen_main() {
                             objects.setting_btn = obj;
                             lv_obj_set_pos(obj, 822, 20);
                             lv_obj_set_size(obj, 130, 130);
-                            /* Keep the pointer captured while the icon is dragged. */
-                            lv_obj_add_flag(obj, LV_OBJ_FLAG_PRESS_LOCK);
                             lv_obj_add_event_cb(obj, action_settings_released, LV_EVENT_RELEASED, (void *)0);
-                            lv_obj_add_event_cb(obj, action_settings_press_lost, LV_EVENT_PRESS_LOST, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressed, LV_EVENT_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_long_pressed, LV_EVENT_LONG_PRESSED, (void *)0);
                             lv_obj_add_event_cb(obj, action_settings_pressing, LV_EVENT_PRESSING, (void *)0);
