@@ -6,9 +6,6 @@
 #include "ui.h"
 #include "actions.h"
 
-static const lv_color_t ICON_DRAG_PRESSED_TEXT_COLOR = { .blue = 110, .green = 110, .red = 110 };
-static const lv_color_t ICON_DRAG_NORMAL_TEXT_COLOR = { .blue = 255, .green = 255, .red = 255 };
-
 static struct {
     lv_obj_t *button;
     lv_indev_t *indev;
@@ -152,7 +149,6 @@ static void icon_drag_remove_generated_handlers(lv_obj_t *button)
      */
     lv_obj_remove_event_cb(button, action_settings_pressed);
     lv_obj_remove_event_cb(button, action_settings_released);
-    lv_obj_remove_event_cb(button, action_settings_press_lost);
     lv_obj_remove_event_cb(button, action_settings_long_pressed);
     lv_obj_remove_event_cb(button, action_settings_pressing);
 }
