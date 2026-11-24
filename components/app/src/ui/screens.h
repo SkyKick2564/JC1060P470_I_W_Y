@@ -30,11 +30,11 @@ typedef struct _objects_t {
     lv_obj_t *txt_clock;
     lv_obj_t *content_container;
     lv_obj_t *home;
-    lv_obj_t *card_network;
+    lv_obj_t *wg_network;
     lv_obj_t *camera_btn;
     lv_obj_t *media_btn;
     lv_obj_t *setting_btn;
-    lv_obj_t *container_media;
+    lv_obj_t *wg_media;
     lv_obj_t *video_image;
     lv_obj_t *setting;
     lv_obj_t *header_container;

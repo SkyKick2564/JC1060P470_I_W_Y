@@ -286,9 +286,9 @@ void create_screen_main() {
                     {
                         lv_obj_t *parent_obj = obj;
                         {
-                            // card_network
+                            // wg_network
                             lv_obj_t *obj = lv_obj_create(parent_obj);
-                            objects.card_network = obj;
+                            objects.wg_network = obj;
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 432, 130);
                             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -421,9 +421,9 @@ void create_screen_main() {
                             }
                         }
                         {
-                            // container_media
+                            // wg_media
                             lv_obj_t *obj = lv_obj_create(parent_obj);
-                            objects.container_media = obj;
+                            objects.wg_media = obj;
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 432, 288);
                             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -641,11 +641,11 @@ void delete_screen_main() {
     objects.txt_clock = 0;
     objects.content_container = 0;
     objects.home = 0;
-    objects.card_network = 0;
+    objects.wg_network = 0;
     objects.camera_btn = 0;
     objects.media_btn = 0;
     objects.setting_btn = 0;
-    objects.container_media = 0;
+    objects.wg_media = 0;
     objects.video_image = 0;
     objects.setting = 0;
     objects.header_container = 0;
