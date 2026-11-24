@@ -371,62 +371,6 @@ static bool action_cell_in_rect(
         row < rect_row + row_span;
 }
 
-static home_widget_slot_t *action_widget_at_cell(
-    int32_t column,
-    int32_t row)
-{
-    for (size_t i = 0; i < HOME_OBJECT_CAPACITY; i++) {
-        home_widget_slot_t *widget = &s_home_widgets[i];
-        if (widget->object != NULL &&
-            action_cell_in_rect(
-                column, row, widget->column, widget->row,
-                widget->column_span, widget->row_span)) {
-            return widget;
-        }
-    }
-
-    return NULL;
-}
-
-static bool action_home_cell_is_free(
-    int32_t column,
-    int32_t row,
-    lv_obj_t *ignore_button)
-{
-    if (column < 0 || column >= APP_GRID_COLUMNS ||
-        row < 0 || row >= APP_GRID_ROWS) {
-        return false;
-    }
-
-    for (size_t i = 0; i < s_app_icon_count; i++) {
-        const app_icon_slot_t *icon = &s_app_icons[i];
-        if (icon->button != NULL && icon->button != ignore_button &&
-            icon->column == column && icon->row == row) {
-            return false;
-        }
-    }
-
-    return action_widget_at_cell(column, row) == NULL;
-}
-
-static bool action_home_find_free_cell(
-    lv_obj_t *button,
-    int32_t *column,
-    int32_t *row)
-{
-    for (int32_t y = 0; y < APP_GRID_ROWS; y++) {
-        for (int32_t x = 0; x < APP_GRID_COLUMNS; x++) {
-            if (action_home_cell_is_free(x, y, button)) {
-                *column = x;
-                *row = y;
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
 static esp_err_t action_home_layout_place_objects(void)
 {
     int32_t app_target_columns[APP_ICON_CAPACITY];
