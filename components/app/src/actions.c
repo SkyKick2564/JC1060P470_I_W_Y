@@ -184,8 +184,15 @@ static struct {
     lv_point_t start_point;
     lv_coord_t start_x;
     lv_coord_t start_y;
+    int32_t start_widget_column;
+    int32_t start_widget_row;
+    int32_t icon_columns[APP_ICON_CAPACITY];
+    int32_t icon_rows[APP_ICON_CAPACITY];
+    int32_t widget_columns[HOME_WIDGET_COUNT];
+    int32_t widget_rows[HOME_WIDGET_COUNT];
     int32_t grab_column_offset;
     int32_t grab_row_offset;
+    bool preview_valid;
     bool active;
 } s_widget_drag;
 
@@ -765,11 +772,56 @@ static bool action_widget_drop_rect(
     return true;
 }
 
+static void action_widget_drag_restore_snapshot(void)
+{
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        s_app_icons[i].column = s_widget_drag.icon_columns[i];
+        s_app_icons[i].row = s_widget_drag.icon_rows[i];
+        if (s_app_icons[i].button != NULL) {
+            action_icon_set_grid_cell(
+                s_app_icons[i].button,
+                s_app_icons[i].column,
+                s_app_icons[i].row);
+        }
+    }
+
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        if (s_home_widgets[i].object == NULL) {
+            continue;
+        }
+        action_widget_set_grid_cell(
+            &s_home_widgets[i],
+            s_widget_drag.widget_columns[i],
+            s_widget_drag.widget_rows[i]);
+    }
+
+    if (objects.home != NULL) {
+        lv_obj_update_layout(objects.home);
+    }
+}
+
+static void action_widget_drag_take_snapshot(void)
+{
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        s_widget_drag.icon_columns[i] = s_app_icons[i].column;
+        s_widget_drag.icon_rows[i] = s_app_icons[i].row;
+    }
+
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        s_widget_drag.widget_columns[i] = s_home_widgets[i].column;
+        s_widget_drag.widget_rows[i] = s_home_widgets[i].row;
+    }
+}
+
 static void action_widget_drag_finish(home_widget_slot_t *widget)
 {
     if (widget == NULL || !s_widget_drag.active ||
         s_widget_drag.widget != widget) {
         return;
+    }
+
+    if (!s_widget_drag.preview_valid) {
+        action_widget_drag_restore_snapshot();
     }
 
     lv_obj_set_style_transform_scale_x(
@@ -852,8 +904,12 @@ static void action_widget_drag_long_pressed(lv_event_t *event)
     s_widget_drag.indev = indev;
     s_widget_drag.start_x = lv_obj_get_x(object);
     s_widget_drag.start_y = lv_obj_get_y(object);
+    s_widget_drag.start_widget_column = widget->column;
+    s_widget_drag.start_widget_row = widget->row;
     s_widget_drag.grab_column_offset = column - widget->column;
     s_widget_drag.grab_row_offset = row - widget->row;
+    action_widget_drag_take_snapshot();
+    s_widget_drag.preview_valid = true;
     s_widget_drag.active = true;
 
     lv_obj_add_flag(object, LV_OBJ_FLAG_IGNORE_LAYOUT);
@@ -893,13 +949,31 @@ static void action_widget_drag_pressing(lv_event_t *event)
     }
 
     if (!action_icon_get_cell_from_point(point, &column, &row)) {
+        action_widget_drag_restore_snapshot();
+        s_widget_drag.preview_valid = false;
         return;
     }
 
     column -= s_widget_drag.grab_column_offset;
     row -= s_widget_drag.grab_row_offset;
-    if (column != widget->column || row != widget->row) {
-        (void)action_widget_drop_rect(widget, column, row);
+
+    /*
+     * Keep the current preview while the pointer remains in its cell.
+     * When it enters another cell, rebuild the preview from the original
+     * layout so items displaced by the previous preview return to their
+     * original positions before the new candidate is evaluated.
+     */
+    if (s_widget_drag.preview_valid &&
+        column == widget->column && row == widget->row) {
+        return;
+    }
+
+    action_widget_drag_restore_snapshot();
+    if (action_widget_drop_rect(widget, column, row)) {
+        s_widget_drag.preview_valid = true;
+    } else {
+        action_widget_drag_restore_snapshot();
+        s_widget_drag.preview_valid = false;
     }
 }
 
