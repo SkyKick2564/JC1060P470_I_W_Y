@@ -678,7 +678,8 @@ static bool action_layout_drag_preview(
             widget_rows[i] = row;
             continue;
         }
-        if (s_home_widgets[i].object == NULL) {
+        if (s_home_widgets[i].object == NULL ||
+            widget_columns[i] < 0 || widget_rows[i] < 0) {
             continue;
         }
 
