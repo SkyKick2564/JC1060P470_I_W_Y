@@ -165,11 +165,7 @@ static void action_control_center_finish(lv_event_t *event)
     lv_obj_t *overlay = objects.control_center_overlay;
     if (overlay == NULL || s_control_center_drag.indev == NULL) {
         s_control_center_drag.active = false;
-        s_widget_drag.widget = NULL;
-    s_widget_drag.indev = NULL;
-    s_widget_drag.active = false;
-
-    s_control_center_drag.target = NULL;
+        s_control_center_drag.target = NULL;
         s_control_center_drag.indev = NULL;
         return;
     }
@@ -224,24 +220,17 @@ static esp_err_t action_control_center_attach(lv_obj_t *object)
 
 esp_err_t control_center_actions_init(void)
 {
+    esp_err_t err;
+
     s_control_center_drag.target = NULL;
     s_control_center_drag.indev = NULL;
     s_control_center_drag.active = false;
     s_control_center_opa_initialized = false;
 
-    for (size_t i = 0; i < s_app_icon_count; i++) {
-        err = action_icon_attach(s_app_icons[i].button);
-        if (err != ESP_OK) return err;
-    }
-
-    for (size_t i = 0; i < s_home_widget_count; i++) {
-        err = action_widget_drag_attach(s_home_widgets[i].object);
-        if (err != ESP_OK) return err;
-    }
-
     err = action_control_center_attach(objects.control_center_overlay);
     if (err != ESP_OK) return err;
     err = action_control_center_attach(objects.control_center_touch_area);
     if (err != ESP_OK) return err;
+
     return ESP_OK;
 }
