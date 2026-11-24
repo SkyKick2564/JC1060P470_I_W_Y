@@ -1,3 +1,5 @@
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/eez_object_names.cmake")
+
 idf_component_register(
     SRCS
         "src/app.c"
