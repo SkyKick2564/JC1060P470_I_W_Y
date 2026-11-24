@@ -1,4 +1,18 @@
 dependencies:
+  espressif/adc_battery_estimation:
+    component_hash: 4204c2b46c2568fa07c62764b1830fb42709403a7eb5bcbba2535fcd0997b633
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.3.0
   espressif/cjson:
     component_hash: e788323270d90738662d66fffa910bfe1fba019bba087f01557e70c40485b469
     dependencies:
@@ -436,6 +450,7 @@ dependencies:
       type: service
     version: 9.5.0
 direct_dependencies:
+- espressif/adc_battery_estimation
 - espressif/cjson
 - espressif/esp_hosted
 - espressif/esp_lcd_jd9165
@@ -443,6 +458,6 @@ direct_dependencies:
 - espressif/esp_lvgl_port
 - guition-jc/guition_boards
 - lvgl/lvgl
-manifest_hash: df48f87e18af79a97f2620f1f4ce75b192d69560299daf8989e21f1ca2dc1115
+manifest_hash: b3e9860bfad9e1a41be5990451856ad9f690cb24a8a0218c1984f30224f37efd
 target: esp32p4
 version: 3.0.0

@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "board_battery.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_INCLUDE_DIRS
+        "private"
+    REQUIRES
+        adc_battery_estimation
+        freertos
+        log
+)

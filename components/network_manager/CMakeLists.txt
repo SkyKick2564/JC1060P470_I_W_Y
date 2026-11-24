@@ -21,5 +21,6 @@ idf_component_register(
         esp_http_client
         esp_wifi
         freertos
+        log
         nvs_flash
 )

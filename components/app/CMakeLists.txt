@@ -67,4 +67,6 @@ idf_component_register(
         esp_board_manager
         esp_lcd_touch
         nvs_flash
+        freertos
+        log
 )
