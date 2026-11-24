@@ -803,15 +803,9 @@ static void action_widget_drag_pressed(lv_event_t *event)
 {
     lv_indev_t *indev = lv_event_get_indev(event);
 
-    if (s_widget_drag.active) {
-        if (indev == NULL || indev != s_widget_drag.indev) {
-            return;
-        }
-        action_widget_drag_finish(s_widget_drag.widget);
-    }
-
-    /* Do not let a second pointer interrupt an active icon drag. */
-    if (s_icon_drag.active || indev == NULL) {
+    /* One active drag owns the entire Home screen until it is released. */
+    if (indev == NULL || s_icon_drag.active || s_widget_drag.active) {
+        lv_event_stop_processing(event);
         return;
     }
 }
@@ -824,7 +818,9 @@ static void action_widget_drag_long_pressed(lv_event_t *event)
     int32_t column;
     int32_t row;
 
-    if (indev == NULL || s_icon_drag.active) {
+    /* Never allow another pointer or object to start a second drag. */
+    if (indev == NULL || s_icon_drag.active || s_widget_drag.active) {
+        lv_event_stop_processing(event);
         return;
     }
 
@@ -836,13 +832,6 @@ static void action_widget_drag_long_pressed(lv_event_t *event)
     }
     if (widget == NULL) {
         return;
-    }
-
-    if (s_widget_drag.active) {
-        if (s_widget_drag.indev != indev) {
-            return;
-        }
-        action_widget_drag_finish(s_widget_drag.widget);
     }
 
     lv_obj_remove_local_style_prop(object, LV_STYLE_X, LV_PART_MAIN);
@@ -942,6 +931,13 @@ static void action_widget_drag_press_lost(lv_event_t *event)
     action_widget_drag_released(event);
 }
 
+static void action_widget_block_click_during_icon_drag(lv_event_t *event)
+{
+    if (s_icon_drag.active) {
+        lv_event_stop_processing(event);
+    }
+}
+
 static void action_widget_enable_event_bubble(lv_obj_t *object)
 {
     uint32_t child_count;
@@ -957,6 +953,9 @@ static void action_widget_enable_event_bubble(lv_obj_t *object)
             continue;
         }
         lv_obj_add_flag(child, LV_OBJ_FLAG_EVENT_BUBBLE);
+        lv_obj_add_event_cb(
+            child, action_widget_block_click_during_icon_drag,
+            LV_EVENT_CLICKED, NULL);
         action_widget_enable_event_bubble(child);
     }
 }
@@ -972,6 +971,9 @@ static esp_err_t action_widget_drag_attach(lv_obj_t *object)
      * controls to this root. Short clicks still reach their original child.
      */
     lv_obj_add_flag(object, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_event_cb(
+        object, action_widget_block_click_during_icon_drag,
+        LV_EVENT_CLICKED, NULL);
     action_widget_enable_event_bubble(object);
     lv_obj_add_event_cb(
         object, action_widget_drag_pressed, LV_EVENT_PRESSED, NULL);
@@ -1083,11 +1085,10 @@ static void action_icon_pressed(lv_event_t *event)
      * before the next long-press can reuse its old anchor coordinates.
      * Do not let a second pointer steal an active drag.
      */
-    if (s_icon_drag.active) {
-        if (indev == NULL || indev != s_icon_drag.indev) {
-            return;
-        }
-        action_icon_finish(s_icon_drag.button);
+    /* Ignore all additional presses while any App/Widget drag is active. */
+    if (indev == NULL || s_icon_drag.active || s_widget_drag.active) {
+        lv_event_stop_processing(event);
+        return;
     }
 
     s_icon_drag.long_pressed = false;
@@ -1100,7 +1101,7 @@ static void action_icon_clicked(lv_event_t *event)
      * LVGL sends LV_EVENT_CLICKED on release even after LONG_PRESSED.
      * A long press is the drag gesture, not a normal click.
      */
-    if (s_icon_drag.long_pressed) {
+    if (s_icon_drag.long_pressed || s_icon_drag.active || s_widget_drag.active) {
         lv_event_stop_processing(event);
     }
 }
@@ -1117,7 +1118,8 @@ static void action_icon_long_pressed(lv_event_t *event)
     }
 
     indev = lv_event_get_indev(event);
-    if (indev == NULL) {
+    if (indev == NULL || s_icon_drag.active || s_widget_drag.active) {
+        lv_event_stop_processing(event);
         return;
     }
 
