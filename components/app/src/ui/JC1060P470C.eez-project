@@ -1780,6 +1780,62 @@
                       },
                       "group": "",
                       "groupIndex": 0
+                    },
+                    {
+                      "objID": "37978747-90fe-402b-f3d5-a386a2ef684d",
+                      "type": "LVGLContainerWidget",
+                      "left": 0,
+                      "top": 0,
+                      "width": 144,
+                      "height": 288,
+                      "customInputs": [],
+                      "customOutputs": [],
+                      "style": {
+                        "objID": "78b16770-8d46-4ca9-ff1a-8eee682ddce8",
+                        "useStyle": "default",
+                        "conditionalStyles": [],
+                        "childStyles": []
+                      },
+                      "timeline": [],
+                      "eventHandlers": [],
+                      "identifier": "wg_test3",
+                      "leftUnit": "px",
+                      "topUnit": "px",
+                      "widthUnit": "px",
+                      "heightUnit": "px",
+                      "children": [],
+                      "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                      "hiddenFlagType": "literal",
+                      "clickableFlag": true,
+                      "clickableFlagType": "literal",
+                      "flagScrollbarMode": "",
+                      "flagScrollDirection": "",
+                      "scrollSnapX": "",
+                      "scrollSnapY": "",
+                      "checkedStateType": "literal",
+                      "disabledStateType": "literal",
+                      "states": "",
+                      "localStyles": {
+                        "objID": "ab49a890-99da-43fc-a9c0-f9bae49adef3",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "grid_cell_column_pos": 5,
+                              "grid_cell_column_span": 1,
+                              "grid_cell_x_align": "CENTER",
+                              "grid_cell_row_pos": 1,
+                              "grid_cell_row_span": 2,
+                              "grid_cell_y_align": "CENTER",
+                              "bg_color": "#0CEB54",
+                              "width": 144,
+                              "height": 288,
+                              "bg_opa": 255
+                            }
+                          }
+                        }
+                      },
+                      "group": "",
+                      "groupIndex": 0
                     }
                   ],
                   "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SNAPPABLE",
