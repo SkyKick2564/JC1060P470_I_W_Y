@@ -35,6 +35,9 @@ typedef struct {
     int32_t row;
     int32_t column_span;
     int32_t row_span;
+    int32_t default_column;
+    int32_t default_row;
+    bool restored;
 } home_widget_slot_t;
 
 static app_icon_slot_t s_app_icons[APP_ICON_CAPACITY];
@@ -44,7 +47,7 @@ static size_t s_home_widget_count;
 
 static void action_icon_set_grid_cell(lv_obj_t *button, int32_t column, int32_t row);
 static void action_widget_set_grid_cell(home_widget_slot_t *widget, int32_t column, int32_t row);
-static void action_home_layout_place_new_icons(void);
+static esp_err_t action_home_layout_place_objects(void);
 
 
 
@@ -120,8 +123,9 @@ static void action_home_layout_restore(void)
         for (size_t j = 0; j < s_home_widget_count; j++) {
             if (s_home_widgets[j].identifier != NULL &&
                 strcmp(s_home_widgets[j].identifier, item->identifier) == 0) {
-                action_widget_set_grid_cell(
-                    &s_home_widgets[j], item->column, item->row);
+                s_home_widgets[j].column = item->column;
+                s_home_widgets[j].row = item->row;
+                s_home_widgets[j].restored = true;
             }
         }
     }
@@ -415,49 +419,117 @@ static bool action_home_find_free_cell(
     return false;
 }
 
-static void action_home_layout_place_new_icons(void)
+static esp_err_t action_home_layout_place_objects(void)
 {
-    /*
-     * New shortcuts have no NVS entry. Keep their EEZ Grid cell as the
-     * preferred default, but temporarily release all new shortcuts from
-     * occupancy checks so duplicate defaults can be resolved deterministically.
-     * Restored shortcuts and widgets remain reserved at their saved positions.
-     */
-    for (size_t i = 0; i < s_app_icon_count; i++) {
-        if (!s_app_icons[i].restored) {
-            s_app_icons[i].column = -1;
-            s_app_icons[i].row = -1;
-        }
+    int32_t app_target_columns[APP_ICON_CAPACITY];
+    int32_t app_target_rows[APP_ICON_CAPACITY];
+    int32_t widget_target_columns[HOME_OBJECT_CAPACITY];
+    int32_t widget_target_rows[HOME_OBJECT_CAPACITY];
+
+    if (s_app_icon_count + s_home_widget_count > HOME_LAYOUT_ITEM_CAPACITY) {
+        return ESP_ERR_NO_MEM;
     }
 
+    /* Preserve each object's EEZ default or restored NVS position as its
+     * preferred target, then release the whole grid for one unified placement. */
     for (size_t i = 0; i < s_app_icon_count; i++) {
-        app_icon_slot_t *icon = &s_app_icons[i];
-        int32_t column = icon->default_column;
-        int32_t row = icon->default_row;
+        app_target_columns[i] = s_app_icons[i].restored
+            ? s_app_icons[i].column : s_app_icons[i].default_column;
+        app_target_rows[i] = s_app_icons[i].restored
+            ? s_app_icons[i].row : s_app_icons[i].default_row;
+        s_app_icons[i].column = -1;
+        s_app_icons[i].row = -1;
+    }
+    for (size_t i = 0; i < s_home_widget_count; i++) {
+        widget_target_columns[i] = s_home_widgets[i].restored
+            ? s_home_widgets[i].column : s_home_widgets[i].default_column;
+        widget_target_rows[i] = s_home_widgets[i].restored
+            ? s_home_widgets[i].row : s_home_widgets[i].default_row;
+        s_home_widgets[i].column = -1;
+        s_home_widgets[i].row = -1;
+    }
 
-        if (icon->restored) {
+    /* Process in EEZ child order. Each preferred rectangle gets priority;
+     * if occupied, the shared layout planner relocates the colliding objects
+     * while preserving their complete widget footprints. */
+    uint32_t child_count = lv_obj_get_child_cnt(objects.home);
+    for (uint32_t child_index = 0; child_index < child_count; child_index++) {
+        lv_obj_t *child = lv_obj_get_child(objects.home, (int32_t)child_index);
+        bool placed = false;
+        int32_t preferred_column = -1;
+        int32_t preferred_row = -1;
+        int32_t preferred_span_columns = 1;
+        int32_t preferred_span_rows = 1;
+        app_icon_slot_t *icon = NULL;
+        home_widget_slot_t *widget = NULL;
+
+        for (size_t i = 0; i < s_app_icon_count; i++) {
+            if (s_app_icons[i].button == child) {
+                icon = &s_app_icons[i];
+                preferred_column = app_target_columns[i];
+                preferred_row = app_target_rows[i];
+                break;
+            }
+        }
+        if (icon == NULL) {
+            for (size_t i = 0; i < s_home_widget_count; i++) {
+                if (s_home_widgets[i].object == child) {
+                    widget = &s_home_widgets[i];
+                    preferred_column = widget_target_columns[i];
+                    preferred_row = widget_target_rows[i];
+                    preferred_span_columns = widget->column_span;
+                    preferred_span_rows = widget->row_span;
+                    break;
+                }
+            }
+        }
+        if (icon == NULL && widget == NULL) {
             continue;
         }
 
-        if (!action_home_cell_is_free(column, row, icon->button) &&
-            !action_home_find_free_cell(icon->button, &column, &row)) {
-            /*
-             * The 6x3 Grid is full. Keep the EEZ-assigned default rather than
-             * assigning an invalid Grid cell; the project must provide a free
-             * cell before adding more shortcuts than the Grid can contain.
-             */
-            column = icon->default_column;
-            row = icon->default_row;
+        action_layout_drag_take_snapshot();
+        if (preferred_column >= 0 && preferred_row >= 0 &&
+            preferred_column + preferred_span_columns <= APP_GRID_COLUMNS &&
+            preferred_row + preferred_span_rows <= APP_GRID_ROWS) {
+            placed = action_layout_drag_preview(
+                icon != NULL ? icon->button : NULL,
+                widget,
+                preferred_column,
+                preferred_row);
         }
 
-        icon->column = column;
-        icon->row = row;
-        action_icon_set_grid_cell(icon->button, column, row);
+        /* If the EEZ/NVS target cannot be made available, try every legal
+         * rectangle. No object is committed at an invalid or overlapping cell. */
+        if (!placed) {
+            action_layout_drag_restore_snapshot();
+            for (int32_t row = 0; row <= APP_GRID_ROWS - preferred_span_rows && !placed; row++) {
+                for (int32_t column = 0;
+                     column <= APP_GRID_COLUMNS - preferred_span_columns && !placed;
+                     column++) {
+                    if (column == preferred_column && row == preferred_row) {
+                        continue;
+                    }
+                    action_layout_drag_take_snapshot();
+                    placed = action_layout_drag_preview(
+                        icon != NULL ? icon->button : NULL,
+                        widget,
+                        column,
+                        row);
+                    if (!placed) {
+                        action_layout_drag_restore_snapshot();
+                    }
+                }
+            }
+        }
+
+        if (!placed) {
+            action_layout_drag_restore_snapshot();
+            return ESP_ERR_NO_MEM;
+        }
     }
 
-    if (objects.home != NULL) {
-        lv_obj_update_layout(objects.home);
-    }
+    lv_obj_update_layout(objects.home);
+    return ESP_OK;
 }
 
 static void action_widget_set_grid_cell(
@@ -625,7 +697,7 @@ static bool action_layout_drag_preview(
     for (size_t i = 0; i < s_app_icon_count; i++) {
         if (s_app_icons[i].button == NULL ||
             s_app_icons[i].button == dragged_icon ||
-            displaced_icons[i]) {
+            displaced_icons[i] || icon_columns[i] < 0 || icon_rows[i] < 0) {
             continue;
         }
         int32_t x = icon_columns[i];
@@ -640,7 +712,7 @@ static bool action_layout_drag_preview(
     for (size_t i = 0; i < HOME_OBJECT_CAPACITY; i++) {
         if (s_home_widgets[i].object == NULL ||
             &s_home_widgets[i] == dragged_widget ||
-            displaced_widgets[i]) {
+            displaced_widgets[i] || widget_columns[i] < 0 || widget_rows[i] < 0) {
             continue;
         }
         int32_t x0 = widget_columns[i];
@@ -1416,6 +1488,9 @@ static void action_widget_discover_home_widgets(void)
             child, LV_PART_MAIN);
         if (widget->column_span < 1) widget->column_span = 1;
         if (widget->row_span < 1) widget->row_span = 1;
+        widget->default_column = widget->column;
+        widget->default_row = widget->row;
+        widget->restored = false;
     }
 }
 
@@ -1675,7 +1750,9 @@ esp_err_t app_actions_init(void)
     }
 
     action_home_layout_restore();
-    action_home_layout_place_new_icons();
+    err = action_home_layout_place_objects();
+    if (err != ESP_OK) return err;
+    action_home_layout_save();
 
     s_control_center_drag.target = NULL;
     s_control_center_drag.indev = NULL;
