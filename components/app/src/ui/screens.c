@@ -258,6 +258,7 @@ void create_screen_main() {
                     // home
                     lv_obj_t *obj = lv_obj_create(parent_obj);
                     objects.home = obj;
+                    lv_obj_set_name(obj, "home");
                     lv_obj_set_pos(obj, 0, 0);
                     lv_obj_set_size(obj, 1024, 546);
                     lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -289,6 +290,7 @@ void create_screen_main() {
                             // wg_network
                             lv_obj_t *obj = lv_obj_create(parent_obj);
                             objects.wg_network = obj;
+                    lv_obj_set_name(obj, "wg_network");
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 432, 130);
                             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -325,6 +327,7 @@ void create_screen_main() {
                             // camera_btn
                             lv_obj_t *obj = lv_button_create(parent_obj);
                             objects.camera_btn = obj;
+                    lv_obj_set_name(obj, "camera_btn");
                             lv_obj_set_pos(obj, 1546, 70);
                             lv_obj_set_size(obj, 144, 144);
                             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -358,6 +361,7 @@ void create_screen_main() {
                             // media_btn
                             lv_obj_t *obj = lv_button_create(parent_obj);
                             objects.media_btn = obj;
+                    lv_obj_set_name(obj, "media_btn");
                             lv_obj_set_pos(obj, 672, 20);
                             lv_obj_set_size(obj, 144, 144);
                             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -391,6 +395,7 @@ void create_screen_main() {
                             // setting_btn
                             lv_obj_t *obj = lv_button_create(parent_obj);
                             objects.setting_btn = obj;
+                    lv_obj_set_name(obj, "setting_btn");
                             lv_obj_set_pos(obj, 822, 20);
                             lv_obj_set_size(obj, 144, 144);
                             lv_obj_set_style_bg_opa(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -424,6 +429,7 @@ void create_screen_main() {
                             // wg_media
                             lv_obj_t *obj = lv_obj_create(parent_obj);
                             objects.wg_media = obj;
+                    lv_obj_set_name(obj, "wg_media");
                             lv_obj_set_pos(obj, 0, 0);
                             lv_obj_set_size(obj, 432, 288);
                             lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
