@@ -1644,7 +1644,6 @@ esp_err_t app_actions_init(void)
 
     action_home_layout_restore();
     action_home_layout_place_new_icons();
-    action_home_layout_save();
 
     s_control_center_drag.target = NULL;
     s_control_center_drag.indev = NULL;
