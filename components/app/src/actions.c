@@ -591,6 +591,9 @@ static bool action_widget_drop_rect(
     size_t destination_count = 0;
     size_t old_capacity = (size_t)widget->column_span *
         (size_t)widget->row_span;
+    home_widget_slot_t *displaced_widget = NULL;
+    int32_t displaced_widget_column = -1;
+    int32_t displaced_widget_row = -1;
 
     if (column < 0 || row < 0 ||
         column + widget->column_span > APP_GRID_COLUMNS ||
@@ -602,20 +605,35 @@ static bool action_widget_drop_rect(
         return true;
     }
 
-    /* A dragged widget may cover apps, but it may not cover another widget. */
+    /*
+     * Find a widget covered by the destination. Temporarily reserve the
+     * dragged widget's destination while searching for a new rectangle for
+     * the covered widget. The actual positions are changed only after every
+     * part of the drop has been validated.
+     */
     for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         home_widget_slot_t *other = &s_home_widgets[i];
         if (other == widget || other->object == NULL) {
             continue;
         }
-        for (int32_t y = row; y < row + widget->row_span; y++) {
+
+        bool overlaps = false;
+        for (int32_t y = row; y < row + widget->row_span && !overlaps; y++) {
             for (int32_t x = column; x < column + widget->column_span; x++) {
                 if (action_cell_in_rect(
                         x, y, other->column, other->row,
                         other->column_span, other->row_span)) {
-                    return false;
+                    overlaps = true;
+                    break;
                 }
             }
+        }
+
+        if (overlaps) {
+            if (displaced_widget != NULL) {
+                return false;
+            }
+            displaced_widget = other;
         }
     }
 
@@ -686,6 +704,44 @@ static bool action_widget_drop_rect(
         return false;
     }
 
+    /*
+     * Search for a new location for the covered widget while treating the
+     * dragged widget as already occupying its destination. The old footprint
+     * of the dragged widget is available for the covered widget to use.
+     */
+    if (displaced_widget != NULL) {
+        int32_t old_column = widget->column;
+        int32_t old_row = widget->row;
+
+        widget->column = column;
+        widget->row = row;
+        bool found = action_widget_find_free_rect(
+            displaced_widget, -1, -1,
+            &displaced_widget_column, &displaced_widget_row);
+        widget->column = old_column;
+        widget->row = old_row;
+
+        if (!found) {
+            return false;
+        }
+
+        /* Do not place the covered widget over shortcuts being displaced. */
+        for (int32_t y = displaced_widget_row;
+             y < displaced_widget_row + displaced_widget->row_span; y++) {
+            for (int32_t x = displaced_widget_column;
+                 x < displaced_widget_column + displaced_widget->column_span;
+                 x++) {
+                for (size_t i = 0; i < destination_count; i++) {
+                    if (destination_columns[i] == x &&
+                        destination_rows[i] == y) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    /* All destinations are valid; now commit the complete move. */
     for (size_t i = 0; i < displaced_count; i++) {
         displaced[i]->column = destination_columns[i];
         displaced[i]->row = destination_rows[i];
@@ -693,6 +749,13 @@ static bool action_widget_drop_rect(
             displaced[i]->button,
             displaced[i]->column,
             displaced[i]->row);
+    }
+
+    if (displaced_widget != NULL) {
+        action_widget_set_grid_cell(
+            displaced_widget,
+            displaced_widget_column,
+            displaced_widget_row);
     }
 
     action_widget_set_grid_cell(widget, column, row);
