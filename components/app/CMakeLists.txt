@@ -39,6 +39,8 @@ idf_component_register(
         "src/app.c"
         "src/app_touch_multi.c"
         "src/actions.c"
+        "src/home_actions.c"
+        "src/control_center_actions.c"
         "src/ui/ui.c"
         "src/ui/screens.c"
         "src/ui/styles.c"
