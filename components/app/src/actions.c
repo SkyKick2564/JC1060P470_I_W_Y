@@ -9,6 +9,7 @@
 
 #include "lvgl.h"
 #include "ui.h"
+#include "eez_object_map.h"
 
 #define APP_GRID_COLUMNS 6
 #define APP_GRID_ROWS    3
