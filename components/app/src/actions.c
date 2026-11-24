@@ -1483,6 +1483,34 @@ static void action_home_discover_objects(void)
     }
 }
 
+static bool action_home_object_names_are_unique(void)
+{
+    lv_obj_t *objects_to_check[APP_ICON_CAPACITY + HOME_WIDGET_CAPACITY];
+    size_t count = 0;
+
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        objects_to_check[count++] = s_app_icons[i].button;
+    }
+    for (size_t i = 0; i < s_home_widget_count; i++) {
+        objects_to_check[count++] = s_home_widgets[i].object;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        const char *name_i = lv_obj_get_name(objects_to_check[i]);
+        uint32_t id_i = action_home_object_get_id(objects_to_check[i]);
+        if (name_i == NULL || name_i[0] == '\0' || id_i == 0) return false;
+
+        for (size_t j = i + 1; j < count; j++) {
+            const char *name_j = lv_obj_get_name(objects_to_check[j]);
+            if (name_j == NULL || strcmp(name_i, name_j) == 0 ||
+                id_i == action_home_object_get_id(objects_to_check[j])) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /* Control Center drag and snap behavior */
 #define CONTROL_CENTER_HIDDEN_Y       (-600)
 #define CONTROL_CENTER_OPEN_Y         (0)
@@ -1721,6 +1749,9 @@ esp_err_t app_actions_init(void)
     action_home_discover_objects();
     if (s_app_icon_count == 0 && s_home_widget_count == 0) {
         return ESP_ERR_INVALID_STATE;
+    }
+    if (!action_home_object_names_are_unique()) {
+        return ESP_ERR_INVALID_ARG;
     }
     action_home_layout_restore();
     action_home_layout_place_new_widgets();
