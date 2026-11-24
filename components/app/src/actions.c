@@ -520,12 +520,38 @@ static bool action_layout_drag_preview(
         ? dragged_widget->column_span : 1;
     int32_t span_rows = dragged_widget != NULL
         ? dragged_widget->row_span : 1;
+    int32_t origin_column = -1;
+    int32_t origin_row = -1;
+    int32_t origin_span_columns = span_columns;
+    int32_t origin_span_rows = span_rows;
 
     if ((dragged_icon == NULL) == (dragged_widget == NULL) ||
         column < 0 || row < 0 ||
         column + span_columns > APP_GRID_COLUMNS ||
         row + span_rows > APP_GRID_ROWS) {
         return false;
+    }
+
+    if (dragged_widget != NULL) {
+        size_t widget_index = (size_t)(dragged_widget - s_home_widgets);
+        if (widget_index >= HOME_WIDGET_COUNT) {
+            return false;
+        }
+        origin_column = s_layout_drag_snapshot.widget_columns[widget_index];
+        origin_row = s_layout_drag_snapshot.widget_rows[widget_index];
+    } else {
+        bool found_dragged_icon = false;
+        for (size_t i = 0; i < s_app_icon_count; i++) {
+            if (s_app_icons[i].button == dragged_icon) {
+                origin_column = s_layout_drag_snapshot.icon_columns[i];
+                origin_row = s_layout_drag_snapshot.icon_rows[i];
+                found_dragged_icon = true;
+                break;
+            }
+        }
+        if (!found_dragged_icon) {
+            return false;
+        }
     }
 
     for (size_t i = 0; i < s_app_icon_count; i++) {
@@ -615,36 +641,49 @@ static bool action_layout_drag_preview(
 
         home_widget_slot_t *moving = &s_home_widgets[i];
         bool found = false;
-        for (int32_t y = 0;
-             y <= APP_GRID_ROWS - moving->row_span && !found; y++) {
-            for (int32_t x = 0;
-                 x <= APP_GRID_COLUMNS - moving->column_span; x++) {
-                bool free_rect = true;
-                for (int32_t yy = y;
-                     yy < y + moving->row_span && free_rect; yy++) {
-                    for (int32_t xx = x;
-                         xx < x + moving->column_span; xx++) {
-                        if (occupied[yy][xx]) {
-                            free_rect = false;
-                            break;
+        for (int32_t pass = 0; pass < 2 && !found; pass++) {
+            for (int32_t y = 0;
+                 y <= APP_GRID_ROWS - moving->row_span && !found; y++) {
+                for (int32_t x = 0;
+                     x <= APP_GRID_COLUMNS - moving->column_span; x++) {
+                    bool inside_origin =
+                        x >= origin_column && y >= origin_row &&
+                        x + moving->column_span <=
+                            origin_column + origin_span_columns &&
+                        y + moving->row_span <=
+                            origin_row + origin_span_rows;
+                    if ((pass == 0 && !inside_origin) ||
+                        (pass == 1 && inside_origin)) {
+                        continue;
+                    }
+
+                    bool free_rect = true;
+                    for (int32_t yy = y;
+                         yy < y + moving->row_span && free_rect; yy++) {
+                        for (int32_t xx = x;
+                             xx < x + moving->column_span; xx++) {
+                            if (occupied[yy][xx]) {
+                                free_rect = false;
+                                break;
+                            }
                         }
                     }
-                }
-                if (!free_rect) {
-                    continue;
-                }
-
-                widget_columns[i] = x;
-                widget_rows[i] = y;
-                for (int32_t yy = y;
-                     yy < y + moving->row_span; yy++) {
-                    for (int32_t xx = x;
-                         xx < x + moving->column_span; xx++) {
-                        occupied[yy][xx] = true;
+                    if (!free_rect) {
+                        continue;
                     }
+
+                    widget_columns[i] = x;
+                    widget_rows[i] = y;
+                    for (int32_t yy = y;
+                         yy < y + moving->row_span; yy++) {
+                        for (int32_t xx = x;
+                             xx < x + moving->column_span; xx++) {
+                            occupied[yy][xx] = true;
+                        }
+                    }
+                    found = true;
+                    break;
                 }
-                found = true;
-                break;
             }
         }
         if (!found) {
@@ -659,9 +698,20 @@ static bool action_layout_drag_preview(
         }
 
         bool found = false;
-        for (int32_t y = 0; y < APP_GRID_ROWS && !found; y++) {
-            for (int32_t x = 0; x < APP_GRID_COLUMNS; x++) {
-                if (!occupied[y][x]) {
+        for (int32_t pass = 0; pass < 2 && !found; pass++) {
+            for (int32_t y = 0; y < APP_GRID_ROWS && !found; y++) {
+                for (int32_t x = 0; x < APP_GRID_COLUMNS; x++) {
+                    bool inside_origin =
+                        x >= origin_column &&
+                        x < origin_column + origin_span_columns &&
+                        y >= origin_row &&
+                        y < origin_row + origin_span_rows;
+                    if ((pass == 0 && !inside_origin) ||
+                        (pass == 1 && inside_origin) ||
+                        occupied[y][x]) {
+                        continue;
+                    }
+
                     icon_columns[i] = x;
                     icon_rows[i] = y;
                     occupied[y][x] = true;
