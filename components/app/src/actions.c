@@ -81,6 +81,75 @@ static uint32_t action_home_object_get_id(lv_obj_t *object)
     return hash != 0 ? hash : 1;
 }
 
+#define HOME_LAYOUT_LEGACY_VERSION 1
+#define HOME_LAYOUT_LEGACY_WIDGET_BASE 0xF0000000UL
+
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t count;
+    home_layout_item_t items[APP_ICON_CAPACITY + 2];
+} home_layout_legacy_blob_t;
+
+static uint32_t action_icon_get_legacy_id(lv_obj_t *button)
+{
+    lv_obj_t *label = lv_obj_get_child(button, 0);
+    const char *text;
+    uint32_t hash = 2166136261UL;
+
+    if (label == NULL || !lv_obj_check_type(label, &lv_label_class)) return 0;
+    text = lv_label_get_text(label);
+    if (text == NULL || text[0] == '\0') return 0;
+
+    while (*text != '\0') {
+        hash ^= (uint8_t)*text++;
+        hash *= 16777619UL;
+    }
+    return hash != 0 ? hash : 1;
+}
+
+static void action_home_layout_restore_legacy(void)
+{
+    nvs_handle_t nvs;
+    home_layout_legacy_blob_t legacy;
+    size_t legacy_size = sizeof(legacy);
+
+    if (nvs_open(HOME_LAYOUT_NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) return;
+    esp_err_t err = nvs_get_blob(nvs, HOME_LAYOUT_NVS_KEY, &legacy, &legacy_size);
+    nvs_close(nvs);
+
+    if (err != ESP_OK || legacy_size != sizeof(legacy) ||
+        legacy.magic != HOME_LAYOUT_MAGIC ||
+        legacy.version != HOME_LAYOUT_LEGACY_VERSION ||
+        legacy.count > (APP_ICON_CAPACITY + 2)) {
+        return;
+    }
+
+    for (size_t i = 0; i < legacy.count; i++) {
+        const home_layout_item_t *item = &legacy.items[i];
+        if (item->column < 0 || item->column >= APP_GRID_COLUMNS ||
+            item->row < 0 || item->row >= APP_GRID_ROWS) continue;
+
+        for (size_t j = 0; j < s_app_icon_count; j++) {
+            if (action_icon_get_legacy_id(s_app_icons[j].button) == item->id) {
+                s_app_icons[j].column = item->column;
+                s_app_icons[j].row = item->row;
+                s_app_icons[j].restored = true;
+                action_icon_set_grid_cell(s_app_icons[j].button, item->column, item->row);
+            }
+        }
+
+        for (size_t j = 0; j < s_home_widget_count && j < 2; j++) {
+            if (item->id == HOME_LAYOUT_LEGACY_WIDGET_BASE + j) {
+                s_home_widgets[j].column = item->column;
+                s_home_widgets[j].row = item->row;
+                s_home_widgets[j].restored = true;
+                action_widget_set_grid_cell(&s_home_widgets[j], item->column, item->row);
+            }
+        }
+    }
+}
+
 static void action_home_layout_restore(void)
 {
     nvs_handle_t nvs;
@@ -98,6 +167,7 @@ static void action_home_layout_restore(void)
         blob.magic != HOME_LAYOUT_MAGIC ||
         blob.version != HOME_LAYOUT_VERSION ||
         blob.count > (APP_ICON_CAPACITY + HOME_WIDGET_CAPACITY)) {
+        action_home_layout_restore_legacy();
         return;
     }
 
