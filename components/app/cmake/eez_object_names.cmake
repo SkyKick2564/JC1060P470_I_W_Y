@@ -1,4 +1,4 @@
-set(_eez_screens_file "${CMAKE_CURRENT_LIST_DIR}/src/ui/screens.c")
+set(_eez_screens_file "${CMAKE_CURRENT_LIST_DIR}/../src/ui/screens.c")
 
 if(EXISTS "${_eez_screens_file}")
     file(READ "${_eez_screens_file}" _eez_screens_content)
