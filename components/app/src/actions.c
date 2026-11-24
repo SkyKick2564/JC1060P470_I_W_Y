@@ -13,7 +13,7 @@
 #define APP_GRID_COLUMNS 6
 #define APP_GRID_ROWS    3
 #define APP_ICON_CAPACITY 18
-#define HOME_WIDGET_CAPACITY 18
+#define HOME_WIDGET_COUNT 2
 
 typedef struct {
     lv_obj_t *button;
@@ -30,29 +30,23 @@ typedef struct {
     int32_t row;
     int32_t column_span;
     int32_t row_span;
-    int32_t default_column;
-    int32_t default_row;
-    bool restored;
 } home_widget_slot_t;
 
 static app_icon_slot_t s_app_icons[APP_ICON_CAPACITY];
 static size_t s_app_icon_count;
-static home_widget_slot_t s_home_widgets[HOME_WIDGET_CAPACITY];
-static size_t s_home_widget_count;
+static home_widget_slot_t s_home_widgets[HOME_WIDGET_COUNT];
 
 static void action_icon_set_grid_cell(lv_obj_t *button, int32_t column, int32_t row);
 static void action_widget_set_grid_cell(home_widget_slot_t *widget, int32_t column, int32_t row);
 static void action_home_layout_place_new_icons(void);
-static void action_home_layout_place_new_widgets(void);
-static void action_layout_drag_take_snapshot(void);
-static bool action_layout_drag_preview(lv_obj_t *dragged_icon, home_widget_slot_t *dragged_widget, int32_t column, int32_t row);
 
 
 
 #define HOME_LAYOUT_NVS_NAMESPACE "ui_layout"
 #define HOME_LAYOUT_NVS_KEY       "positions"
 #define HOME_LAYOUT_MAGIC         0x484C4159UL
-#define HOME_LAYOUT_VERSION       2
+#define HOME_LAYOUT_VERSION       1
+#define HOME_LAYOUT_WIDGET_BASE   0xF0000000UL
 
 typedef struct {
     uint32_t id;
@@ -64,90 +58,30 @@ typedef struct {
     uint32_t magic;
     uint16_t version;
     uint16_t count;
-    home_layout_item_t items[APP_ICON_CAPACITY + HOME_WIDGET_CAPACITY];
+    home_layout_item_t items[APP_ICON_CAPACITY + HOME_WIDGET_COUNT];
 } home_layout_blob_t;
 
-static uint32_t action_home_object_get_id(lv_obj_t *object)
+static uint32_t action_icon_get_id(lv_obj_t *button)
 {
+    lv_obj_t *label = lv_obj_get_child(button, 0);
     const char *name;
     uint32_t hash = 2166136261UL;
-    if (object == NULL) return 0;
-    name = lv_obj_get_name(object);
-    if (name == NULL || name[0] == '\0') return 0;
+
+    if (label == NULL || !lv_obj_check_type(label, &lv_label_class)) {
+        return 0;
+    }
+
+    name = lv_label_get_text(label);
+    if (name == NULL || name[0] == '\0') {
+        return 0;
+    }
+
     while (*name != '\0') {
         hash ^= (uint8_t)*name++;
         hash *= 16777619UL;
     }
+
     return hash != 0 ? hash : 1;
-}
-
-#define HOME_LAYOUT_LEGACY_VERSION 1
-#define HOME_LAYOUT_LEGACY_WIDGET_BASE 0xF0000000UL
-
-typedef struct {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t count;
-    home_layout_item_t items[APP_ICON_CAPACITY + 2];
-} home_layout_legacy_blob_t;
-
-static uint32_t action_icon_get_legacy_id(lv_obj_t *button)
-{
-    lv_obj_t *label = lv_obj_get_child(button, 0);
-    const char *text;
-    uint32_t hash = 2166136261UL;
-
-    if (label == NULL || !lv_obj_check_type(label, &lv_label_class)) return 0;
-    text = lv_label_get_text(label);
-    if (text == NULL || text[0] == '\0') return 0;
-
-    while (*text != '\0') {
-        hash ^= (uint8_t)*text++;
-        hash *= 16777619UL;
-    }
-    return hash != 0 ? hash : 1;
-}
-
-static void action_home_layout_restore_legacy(void)
-{
-    nvs_handle_t nvs;
-    home_layout_legacy_blob_t legacy;
-    size_t legacy_size = sizeof(legacy);
-
-    if (nvs_open(HOME_LAYOUT_NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) return;
-    esp_err_t err = nvs_get_blob(nvs, HOME_LAYOUT_NVS_KEY, &legacy, &legacy_size);
-    nvs_close(nvs);
-
-    if (err != ESP_OK || legacy_size != sizeof(legacy) ||
-        legacy.magic != HOME_LAYOUT_MAGIC ||
-        legacy.version != HOME_LAYOUT_LEGACY_VERSION ||
-        legacy.count > (APP_ICON_CAPACITY + 2)) {
-        return;
-    }
-
-    for (size_t i = 0; i < legacy.count; i++) {
-        const home_layout_item_t *item = &legacy.items[i];
-        if (item->column < 0 || item->column >= APP_GRID_COLUMNS ||
-            item->row < 0 || item->row >= APP_GRID_ROWS) continue;
-
-        for (size_t j = 0; j < s_app_icon_count; j++) {
-            if (action_icon_get_legacy_id(s_app_icons[j].button) == item->id) {
-                s_app_icons[j].column = item->column;
-                s_app_icons[j].row = item->row;
-                s_app_icons[j].restored = true;
-                action_icon_set_grid_cell(s_app_icons[j].button, item->column, item->row);
-            }
-        }
-
-        for (size_t j = 0; j < s_home_widget_count && j < 2; j++) {
-            if (item->id == HOME_LAYOUT_LEGACY_WIDGET_BASE + j) {
-                s_home_widgets[j].column = item->column;
-                s_home_widgets[j].row = item->row;
-                s_home_widgets[j].restored = true;
-                action_widget_set_grid_cell(&s_home_widgets[j], item->column, item->row);
-            }
-        }
-    }
 }
 
 static void action_home_layout_restore(void)
@@ -166,8 +100,7 @@ static void action_home_layout_restore(void)
     if (err != ESP_OK || blob_size != sizeof(blob) ||
         blob.magic != HOME_LAYOUT_MAGIC ||
         blob.version != HOME_LAYOUT_VERSION ||
-        blob.count > (APP_ICON_CAPACITY + HOME_WIDGET_CAPACITY)) {
-        action_home_layout_restore_legacy();
+        blob.count > (APP_ICON_CAPACITY + HOME_WIDGET_COUNT)) {
         return;
     }
 
@@ -180,7 +113,7 @@ static void action_home_layout_restore(void)
         }
 
         for (size_t j = 0; j < s_app_icon_count; j++) {
-            if (action_home_object_get_id(s_app_icons[j].button) == item->id) {
+            if (action_icon_get_id(s_app_icons[j].button) == item->id) {
                 s_app_icons[j].column = item->column;
                 s_app_icons[j].row = item->row;
                 s_app_icons[j].restored = true;
@@ -189,12 +122,13 @@ static void action_home_layout_restore(void)
             }
         }
 
-        for (size_t j = 0; j < s_home_widget_count; j++) {
-            if (s_home_widgets[j].object != NULL && action_home_object_get_id(s_home_widgets[j].object) == item->id) {
+        for (size_t j = 0; j < HOME_WIDGET_COUNT; j++) {
+            if (item->id == HOME_LAYOUT_WIDGET_BASE + j &&
+                s_home_widgets[j].object != NULL) {
                 s_home_widgets[j].column = item->column;
                 s_home_widgets[j].row = item->row;
-                s_home_widgets[j].restored = true;
-                action_widget_set_grid_cell(&s_home_widgets[j], item->column, item->row);
+                action_widget_set_grid_cell(
+                    &s_home_widgets[j], item->column, item->row);
             }
         }
     }
@@ -211,7 +145,7 @@ static void action_home_layout_save(void)
 
     for (size_t i = 0; i < s_app_icon_count &&
          blob.count < APP_ICON_CAPACITY; i++) {
-        uint32_t id = action_home_object_get_id(s_app_icons[i].button);
+        uint32_t id = action_icon_get_id(s_app_icons[i].button);
         if (id == 0) {
             continue;
         }
@@ -222,13 +156,13 @@ static void action_home_layout_save(void)
         };
     }
 
-    for (size_t i = 0; i < s_home_widget_count &&
-         blob.count < (APP_ICON_CAPACITY + HOME_WIDGET_CAPACITY); i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT &&
+         blob.count < (APP_ICON_CAPACITY + HOME_WIDGET_COUNT); i++) {
         if (s_home_widgets[i].object == NULL) {
             continue;
         }
         blob.items[blob.count++] = (home_layout_item_t) {
-            .id = action_home_object_get_id(s_home_widgets[i].object),
+            .id = HOME_LAYOUT_WIDGET_BASE + i,
             .column = (int8_t)s_home_widgets[i].column,
             .row = (int8_t)s_home_widgets[i].row
         };
@@ -276,8 +210,8 @@ static struct {
 static struct {
     int32_t icon_columns[APP_ICON_CAPACITY];
     int32_t icon_rows[APP_ICON_CAPACITY];
-    int32_t widget_columns[HOME_WIDGET_CAPACITY];
-    int32_t widget_rows[HOME_WIDGET_CAPACITY];
+    int32_t widget_columns[HOME_WIDGET_COUNT];
+    int32_t widget_rows[HOME_WIDGET_COUNT];
 } s_layout_drag_snapshot;
 
 static app_icon_slot_t *action_icon_find_slot(lv_obj_t *button)
@@ -409,7 +343,7 @@ static home_widget_slot_t *action_widget_at_cell(
     int32_t column,
     int32_t row)
 {
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         home_widget_slot_t *widget = &s_home_widgets[i];
         if (widget->object != NULL &&
             action_cell_in_rect(
@@ -459,45 +393,6 @@ static bool action_home_find_free_cell(
     }
 
     return false;
-}
-
-static void action_home_layout_place_new_widgets(void)
-{
-    for (size_t i = 0; i < s_home_widget_count; i++) {
-        home_widget_slot_t *widget = &s_home_widgets[i];
-        if (widget->restored) continue;
-
-        lv_obj_t *saved_objects[HOME_WIDGET_CAPACITY];
-        for (size_t j = 0; j < s_home_widget_count; j++) {
-            saved_objects[j] = s_home_widgets[j].object;
-            if (j != i && !s_home_widgets[j].restored) s_home_widgets[j].object = NULL;
-        }
-
-        bool placed = false;
-        int32_t preferred_column = widget->default_column;
-        int32_t preferred_row = widget->default_row;
-        action_layout_drag_take_snapshot();
-
-        if (preferred_column >= 0 && preferred_row >= 0 &&
-            preferred_column + widget->column_span <= APP_GRID_COLUMNS &&
-            preferred_row + widget->row_span <= APP_GRID_ROWS) {
-            placed = action_layout_drag_preview(NULL, widget, preferred_column, preferred_row);
-        }
-
-        for (int32_t row = 0; row <= APP_GRID_ROWS - widget->row_span && !placed; row++) {
-            for (int32_t column = 0; column <= APP_GRID_COLUMNS - widget->column_span && !placed; column++) {
-                if (column == preferred_column && row == preferred_row) continue;
-                action_layout_drag_take_snapshot();
-                placed = action_layout_drag_preview(NULL, widget, column, row);
-            }
-        }
-
-        for (size_t j = 0; j < s_home_widget_count; j++) s_home_widgets[j].object = saved_objects[j];
-        if (!placed) return;
-        widget->restored = true;
-    }
-
-    if (objects.home != NULL) lv_obj_update_layout(objects.home);
 }
 
 static void action_home_layout_place_new_icons(void)
@@ -565,7 +460,7 @@ static void action_layout_drag_take_snapshot(void)
         s_layout_drag_snapshot.icon_rows[i] = s_app_icons[i].row;
     }
 
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         s_layout_drag_snapshot.widget_columns[i] = s_home_widgets[i].column;
         s_layout_drag_snapshot.widget_rows[i] = s_home_widgets[i].row;
     }
@@ -584,7 +479,7 @@ static void action_layout_drag_restore_snapshot(void)
         }
     }
 
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         if (s_home_widgets[i].object == NULL) {
             continue;
         }
@@ -616,10 +511,10 @@ static bool action_layout_drag_preview(
 {
     int32_t icon_columns[APP_ICON_CAPACITY];
     int32_t icon_rows[APP_ICON_CAPACITY];
-    int32_t widget_columns[HOME_WIDGET_CAPACITY];
-    int32_t widget_rows[HOME_WIDGET_CAPACITY];
+    int32_t widget_columns[HOME_WIDGET_COUNT];
+    int32_t widget_rows[HOME_WIDGET_COUNT];
     bool displaced_icons[APP_ICON_CAPACITY] = { false };
-    bool displaced_widgets[HOME_WIDGET_CAPACITY] = { false };
+    bool displaced_widgets[HOME_WIDGET_COUNT] = { false };
     bool occupied[APP_GRID_ROWS][APP_GRID_COLUMNS] = { false };
     int32_t span_columns = dragged_widget != NULL
         ? dragged_widget->column_span : 1;
@@ -639,7 +534,7 @@ static bool action_layout_drag_preview(
 
     if (dragged_widget != NULL) {
         size_t widget_index = (size_t)(dragged_widget - s_home_widgets);
-        if (widget_index >= s_home_widget_count) {
+        if (widget_index >= HOME_WIDGET_COUNT) {
             return false;
         }
         origin_column = s_layout_drag_snapshot.widget_columns[widget_index];
@@ -675,7 +570,7 @@ static bool action_layout_drag_preview(
                 column, row, span_columns, span_rows);
     }
 
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         widget_columns[i] = s_layout_drag_snapshot.widget_columns[i];
         widget_rows[i] = s_layout_drag_snapshot.widget_rows[i];
         if (&s_home_widgets[i] == dragged_widget) {
@@ -722,7 +617,7 @@ static bool action_layout_drag_preview(
         occupied[y][x] = true;
     }
 
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         if (s_home_widgets[i].object == NULL ||
             &s_home_widgets[i] == dragged_widget ||
             displaced_widgets[i]) {
@@ -747,7 +642,7 @@ static bool action_layout_drag_preview(
     }
 
     /* Widgets retain their full footprint, so allocate them before single-cell apps. */
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         if (!displaced_widgets[i]) {
             continue;
         }
@@ -849,7 +744,7 @@ static bool action_layout_drag_preview(
             s_app_icons[i].button, icon_columns[i], icon_rows[i]);
     }
 
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         if (s_home_widgets[i].object == NULL) {
             continue;
         }
@@ -929,7 +824,7 @@ static void action_widget_drag_long_pressed(lv_event_t *event)
         return;
     }
 
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         if (s_home_widgets[i].object == object) {
             widget = &s_home_widgets[i];
             break;
@@ -1440,75 +1335,33 @@ static bool action_icon_is_home_app(lv_obj_t *object)
     return label != NULL && image != NULL &&
         lv_obj_check_type(label, &lv_label_class) &&
         lv_obj_check_type(image, &lv_image_class) &&
-        action_home_object_get_id(object) != 0;
+        action_icon_get_id(object) != 0;
 }
 
-static void action_home_discover_objects(void)
+static void action_icon_discover_home_apps(void)
 {
     uint32_t child_count = lv_obj_get_child_cnt(objects.home);
     s_app_icon_count = 0;
-    s_home_widget_count = 0;
-    memset(s_home_widgets, 0, sizeof(s_home_widgets));
 
-    for (uint32_t i = 0; i < child_count; i++) {
+    for (uint32_t i = 0; i < child_count &&
+         s_app_icon_count < APP_ICON_CAPACITY; i++) {
         lv_obj_t *child = lv_obj_get_child(objects.home, (int32_t)i);
-        if (action_icon_is_home_app(child)) {
-            if (s_app_icon_count >= APP_ICON_CAPACITY) continue;
-            s_app_icons[s_app_icon_count].button = child;
-            s_app_icons[s_app_icon_count].column =
-                lv_obj_get_style_grid_cell_column_pos(child, LV_PART_MAIN);
-            s_app_icons[s_app_icon_count].row =
-                lv_obj_get_style_grid_cell_row_pos(child, LV_PART_MAIN);
-            s_app_icons[s_app_icon_count].default_column =
-                s_app_icons[s_app_icon_count].column;
-            s_app_icons[s_app_icon_count].default_row =
-                s_app_icons[s_app_icon_count].row;
-            s_app_icons[s_app_icon_count].restored = false;
-            s_app_icon_count++;
+        if (!action_icon_is_home_app(child)) {
             continue;
         }
-        const char *object_name = child != NULL ? lv_obj_get_name(child) : NULL;
-        if (object_name == NULL || object_name[0] == '\0' || s_home_widget_count >= HOME_WIDGET_CAPACITY) continue;
-        home_widget_slot_t *widget = &s_home_widgets[s_home_widget_count++];
-        widget->object = child;
-        widget->column = lv_obj_get_style_grid_cell_column_pos(child, LV_PART_MAIN);
-        widget->row = lv_obj_get_style_grid_cell_row_pos(child, LV_PART_MAIN);
-        widget->default_column = widget->column;
-        widget->default_row = widget->row;
-        widget->column_span = lv_obj_get_style_grid_cell_column_span(child, LV_PART_MAIN);
-        widget->row_span = lv_obj_get_style_grid_cell_row_span(child, LV_PART_MAIN);
-        if (widget->column_span < 1) widget->column_span = 1;
-        if (widget->row_span < 1) widget->row_span = 1;
-        widget->restored = false;
-    }
-}
 
-static bool action_home_object_names_are_unique(void)
-{
-    lv_obj_t *objects_to_check[APP_ICON_CAPACITY + HOME_WIDGET_CAPACITY];
-    size_t count = 0;
-
-    for (size_t i = 0; i < s_app_icon_count; i++) {
-        objects_to_check[count++] = s_app_icons[i].button;
+        s_app_icons[s_app_icon_count].button = child;
+        s_app_icons[s_app_icon_count].column =
+            lv_obj_get_style_grid_cell_column_pos(child, LV_PART_MAIN);
+        s_app_icons[s_app_icon_count].row =
+            lv_obj_get_style_grid_cell_row_pos(child, LV_PART_MAIN);
+        s_app_icons[s_app_icon_count].default_column =
+            s_app_icons[s_app_icon_count].column;
+        s_app_icons[s_app_icon_count].default_row =
+            s_app_icons[s_app_icon_count].row;
+        s_app_icons[s_app_icon_count].restored = false;
+        s_app_icon_count++;
     }
-    for (size_t i = 0; i < s_home_widget_count; i++) {
-        objects_to_check[count++] = s_home_widgets[i].object;
-    }
-
-    for (size_t i = 0; i < count; i++) {
-        const char *name_i = lv_obj_get_name(objects_to_check[i]);
-        uint32_t id_i = action_home_object_get_id(objects_to_check[i]);
-        if (name_i == NULL || name_i[0] == '\0' || id_i == 0) return false;
-
-        for (size_t j = i + 1; j < count; j++) {
-            const char *name_j = lv_obj_get_name(objects_to_check[j]);
-            if (name_j == NULL || strcmp(name_i, name_j) == 0 ||
-                id_i == action_home_object_get_id(objects_to_check[j])) {
-                return false;
-            }
-        }
-    }
-    return true;
 }
 
 /* Control Center drag and snap behavior */
@@ -1746,15 +1599,29 @@ esp_err_t app_actions_init(void)
     }
 
     lv_obj_update_layout(objects.home);
-    action_home_discover_objects();
-    if (s_app_icon_count == 0 && s_home_widget_count == 0) {
-        return ESP_ERR_INVALID_STATE;
+    action_icon_discover_home_apps();
+    if (s_app_icon_count == 0) return ESP_ERR_INVALID_STATE;
+
+    s_home_widgets[0].object = objects.wg_network;
+    s_home_widgets[1].object = objects.wg_media;
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        home_widget_slot_t *widget = &s_home_widgets[i];
+        if (widget->object == NULL) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        widget->column = lv_obj_get_style_grid_cell_column_pos(
+            widget->object, LV_PART_MAIN);
+        widget->row = lv_obj_get_style_grid_cell_row_pos(
+            widget->object, LV_PART_MAIN);
+        widget->column_span = lv_obj_get_style_grid_cell_column_span(
+            widget->object, LV_PART_MAIN);
+        widget->row_span = lv_obj_get_style_grid_cell_row_span(
+            widget->object, LV_PART_MAIN);
+        if (widget->column_span < 1) widget->column_span = 1;
+        if (widget->row_span < 1) widget->row_span = 1;
     }
-    if (!action_home_object_names_are_unique()) {
-        return ESP_ERR_INVALID_ARG;
-    }
+
     action_home_layout_restore();
-    action_home_layout_place_new_widgets();
     action_home_layout_place_new_icons();
     action_home_layout_save();
 
@@ -1768,7 +1635,7 @@ esp_err_t app_actions_init(void)
         if (err != ESP_OK) return err;
     }
 
-    for (size_t i = 0; i < s_home_widget_count; i++) {
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         err = action_widget_drag_attach(s_home_widgets[i].object);
         if (err != ESP_OK) return err;
     }
