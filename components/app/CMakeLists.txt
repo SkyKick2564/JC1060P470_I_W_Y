@@ -1,3 +1,33 @@
+
+# Generate the EEZ Object Identifier -> objects_t pointer map from screens.h.
+# This keeps the mapping synchronized when Objects are added or renamed in EEZ.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/src/ui/screens.h"
+)
+set(EEZ_OBJECT_MAP_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(EEZ_OBJECT_MAP_HEADER "${EEZ_OBJECT_MAP_DIR}/eez_object_map.h")
+file(MAKE_DIRECTORY "${EEZ_OBJECT_MAP_DIR}")
+file(WRITE "${EEZ_OBJECT_MAP_HEADER}"
+    "#ifndef EEZ_OBJECT_MAP_H\n#define EEZ_OBJECT_MAP_H\n"
+    "static const struct { lv_obj_t **object; const char *identifier; } s_eez_object_map[] = {\n"
+)
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/src/ui/screens.h"
+    EEZ_OBJECT_FIELDS
+    REGEX "^[ \t]*lv_obj_t[ \t]*\\*[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*;"
+)
+foreach(EEZ_OBJECT_FIELD IN LISTS EEZ_OBJECT_FIELDS)
+    string(REGEX REPLACE
+        ".*\\*[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*;.*"
+        "\\1"
+        EEZ_OBJECT_NAME
+        "${EEZ_OBJECT_FIELD}"
+    )
+    file(APPEND "${EEZ_OBJECT_MAP_HEADER}"
+        "    { &objects.${EEZ_OBJECT_NAME}, \"${EEZ_OBJECT_NAME}\" },\n"
+    )
+endforeach()
+file(APPEND "${EEZ_OBJECT_MAP_HEADER}" "};\n#endif\n")
+
 idf_component_register(
     SRCS
         "src/app.c"
@@ -20,6 +50,7 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
         "src/ui"
+        "${EEZ_OBJECT_MAP_DIR}"
 
     REQUIRES
         lvgl
