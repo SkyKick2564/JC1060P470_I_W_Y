@@ -206,7 +206,19 @@ static struct {
     int32_t current_row;
     bool active;
     bool long_pressed;
+    bool preview_valid;
 } s_icon_drag;
+
+/*
+ * One immutable layout snapshot is shared by App and Widget drags.
+ * Every preview is rebuilt from this snapshot, never from the last preview.
+ */
+static struct {
+    int32_t icon_columns[APP_ICON_CAPACITY];
+    int32_t icon_rows[APP_ICON_CAPACITY];
+    int32_t widget_columns[HOME_WIDGET_COUNT];
+    int32_t widget_rows[HOME_WIDGET_COUNT];
+} s_layout_drag_snapshot;
 
 static app_icon_slot_t *action_icon_find_slot(lv_obj_t *button)
 {
@@ -772,11 +784,24 @@ static bool action_widget_drop_rect(
     return true;
 }
 
-static void action_widget_drag_restore_snapshot(void)
+static void action_layout_drag_take_snapshot(void)
 {
     for (size_t i = 0; i < s_app_icon_count; i++) {
-        s_app_icons[i].column = s_widget_drag.icon_columns[i];
-        s_app_icons[i].row = s_widget_drag.icon_rows[i];
+        s_layout_drag_snapshot.icon_columns[i] = s_app_icons[i].column;
+        s_layout_drag_snapshot.icon_rows[i] = s_app_icons[i].row;
+    }
+
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        s_layout_drag_snapshot.widget_columns[i] = s_home_widgets[i].column;
+        s_layout_drag_snapshot.widget_rows[i] = s_home_widgets[i].row;
+    }
+}
+
+static void action_layout_drag_restore_snapshot(void)
+{
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        s_app_icons[i].column = s_layout_drag_snapshot.icon_columns[i];
+        s_app_icons[i].row = s_layout_drag_snapshot.icon_rows[i];
         if (s_app_icons[i].button != NULL) {
             action_icon_set_grid_cell(
                 s_app_icons[i].button,
@@ -791,8 +816,8 @@ static void action_widget_drag_restore_snapshot(void)
         }
         action_widget_set_grid_cell(
             &s_home_widgets[i],
-            s_widget_drag.widget_columns[i],
-            s_widget_drag.widget_rows[i]);
+            s_layout_drag_snapshot.widget_columns[i],
+            s_layout_drag_snapshot.widget_rows[i]);
     }
 
     if (objects.home != NULL) {
@@ -800,17 +825,220 @@ static void action_widget_drag_restore_snapshot(void)
     }
 }
 
-static void action_widget_drag_take_snapshot(void)
+/*
+ * Build one complete candidate layout:
+ * - reserve the dragged object's candidate footprint;
+ * - leave its original footprint vacant;
+ * - identify every object covered by the candidate;
+ * - place displaced widgets first, then displaced apps, into any available
+ *   cells/rectangles (including the footprint vacated by the dragged object).
+ * No live positions are changed unless the entire candidate can be placed.
+ */
+static bool action_layout_drag_preview(
+    lv_obj_t *dragged_icon,
+    home_widget_slot_t *dragged_widget,
+    int32_t column,
+    int32_t row)
 {
+    int32_t icon_columns[APP_ICON_CAPACITY];
+    int32_t icon_rows[APP_ICON_CAPACITY];
+    int32_t widget_columns[HOME_WIDGET_COUNT];
+    int32_t widget_rows[HOME_WIDGET_COUNT];
+    bool displaced_icons[APP_ICON_CAPACITY] = { false };
+    bool displaced_widgets[HOME_WIDGET_COUNT] = { false };
+    bool occupied[APP_GRID_ROWS][APP_GRID_COLUMNS] = { false };
+    int32_t span_columns = dragged_widget != NULL
+        ? dragged_widget->column_span : 1;
+    int32_t span_rows = dragged_widget != NULL
+        ? dragged_widget->row_span : 1;
+
+    if ((dragged_icon == NULL) == (dragged_widget == NULL) ||
+        column < 0 || row < 0 ||
+        column + span_columns > APP_GRID_COLUMNS ||
+        row + span_rows > APP_GRID_ROWS) {
+        return false;
+    }
+
     for (size_t i = 0; i < s_app_icon_count; i++) {
-        s_widget_drag.icon_columns[i] = s_app_icons[i].column;
-        s_widget_drag.icon_rows[i] = s_app_icons[i].row;
+        icon_columns[i] = s_layout_drag_snapshot.icon_columns[i];
+        icon_rows[i] = s_layout_drag_snapshot.icon_rows[i];
+        if (s_app_icons[i].button == NULL ||
+            s_app_icons[i].button == dragged_icon) {
+            continue;
+        }
+        displaced_icons[i] =
+            action_cell_in_rect(icon_columns[i], icon_rows[i],
+                column, row, span_columns, span_rows);
     }
 
     for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
-        s_widget_drag.widget_columns[i] = s_home_widgets[i].column;
-        s_widget_drag.widget_rows[i] = s_home_widgets[i].row;
+        widget_columns[i] = s_layout_drag_snapshot.widget_columns[i];
+        widget_rows[i] = s_layout_drag_snapshot.widget_rows[i];
+        if (s_home_widgets[i].object == NULL ||
+            &s_home_widgets[i] == dragged_widget) {
+            continue;
+        }
+
+        for (int32_t y = row; y < row + span_rows; y++) {
+            for (int32_t x = column; x < column + span_columns; x++) {
+                if (action_cell_in_rect(x, y,
+                        widget_columns[i], widget_rows[i],
+                        s_home_widgets[i].column_span,
+                        s_home_widgets[i].row_span)) {
+                    displaced_widgets[i] = true;
+                }
+            }
+        }
     }
+
+    /* Reserve the dragged object's destination before placing anything else. */
+    for (int32_t y = row; y < row + span_rows; y++) {
+        for (int32_t x = column; x < column + span_columns; x++) {
+            occupied[y][x] = true;
+        }
+    }
+
+    /* Keep all objects not covered by the candidate at their original cells. */
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        if (s_app_icons[i].button == NULL ||
+            s_app_icons[i].button == dragged_icon ||
+            displaced_icons[i]) {
+            continue;
+        }
+        int32_t x = icon_columns[i];
+        int32_t y = icon_rows[i];
+        if (x < 0 || x >= APP_GRID_COLUMNS ||
+            y < 0 || y >= APP_GRID_ROWS || occupied[y][x]) {
+            return false;
+        }
+        occupied[y][x] = true;
+    }
+
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        if (s_home_widgets[i].object == NULL ||
+            &s_home_widgets[i] == dragged_widget ||
+            displaced_widgets[i]) {
+            continue;
+        }
+        int32_t x0 = widget_columns[i];
+        int32_t y0 = widget_rows[i];
+        int32_t x1 = x0 + s_home_widgets[i].column_span;
+        int32_t y1 = y0 + s_home_widgets[i].row_span;
+        if (x0 < 0 || y0 < 0 ||
+            x1 > APP_GRID_COLUMNS || y1 > APP_GRID_ROWS) {
+            return false;
+        }
+        for (int32_t y = y0; y < y1; y++) {
+            for (int32_t x = x0; x < x1; x++) {
+                if (occupied[y][x]) {
+                    return false;
+                }
+                occupied[y][x] = true;
+            }
+        }
+    }
+
+    /* Widgets retain their full footprint, so allocate them before single-cell apps. */
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        if (!displaced_widgets[i]) {
+            continue;
+        }
+
+        home_widget_slot_t *moving = &s_home_widgets[i];
+        bool found = false;
+        for (int32_t y = 0;
+             y <= APP_GRID_ROWS - moving->row_span && !found; y++) {
+            for (int32_t x = 0;
+                 x <= APP_GRID_COLUMNS - moving->column_span; x++) {
+                bool free_rect = true;
+                for (int32_t yy = y;
+                     yy < y + moving->row_span && free_rect; yy++) {
+                    for (int32_t xx = x;
+                         xx < x + moving->column_span; xx++) {
+                        if (occupied[yy][xx]) {
+                            free_rect = false;
+                            break;
+                        }
+                    }
+                }
+                if (!free_rect) {
+                    continue;
+                }
+
+                widget_columns[i] = x;
+                widget_rows[i] = y;
+                for (int32_t yy = y;
+                     yy < y + moving->row_span; yy++) {
+                    for (int32_t xx = x;
+                         xx < x + moving->column_span; xx++) {
+                        occupied[yy][xx] = true;
+                    }
+                }
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return false;
+        }
+    }
+
+    /* Place each displaced app into the first remaining free cell. */
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        if (!displaced_icons[i]) {
+            continue;
+        }
+
+        bool found = false;
+        for (int32_t y = 0; y < APP_GRID_ROWS && !found; y++) {
+            for (int32_t x = 0; x < APP_GRID_COLUMNS; x++) {
+                if (!occupied[y][x]) {
+                    icon_columns[i] = x;
+                    icon_rows[i] = y;
+                    occupied[y][x] = true;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            return false;
+        }
+    }
+
+    /* Apply only after every displaced object has a valid destination. */
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        if (s_app_icons[i].button == NULL) {
+            continue;
+        }
+        s_app_icons[i].column = icon_columns[i];
+        s_app_icons[i].row = icon_rows[i];
+        action_icon_set_grid_cell(
+            s_app_icons[i].button, icon_columns[i], icon_rows[i]);
+    }
+
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        if (s_home_widgets[i].object == NULL) {
+            continue;
+        }
+        action_widget_set_grid_cell(
+            &s_home_widgets[i], widget_columns[i], widget_rows[i]);
+    }
+
+    if (objects.home != NULL) {
+        lv_obj_update_layout(objects.home);
+    }
+    return true;
+}
+
+static void action_widget_drag_restore_snapshot(void)
+{
+    action_layout_drag_restore_snapshot();
+}
+
+static void action_widget_drag_take_snapshot(void)
+{
+    action_layout_drag_take_snapshot();
 }
 
 static void action_widget_drag_finish(home_widget_slot_t *widget)
@@ -968,12 +1196,10 @@ static void action_widget_drag_pressing(lv_event_t *event)
         return;
     }
 
-    action_widget_drag_restore_snapshot();
-    if (action_widget_drop_rect(widget, column, row)) {
-        s_widget_drag.preview_valid = true;
-    } else {
+    s_widget_drag.preview_valid = action_layout_drag_preview(
+        NULL, widget, column, row);
+    if (!s_widget_drag.preview_valid) {
         action_widget_drag_restore_snapshot();
-        s_widget_drag.preview_valid = false;
     }
 }
 
@@ -1079,6 +1305,10 @@ static void action_icon_finish(lv_obj_t *button)
         return;
     }
 
+    if (!s_icon_drag.preview_valid) {
+        action_layout_drag_restore_snapshot();
+    }
+
     image = lv_obj_get_child(button, 1);
     if (image != NULL) {
         lv_obj_set_style_transform_scale_x(image, 256, LV_PART_MAIN);
@@ -1091,7 +1321,7 @@ static void action_icon_finish(lv_obj_t *button)
      * into the cell that the dragged icon left.
      */
     app_icon_slot_t *slot = action_icon_find_slot(button);
-    if (slot != NULL) {
+    if (slot != NULL && s_icon_drag.preview_valid) {
         slot->column = s_icon_drag.current_column;
         slot->row = s_icon_drag.current_row;
         action_icon_set_grid_cell(
@@ -1204,6 +1434,8 @@ static void action_icon_long_pressed(lv_event_t *event)
     s_icon_drag.current_column = slot->column;
     s_icon_drag.current_row = slot->row;
     lv_indev_get_point(indev, &s_icon_drag.start_point);
+    action_layout_drag_take_snapshot();
+    s_icon_drag.preview_valid = true;
     s_icon_drag.active = true;
 
     /*
@@ -1236,6 +1468,10 @@ static void action_icon_update_drop_cell(lv_point_t point)
     int32_t row;
 
     if (!action_icon_get_cell_from_point(point, &column, &row)) {
+        action_layout_drag_restore_snapshot();
+        s_icon_drag.preview_valid = false;
+        s_icon_drag.current_column = -1;
+        s_icon_drag.current_row = -1;
         return;
     }
 
@@ -1244,65 +1480,13 @@ static void action_icon_update_drop_cell(lv_point_t point)
         return;
     }
 
-    /*
-     * Dropping over another app swaps the two app cells. Dropping over a
-     * widget moves that whole widget footprint to a free rectangle first;
-     * the widget keeps its original span and the dragged app takes the
-     * selected cell in the space it vacated.
-     */
-    app_icon_slot_t *occupant = action_icon_find_slot_at(
-        column, row, s_icon_drag.button);
-
-    if (occupant != NULL) {
-        occupant->column = s_icon_drag.current_column;
-        occupant->row = s_icon_drag.current_row;
-        action_icon_set_grid_cell(
-            occupant->button, occupant->column, occupant->row);
-    } else {
-        home_widget_slot_t *widget = action_widget_at_cell(column, row);
-        if (widget != NULL) {
-            int32_t free_column;
-            int32_t free_row;
-
-            if (!action_widget_find_free_rect(
-                    widget, column, row, &free_column, &free_row)) {
-                int32_t old_columns[APP_ICON_CAPACITY];
-                int32_t old_rows[APP_ICON_CAPACITY];
-
-                for (size_t i = 0; i < s_app_icon_count; i++) {
-                    old_columns[i] = s_app_icons[i].column;
-                    old_rows[i] = s_app_icons[i].row;
-                }
-
-                bool packed = action_widget_pack_apps_in_old_rect(
-                    widget, column, row);
-                bool found = packed && action_widget_find_free_rect(
-                    widget, column, row, &free_column, &free_row);
-
-                if (!found) {
-                    for (size_t i = 0; i < s_app_icon_count; i++) {
-                        s_app_icons[i].column = old_columns[i];
-                        s_app_icons[i].row = old_rows[i];
-                        if (s_app_icons[i].button != NULL &&
-                            s_app_icons[i].button != s_icon_drag.button) {
-                            action_icon_set_grid_cell(
-                                s_app_icons[i].button,
-                                old_columns[i], old_rows[i]);
-                        }
-                    }
-                    return;
-                }
-            }
-
-            action_widget_set_grid_cell(widget, free_column, free_row);
-        }
-    }
-
     s_icon_drag.current_column = column;
     s_icon_drag.current_row = row;
+    s_icon_drag.preview_valid = action_layout_drag_preview(
+        s_icon_drag.button, NULL, column, row);
 
-    if (objects.home != NULL) {
-        lv_obj_update_layout(objects.home);
+    if (!s_icon_drag.preview_valid) {
+        action_layout_drag_restore_snapshot();
     }
 }
 
