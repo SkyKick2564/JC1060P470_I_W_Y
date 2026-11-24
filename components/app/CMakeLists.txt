@@ -22,6 +22,12 @@ foreach(EEZ_OBJECT_FIELD IN LISTS EEZ_OBJECT_FIELDS)
         EEZ_OBJECT_NAME
         "${EEZ_OBJECT_FIELD}"
     )
+    string(LENGTH "${EEZ_OBJECT_NAME}" EEZ_OBJECT_NAME_LENGTH)
+    if(EEZ_OBJECT_NAME_LENGTH GREATER 63)
+        message(FATAL_ERROR
+            "EEZ Object Identifier '${EEZ_OBJECT_NAME}' exceeds HOME_LAYOUT_ID_LENGTH (63 characters)"
+        )
+    endif()
     file(APPEND "${EEZ_OBJECT_MAP_HEADER}"
         "    { &objects.${EEZ_OBJECT_NAME}, \"${EEZ_OBJECT_NAME}\" },\n"
     )
