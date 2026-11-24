@@ -152,7 +152,7 @@ static void action_home_layout_save(void)
         };
     }
 
-    for (size_t i = 0; i < HOME_WIDGET_CAPACITY &&
+    for (size_t i = 0; i < s_home_widget_count &&
          blob.count < (APP_ICON_CAPACITY + HOME_WIDGET_CAPACITY); i++) {
         if (s_home_widgets[i].object == NULL) {
             continue;
@@ -1385,14 +1385,14 @@ static void action_home_discover_objects(void)
         if (action_icon_is_home_app(child)) {
             if (s_app_icon_count >= APP_ICON_CAPACITY) continue;
             s_app_icons[s_app_icon_count].button = child;
-        s_app_icons[s_app_icon_count].column =
-            lv_obj_get_style_grid_cell_column_pos(child, LV_PART_MAIN);
-        s_app_icons[s_app_icon_count].row =
-            lv_obj_get_style_grid_cell_row_pos(child, LV_PART_MAIN);
-        s_app_icons[s_app_icon_count].default_column =
-            s_app_icons[s_app_icon_count].column;
-        s_app_icons[s_app_icon_count].default_row =
-            s_app_icons[s_app_icon_count].row;
+            s_app_icons[s_app_icon_count].column =
+                lv_obj_get_style_grid_cell_column_pos(child, LV_PART_MAIN);
+            s_app_icons[s_app_icon_count].row =
+                lv_obj_get_style_grid_cell_row_pos(child, LV_PART_MAIN);
+            s_app_icons[s_app_icon_count].default_column =
+                s_app_icons[s_app_icon_count].column;
+            s_app_icons[s_app_icon_count].default_row =
+                s_app_icons[s_app_icon_count].row;
             s_app_icons[s_app_icon_count].restored = false;
             s_app_icon_count++;
             continue;
