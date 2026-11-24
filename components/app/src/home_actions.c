@@ -1502,4 +1502,15 @@ esp_err_t home_actions_init(void)
     if (err != ESP_OK) return err;
     action_home_layout_save();
 
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        err = action_icon_attach(s_app_icons[i].button);
+        if (err != ESP_OK) return err;
+    }
 
+    for (size_t i = 0; i < s_home_widget_count; i++) {
+        err = action_widget_drag_attach(s_home_widgets[i].object);
+        if (err != ESP_OK) return err;
+    }
+
+    return ESP_OK;
+}
