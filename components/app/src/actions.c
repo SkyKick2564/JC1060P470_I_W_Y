@@ -44,6 +44,7 @@ static app_icon_slot_t s_app_icons[APP_ICON_CAPACITY];
 static size_t s_app_icon_count;
 static home_widget_slot_t s_home_widgets[HOME_OBJECT_CAPACITY];
 static size_t s_home_widget_count;
+static bool s_home_discovery_overflow;
 
 static void action_icon_set_grid_cell(lv_obj_t *button, int32_t column, int32_t row);
 static void action_widget_set_grid_cell(home_widget_slot_t *widget, int32_t column, int32_t row);
@@ -1439,10 +1440,13 @@ static void action_icon_discover_home_apps(void)
     uint32_t child_count = lv_obj_get_child_cnt(objects.home);
     s_app_icon_count = 0;
 
-    for (uint32_t i = 0; i < child_count &&
-         s_app_icon_count < APP_ICON_CAPACITY; i++) {
+    for (uint32_t i = 0; i < child_count; i++) {
         lv_obj_t *child = lv_obj_get_child(objects.home, (int32_t)i);
         if (!action_icon_is_home_app(child)) {
+            continue;
+        }
+        if (s_app_icon_count >= APP_ICON_CAPACITY) {
+            s_home_discovery_overflow = true;
             continue;
         }
 
@@ -1469,8 +1473,7 @@ static void action_widget_discover_home_widgets(void)
     uint32_t child_count = lv_obj_get_child_cnt(objects.home);
     s_home_widget_count = 0;
 
-    for (uint32_t i = 0; i < child_count &&
-         s_home_widget_count < HOME_OBJECT_CAPACITY; i++) {
+    for (uint32_t i = 0; i < child_count; i++) {
         lv_obj_t *child = lv_obj_get_child(objects.home, (int32_t)i);
 
         if (child == NULL || action_icon_is_home_app(child)) {
@@ -1479,6 +1482,10 @@ static void action_widget_discover_home_widgets(void)
 
         const char *identifier = action_home_get_identifier(child);
         if (identifier == NULL) {
+            continue;
+        }
+        if (s_home_widget_count >= HOME_OBJECT_CAPACITY) {
+            s_home_discovery_overflow = true;
             continue;
         }
 
@@ -1736,8 +1743,13 @@ esp_err_t app_actions_init(void)
     }
 
     lv_obj_update_layout(objects.home);
+    s_home_discovery_overflow = false;
     action_icon_discover_home_apps();
     action_widget_discover_home_widgets();
+    if (s_home_discovery_overflow ||
+        s_app_icon_count + s_home_widget_count > HOME_LAYOUT_ITEM_CAPACITY) {
+        return ESP_ERR_NO_MEM;
+    }
     if (s_app_icon_count == 0 && s_home_widget_count == 0) {
         return ESP_ERR_INVALID_STATE;
     }
