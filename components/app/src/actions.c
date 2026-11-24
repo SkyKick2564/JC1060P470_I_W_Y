@@ -1342,7 +1342,6 @@ static esp_err_t action_icon_attach(lv_obj_t *button)
 
 static bool action_icon_is_home_app(lv_obj_t *object)
 {
-    lv_obj_t *label;
     lv_obj_t *image;
 
     if (object == NULL || !lv_obj_check_type(object, &lv_button_class) ||
@@ -1350,10 +1349,8 @@ static bool action_icon_is_home_app(lv_obj_t *object)
         return false;
     }
 
-    label = lv_obj_get_child(object, 0);
     image = lv_obj_get_child(object, 1);
-    return label != NULL && image != NULL &&
-        lv_obj_check_type(label, &lv_label_class) &&
+    return image != NULL &&
         lv_obj_check_type(image, &lv_image_class) &&
         action_home_get_identifier(object) != NULL;
 }
