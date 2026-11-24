@@ -16,6 +16,7 @@
 #define APP_ICON_CAPACITY 18
 #define HOME_OBJECT_CAPACITY 18
 #define HOME_LAYOUT_ID_LENGTH 64
+#define HOME_LAYOUT_ITEM_CAPACITY (APP_GRID_COLUMNS * APP_GRID_ROWS)
 
 typedef struct {
     lv_obj_t *button;
@@ -62,7 +63,7 @@ typedef struct {
     uint32_t magic;
     uint16_t version;
     uint16_t count;
-    home_layout_item_t items[APP_ICON_CAPACITY + HOME_OBJECT_CAPACITY];
+    home_layout_item_t items[HOME_LAYOUT_ITEM_CAPACITY];
 } home_layout_blob_t;
 
 static const char *action_home_get_identifier(lv_obj_t *object)
@@ -92,7 +93,7 @@ static void action_home_layout_restore(void)
     if (err != ESP_OK || blob_size != sizeof(blob) ||
         blob.magic != HOME_LAYOUT_MAGIC ||
         blob.version != HOME_LAYOUT_VERSION ||
-        blob.count > (APP_ICON_CAPACITY + HOME_OBJECT_CAPACITY)) {
+        blob.count > HOME_LAYOUT_ITEM_CAPACITY) {
         return;
     }
 
@@ -135,7 +136,7 @@ static void action_home_layout_save(void)
     blob.version = HOME_LAYOUT_VERSION;
 
     for (size_t i = 0; i < s_app_icon_count &&
-         blob.count < APP_ICON_CAPACITY; i++) {
+         blob.count < HOME_LAYOUT_ITEM_CAPACITY; i++) {
         const app_icon_slot_t *icon = &s_app_icons[i];
         if (icon->identifier == NULL ||
             icon->identifier[0] == '\0' ||
@@ -152,7 +153,7 @@ static void action_home_layout_save(void)
     }
 
     for (size_t i = 0; i < s_home_widget_count &&
-         blob.count < (APP_ICON_CAPACITY + HOME_OBJECT_CAPACITY); i++) {
+         blob.count < HOME_LAYOUT_ITEM_CAPACITY; i++) {
         const home_widget_slot_t *widget = &s_home_widgets[i];
         if (widget->identifier == NULL ||
             widget->identifier[0] == '\0' ||
