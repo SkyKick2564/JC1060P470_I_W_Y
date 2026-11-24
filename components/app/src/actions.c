@@ -1602,8 +1602,8 @@ esp_err_t app_actions_init(void)
     action_icon_discover_home_apps();
     if (s_app_icon_count == 0) return ESP_ERR_INVALID_STATE;
 
-    s_home_widgets[0].object = objects.card_network;
-    s_home_widgets[1].object = objects.container_media;
+    s_home_widgets[0].object = objects.wg_network;
+    s_home_widgets[1].object = objects.wg_media;
     for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         home_widget_slot_t *widget = &s_home_widgets[i];
         if (widget->object == NULL) {
