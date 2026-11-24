@@ -1,3 +1,4 @@
+/* LVGL_EEZ_NAMES_INJECTED */
 #include <string.h>
 
 #include "screens.h"
