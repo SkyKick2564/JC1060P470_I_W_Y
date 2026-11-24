@@ -179,6 +179,17 @@ static void action_home_layout_save(void)
 }
 
 static struct {
+    home_widget_slot_t *widget;
+    lv_indev_t *indev;
+    lv_point_t start_point;
+    lv_coord_t start_x;
+    lv_coord_t start_y;
+    int32_t grab_column_offset;
+    int32_t grab_row_offset;
+    bool active;
+} s_widget_drag;
+
+static struct {
     lv_obj_t *button;
     lv_indev_t *indev;
     lv_point_t start_point;
@@ -566,6 +577,325 @@ static bool action_widget_pack_apps_in_old_rect(
     }
 
     return true;
+}
+
+static bool action_widget_drop_rect(
+    home_widget_slot_t *widget,
+    int32_t column,
+    int32_t row)
+{
+    app_icon_slot_t *displaced[APP_ICON_CAPACITY];
+    int32_t destination_columns[APP_ICON_CAPACITY];
+    int32_t destination_rows[APP_ICON_CAPACITY];
+    size_t displaced_count = 0;
+    size_t destination_count = 0;
+    size_t old_capacity = (size_t)widget->column_span *
+        (size_t)widget->row_span;
+
+    if (column < 0 || row < 0 ||
+        column + widget->column_span > APP_GRID_COLUMNS ||
+        row + widget->row_span > APP_GRID_ROWS) {
+        return false;
+    }
+
+    if (column == widget->column && row == widget->row) {
+        return true;
+    }
+
+    /* A dragged widget may cover apps, but it may not cover another widget. */
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        home_widget_slot_t *other = &s_home_widgets[i];
+        if (other == widget || other->object == NULL) {
+            continue;
+        }
+        for (int32_t y = row; y < row + widget->row_span; y++) {
+            for (int32_t x = column; x < column + widget->column_span; x++) {
+                if (action_cell_in_rect(
+                        x, y, other->column, other->row,
+                        other->column_span, other->row_span)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    /* Collect app shortcuts occupying the destination footprint. */
+    for (size_t i = 0; i < s_app_icon_count; i++) {
+        app_icon_slot_t *app = &s_app_icons[i];
+        if (app->button == NULL) {
+            continue;
+        }
+        if (action_cell_in_rect(
+                app->column, app->row, column, row,
+                widget->column_span, widget->row_span)) {
+            if (displaced_count >= APP_ICON_CAPACITY) {
+                return false;
+            }
+            displaced[displaced_count++] = app;
+        }
+    }
+
+    /*
+     * Move displaced shortcuts into the widget's old footprint. This makes
+     * dropping a widget over app icons behave like exchanging the occupied
+     * area, while retaining each shortcut's identity and saved position.
+     */
+    if (displaced_count > old_capacity) {
+        return false;
+    }
+
+    for (int32_t y = widget->row;
+         y < widget->row + widget->row_span; y++) {
+        for (int32_t x = widget->column;
+             x < widget->column + widget->column_span; x++) {
+            if (action_cell_in_rect(
+                    x, y, column, row,
+                    widget->column_span, widget->row_span)) {
+                continue;
+            }
+
+            bool occupied_by_other_app = false;
+            for (size_t i = 0; i < s_app_icon_count; i++) {
+                app_icon_slot_t *app = &s_app_icons[i];
+                if (app->button == NULL) {
+                    continue;
+                }
+                bool is_displaced = false;
+                for (size_t j = 0; j < displaced_count; j++) {
+                    if (displaced[j] == app) {
+                        is_displaced = true;
+                        break;
+                    }
+                }
+                if (!is_displaced && app->column == x && app->row == y) {
+                    occupied_by_other_app = true;
+                    break;
+                }
+            }
+
+            if (!occupied_by_other_app &&
+                destination_count < APP_ICON_CAPACITY) {
+                destination_columns[destination_count] = x;
+                destination_rows[destination_count] = y;
+                destination_count++;
+            }
+        }
+    }
+
+    if (destination_count < displaced_count) {
+        return false;
+    }
+
+    for (size_t i = 0; i < displaced_count; i++) {
+        displaced[i]->column = destination_columns[i];
+        displaced[i]->row = destination_rows[i];
+        action_icon_set_grid_cell(
+            displaced[i]->button,
+            displaced[i]->column,
+            displaced[i]->row);
+    }
+
+    action_widget_set_grid_cell(widget, column, row);
+    if (objects.home != NULL) {
+        lv_obj_update_layout(objects.home);
+    }
+    return true;
+}
+
+static void action_widget_drag_finish(home_widget_slot_t *widget)
+{
+    if (widget == NULL || !s_widget_drag.active ||
+        s_widget_drag.widget != widget) {
+        return;
+    }
+
+    lv_obj_set_style_transform_scale_x(
+        widget->object, 256, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_y(
+        widget->object, 256, LV_PART_MAIN);
+    lv_obj_remove_local_style_prop(
+        widget->object, LV_STYLE_X, LV_PART_MAIN);
+    lv_obj_remove_local_style_prop(
+        widget->object, LV_STYLE_Y, LV_PART_MAIN);
+    lv_obj_remove_flag(widget->object, LV_OBJ_FLAG_IGNORE_LAYOUT);
+
+    if (objects.home != NULL) {
+        lv_obj_update_layout(objects.home);
+    }
+
+    s_widget_drag.active = false;
+    s_widget_drag.widget = NULL;
+    s_widget_drag.indev = NULL;
+    action_home_layout_save();
+}
+
+static void action_widget_drag_pressed(lv_event_t *event)
+{
+    lv_indev_t *indev = lv_event_get_indev(event);
+
+    if (s_widget_drag.active) {
+        if (indev == NULL || indev != s_widget_drag.indev) {
+            return;
+        }
+        action_widget_drag_finish(s_widget_drag.widget);
+    }
+
+    /* Do not let a second pointer interrupt an active icon drag. */
+    if (s_icon_drag.active || indev == NULL) {
+        return;
+    }
+}
+
+static void action_widget_drag_long_pressed(lv_event_t *event)
+{
+    lv_obj_t *object = lv_event_get_current_target(event);
+    lv_indev_t *indev = lv_event_get_indev(event);
+    home_widget_slot_t *widget = NULL;
+    int32_t column;
+    int32_t row;
+
+    if (indev == NULL || s_icon_drag.active) {
+        return;
+    }
+
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        if (s_home_widgets[i].object == object) {
+            widget = &s_home_widgets[i];
+            break;
+        }
+    }
+    if (widget == NULL) {
+        return;
+    }
+
+    if (s_widget_drag.active) {
+        if (s_widget_drag.indev != indev) {
+            return;
+        }
+        action_widget_drag_finish(s_widget_drag.widget);
+    }
+
+    lv_obj_remove_local_style_prop(object, LV_STYLE_X, LV_PART_MAIN);
+    lv_obj_remove_local_style_prop(object, LV_STYLE_Y, LV_PART_MAIN);
+    lv_obj_update_layout(objects.home);
+
+    lv_indev_get_point(indev, &s_widget_drag.start_point);
+    if (!action_icon_get_cell_from_point(
+            s_widget_drag.start_point, &column, &row)) {
+        return;
+    }
+
+    s_widget_drag.widget = widget;
+    s_widget_drag.indev = indev;
+    s_widget_drag.start_x = lv_obj_get_x(object);
+    s_widget_drag.start_y = lv_obj_get_y(object);
+    s_widget_drag.grab_column_offset = column - widget->column;
+    s_widget_drag.grab_row_offset = row - widget->row;
+    s_widget_drag.active = true;
+
+    lv_obj_add_flag(object, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_pos(object, s_widget_drag.start_x, s_widget_drag.start_y);
+    lv_obj_move_foreground(object);
+
+    lv_obj_set_style_transform_pivot_x(
+        object, lv_obj_get_width(object) / 2, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(
+        object, lv_obj_get_height(object) / 2, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_x(object, 280, LV_PART_MAIN);
+    lv_obj_set_style_transform_scale_y(object, 280, LV_PART_MAIN);
+}
+
+static void action_widget_drag_pressing(lv_event_t *event)
+{
+    home_widget_slot_t *widget = s_widget_drag.widget;
+    lv_indev_t *indev = lv_event_get_indev(event);
+    lv_point_t point;
+    int32_t column;
+    int32_t row;
+
+    if (!s_widget_drag.active || widget == NULL ||
+        indev == NULL || indev != s_widget_drag.indev) {
+        return;
+    }
+
+    lv_indev_get_point(indev, &point);
+    lv_coord_t new_x = s_widget_drag.start_x +
+        point.x - s_widget_drag.start_point.x;
+    lv_coord_t new_y = s_widget_drag.start_y +
+        point.y - s_widget_drag.start_point.y;
+
+    if (lv_obj_get_x(widget->object) != new_x ||
+        lv_obj_get_y(widget->object) != new_y) {
+        lv_obj_set_pos(widget->object, new_x, new_y);
+    }
+
+    if (!action_icon_get_cell_from_point(point, &column, &row)) {
+        return;
+    }
+
+    column -= s_widget_drag.grab_column_offset;
+    row -= s_widget_drag.grab_row_offset;
+    if (column != widget->column || row != widget->row) {
+        (void)action_widget_drop_rect(widget, column, row);
+    }
+}
+
+static void action_widget_drag_released(lv_event_t *event)
+{
+    lv_indev_t *indev = lv_event_get_indev(event);
+    if (s_widget_drag.active &&
+        (indev == NULL || indev == s_widget_drag.indev)) {
+        action_widget_drag_finish(s_widget_drag.widget);
+    }
+}
+
+static void action_widget_drag_press_lost(lv_event_t *event)
+{
+    action_widget_drag_released(event);
+}
+
+static void action_widget_enable_event_bubble(lv_obj_t *object)
+{
+    uint32_t child_count;
+
+    if (object == NULL) {
+        return;
+    }
+
+    child_count = lv_obj_get_child_cnt(object);
+    for (uint32_t i = 0; i < child_count; i++) {
+        lv_obj_t *child = lv_obj_get_child(object, (int32_t)i);
+        if (child == NULL) {
+            continue;
+        }
+        lv_obj_add_flag(child, LV_OBJ_FLAG_EVENT_BUBBLE);
+        action_widget_enable_event_bubble(child);
+    }
+}
+
+static esp_err_t action_widget_drag_attach(lv_obj_t *object)
+{
+    if (object == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /*
+     * Make empty widget areas touchable and bubble gestures from nested
+     * controls to this root. Short clicks still reach their original child.
+     */
+    lv_obj_add_flag(object, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK);
+    action_widget_enable_event_bubble(object);
+    lv_obj_add_event_cb(
+        object, action_widget_drag_pressed, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(
+        object, action_widget_drag_long_pressed, LV_EVENT_LONG_PRESSED, NULL);
+    lv_obj_add_event_cb(
+        object, action_widget_drag_pressing, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(
+        object, action_widget_drag_released, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(
+        object, action_widget_drag_press_lost, LV_EVENT_PRESS_LOST, NULL);
+    return ESP_OK;
 }
 
 static void action_icon_set_button_color(lv_obj_t *button, bool pressed)
@@ -1145,7 +1475,11 @@ static void action_control_center_finish(lv_event_t *event)
     lv_obj_t *overlay = objects.control_center_overlay;
     if (overlay == NULL || s_control_center_drag.indev == NULL) {
         s_control_center_drag.active = false;
-        s_control_center_drag.target = NULL;
+        s_widget_drag.widget = NULL;
+    s_widget_drag.indev = NULL;
+    s_widget_drag.active = false;
+
+    s_control_center_drag.target = NULL;
         s_control_center_drag.indev = NULL;
         return;
     }
@@ -1250,6 +1584,11 @@ esp_err_t app_actions_init(void)
 
     for (size_t i = 0; i < s_app_icon_count; i++) {
         err = action_icon_attach(s_app_icons[i].button);
+        if (err != ESP_OK) return err;
+    }
+
+    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
+        err = action_widget_drag_attach(s_home_widgets[i].object);
         if (err != ESP_OK) return err;
     }
 
