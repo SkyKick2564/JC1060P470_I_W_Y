@@ -136,11 +136,46 @@ static void action_home_layout_restore(void)
 
 static void action_home_layout_save(void)
 {
-    /*
-     * Temporarily disabled while investigating the display flash during
-     * repeated icon moves. Keep the call site intact; no NVS write/commit
-     * is performed when an icon drag finishes.
-     */
+    nvs_handle_t nvs;
+    home_layout_blob_t blob = {
+        .magic = HOME_LAYOUT_MAGIC,
+        .version = HOME_LAYOUT_VERSION,
+        .count = 0
+    };
+
+    for (size_t i = 0; i < s_app_icon_count &&
+         blob.count < APP_ICON_CAPACITY; i++) {
+        uint32_t id = action_icon_get_id(s_app_icons[i].button);
+        if (id == 0) {
+            continue;
+        }
+        blob.items[blob.count++] = (home_layout_item_t) {
+            .id = id,
+            .column = (int8_t)s_app_icons[i].column,
+            .row = (int8_t)s_app_icons[i].row
+        };
+    }
+
+    for (size_t i = 0; i < HOME_WIDGET_COUNT &&
+         blob.count < (APP_ICON_CAPACITY + HOME_WIDGET_COUNT); i++) {
+        if (s_home_widgets[i].object == NULL) {
+            continue;
+        }
+        blob.items[blob.count++] = (home_layout_item_t) {
+            .id = HOME_LAYOUT_WIDGET_BASE + i,
+            .column = (int8_t)s_home_widgets[i].column,
+            .row = (int8_t)s_home_widgets[i].row
+        };
+    }
+
+    if (nvs_open(HOME_LAYOUT_NVS_NAMESPACE, NVS_READWRITE, &nvs) != ESP_OK) {
+        return;
+    }
+
+    if (nvs_set_blob(nvs, HOME_LAYOUT_NVS_KEY, &blob, sizeof(blob)) == ESP_OK) {
+        nvs_commit(nvs);
+    }
+    nvs_close(nvs);
 }
 
 static struct {
