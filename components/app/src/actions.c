@@ -1168,6 +1168,7 @@ static void action_icon_long_pressed(lv_event_t *event)
      * finger without changing the generated EEZ layout.
      */
     lv_obj_add_flag(button, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_move_foreground(button);
 
     /*
      * Re-apply the exact Grid-resolved anchor immediately after detaching
