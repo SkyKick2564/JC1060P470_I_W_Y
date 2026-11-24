@@ -48,6 +48,13 @@ static size_t s_home_widget_count;
 static void action_icon_set_grid_cell(lv_obj_t *button, int32_t column, int32_t row);
 static void action_widget_set_grid_cell(home_widget_slot_t *widget, int32_t column, int32_t row);
 static esp_err_t action_home_layout_place_objects(void);
+static void action_layout_drag_take_snapshot(void);
+static void action_layout_drag_restore_snapshot(void);
+static bool action_layout_drag_preview(
+    lv_obj_t *dragged_icon,
+    home_widget_slot_t *dragged_widget,
+    int32_t column,
+    int32_t row);
 
 
 
