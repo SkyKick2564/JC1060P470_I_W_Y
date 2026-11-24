@@ -34,9 +34,9 @@ typedef struct _objects_t {
     lv_obj_t *camera_btn;
     lv_obj_t *media_btn;
     lv_obj_t *setting_btn;
+    lv_obj_t *spotify_btn;
     lv_obj_t *wg_media;
     lv_obj_t *video_image;
-    lv_obj_t *wg_test;
     lv_obj_t *setting;
     lv_obj_t *header_container;
     lv_obj_t *label_title;

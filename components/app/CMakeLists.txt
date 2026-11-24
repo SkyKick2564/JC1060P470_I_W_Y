@@ -55,6 +55,7 @@ idf_component_register(
         "src/ui/images/ui_image_setting_icon.c"
         "src/ui/images/ui_image_camera_icon.c"
         "src/ui/images/ui_image_media_icon.c"
+        "src/ui/images/ui_image_spotify_icon.c"
     INCLUDE_DIRS
         "include"
         "src/ui"
