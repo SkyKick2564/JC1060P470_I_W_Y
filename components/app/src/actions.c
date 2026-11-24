@@ -933,7 +933,7 @@ static void action_widget_drag_press_lost(lv_event_t *event)
 
 static void action_widget_block_click_during_icon_drag(lv_event_t *event)
 {
-    if (s_icon_drag.active) {
+    if (s_icon_drag.active || s_widget_drag.active) {
         lv_event_stop_processing(event);
     }
 }
