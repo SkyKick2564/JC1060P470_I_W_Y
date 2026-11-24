@@ -184,12 +184,6 @@ static struct {
     lv_point_t start_point;
     lv_coord_t start_x;
     lv_coord_t start_y;
-    int32_t start_widget_column;
-    int32_t start_widget_row;
-    int32_t icon_columns[APP_ICON_CAPACITY];
-    int32_t icon_rows[APP_ICON_CAPACITY];
-    int32_t widget_columns[HOME_WIDGET_COUNT];
-    int32_t widget_rows[HOME_WIDGET_COUNT];
     int32_t grab_column_offset;
     int32_t grab_row_offset;
     bool preview_valid;
@@ -224,23 +218,6 @@ static app_icon_slot_t *action_icon_find_slot(lv_obj_t *button)
 {
     for (size_t i = 0; i < APP_ICON_CAPACITY; i++) {
         if (s_app_icons[i].button == button) {
-            return &s_app_icons[i];
-        }
-    }
-
-    return NULL;
-}
-
-static app_icon_slot_t *action_icon_find_slot_at(
-    int32_t column,
-    int32_t row,
-    lv_obj_t *ignore_button)
-{
-    for (size_t i = 0; i < s_app_icon_count; i++) {
-        if (s_app_icons[i].button != NULL &&
-            s_app_icons[i].button != ignore_button &&
-            s_app_icons[i].column == column &&
-            s_app_icons[i].row == row) {
             return &s_app_icons[i];
         }
     }
@@ -463,79 +440,6 @@ static void action_home_layout_place_new_icons(void)
     }
 }
 
-static bool action_widget_rect_is_free(
-    home_widget_slot_t *moving_widget,
-    int32_t column,
-    int32_t row,
-    int32_t reserved_column,
-    int32_t reserved_row)
-{
-    if (column < 0 || row < 0 ||
-        column + moving_widget->column_span > APP_GRID_COLUMNS ||
-        row + moving_widget->row_span > APP_GRID_ROWS) {
-        return false;
-    }
-
-    for (int32_t y = row; y < row + moving_widget->row_span; y++) {
-        for (int32_t x = column; x < column + moving_widget->column_span; x++) {
-            if (x == reserved_column && y == reserved_row) {
-                return false;
-            }
-
-            for (size_t i = 0; i < s_app_icon_count; i++) {
-                app_icon_slot_t *app = &s_app_icons[i];
-                if (app->button != NULL &&
-                    app->button != s_icon_drag.button &&
-                    app->column == x && app->row == y) {
-                    return false;
-                }
-            }
-
-            for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
-                home_widget_slot_t *other = &s_home_widgets[i];
-                if (other == moving_widget || other->object == NULL) {
-                    continue;
-                }
-                if (action_cell_in_rect(
-                        x, y, other->column, other->row,
-                        other->column_span, other->row_span)) {
-                    return false;
-                }
-            }
-        }
-    }
-
-    return true;
-}
-
-static bool action_widget_find_free_rect(
-    home_widget_slot_t *widget,
-    int32_t reserved_column,
-    int32_t reserved_row,
-    int32_t *new_column,
-    int32_t *new_row)
-{
-    /*
-     * Search the Grid in row-major order. The dragged icon's destination
-     * cell is reserved, and all other app/widget footprints remain occupied.
-     */
-    for (int32_t row = 0; row <= APP_GRID_ROWS - widget->row_span; row++) {
-        for (int32_t column = 0;
-             column <= APP_GRID_COLUMNS - widget->column_span;
-             column++) {
-            if (action_widget_rect_is_free(
-                    widget, column, row,
-                    reserved_column, reserved_row)) {
-                *new_column = column;
-                *new_row = row;
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
 static void action_widget_set_grid_cell(
     home_widget_slot_t *widget,
     int32_t column,
@@ -547,241 +451,6 @@ static void action_widget_set_grid_cell(
         widget->object, column, LV_PART_MAIN);
     lv_obj_set_style_grid_cell_row_pos(
         widget->object, row, LV_PART_MAIN);
-}
-
-static bool action_widget_pack_apps_in_old_rect(
-    home_widget_slot_t *widget,
-    int32_t reserved_column,
-    int32_t reserved_row)
-{
-    size_t app_index = 0;
-
-    /*
-     * If apps are the only reason a widget cannot move, pack the other
-     * shortcuts into the space the widget is about to vacate. The dragged
-     * shortcut keeps the exact cell under the finger.
-     */
-    for (int32_t row = widget->row;
-         row < widget->row + widget->row_span; row++) {
-        for (int32_t column = widget->column;
-             column < widget->column + widget->column_span; column++) {
-            if (column == reserved_column && row == reserved_row) {
-                continue;
-            }
-
-            while (app_index < s_app_icon_count &&
-                   (s_app_icons[app_index].button == NULL ||
-                    s_app_icons[app_index].button == s_icon_drag.button)) {
-                app_index++;
-            }
-
-            if (app_index >= s_app_icon_count) {
-                return true;
-            }
-
-            s_app_icons[app_index].column = column;
-            s_app_icons[app_index].row = row;
-            action_icon_set_grid_cell(
-                s_app_icons[app_index].button, column, row);
-            app_index++;
-        }
-    }
-
-    while (app_index < s_app_icon_count) {
-        if (s_app_icons[app_index].button != NULL &&
-            s_app_icons[app_index].button != s_icon_drag.button) {
-            return false;
-        }
-        app_index++;
-    }
-
-    return true;
-}
-
-static bool action_widget_drop_rect(
-    home_widget_slot_t *widget,
-    int32_t column,
-    int32_t row)
-{
-    app_icon_slot_t *displaced[APP_ICON_CAPACITY];
-    int32_t destination_columns[APP_ICON_CAPACITY];
-    int32_t destination_rows[APP_ICON_CAPACITY];
-    size_t displaced_count = 0;
-    size_t destination_count = 0;
-    size_t old_capacity = (size_t)widget->column_span *
-        (size_t)widget->row_span;
-    home_widget_slot_t *displaced_widget = NULL;
-    int32_t displaced_widget_column = -1;
-    int32_t displaced_widget_row = -1;
-
-    if (column < 0 || row < 0 ||
-        column + widget->column_span > APP_GRID_COLUMNS ||
-        row + widget->row_span > APP_GRID_ROWS) {
-        return false;
-    }
-
-    if (column == widget->column && row == widget->row) {
-        return true;
-    }
-
-    /*
-     * Find a widget covered by the destination. Temporarily reserve the
-     * dragged widget's destination while searching for a new rectangle for
-     * the covered widget. The actual positions are changed only after every
-     * part of the drop has been validated.
-     */
-    for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
-        home_widget_slot_t *other = &s_home_widgets[i];
-        if (other == widget || other->object == NULL) {
-            continue;
-        }
-
-        bool overlaps = false;
-        for (int32_t y = row; y < row + widget->row_span && !overlaps; y++) {
-            for (int32_t x = column; x < column + widget->column_span; x++) {
-                if (action_cell_in_rect(
-                        x, y, other->column, other->row,
-                        other->column_span, other->row_span)) {
-                    overlaps = true;
-                    break;
-                }
-            }
-        }
-
-        if (overlaps) {
-            if (displaced_widget != NULL) {
-                return false;
-            }
-            displaced_widget = other;
-        }
-    }
-
-    /* Collect app shortcuts occupying the destination footprint. */
-    for (size_t i = 0; i < s_app_icon_count; i++) {
-        app_icon_slot_t *app = &s_app_icons[i];
-        if (app->button == NULL) {
-            continue;
-        }
-        if (action_cell_in_rect(
-                app->column, app->row, column, row,
-                widget->column_span, widget->row_span)) {
-            if (displaced_count >= APP_ICON_CAPACITY) {
-                return false;
-            }
-            displaced[displaced_count++] = app;
-        }
-    }
-
-    /*
-     * Move displaced shortcuts into the widget's old footprint. This makes
-     * dropping a widget over app icons behave like exchanging the occupied
-     * area, while retaining each shortcut's identity and saved position.
-     */
-    if (displaced_count > old_capacity) {
-        return false;
-    }
-
-    for (int32_t y = widget->row;
-         y < widget->row + widget->row_span; y++) {
-        for (int32_t x = widget->column;
-             x < widget->column + widget->column_span; x++) {
-            if (action_cell_in_rect(
-                    x, y, column, row,
-                    widget->column_span, widget->row_span)) {
-                continue;
-            }
-
-            bool occupied_by_other_app = false;
-            for (size_t i = 0; i < s_app_icon_count; i++) {
-                app_icon_slot_t *app = &s_app_icons[i];
-                if (app->button == NULL) {
-                    continue;
-                }
-                bool is_displaced = false;
-                for (size_t j = 0; j < displaced_count; j++) {
-                    if (displaced[j] == app) {
-                        is_displaced = true;
-                        break;
-                    }
-                }
-                if (!is_displaced && app->column == x && app->row == y) {
-                    occupied_by_other_app = true;
-                    break;
-                }
-            }
-
-            if (!occupied_by_other_app &&
-                destination_count < APP_ICON_CAPACITY) {
-                destination_columns[destination_count] = x;
-                destination_rows[destination_count] = y;
-                destination_count++;
-            }
-        }
-    }
-
-    if (destination_count < displaced_count) {
-        return false;
-    }
-
-    /*
-     * Search for a new location for the covered widget while treating the
-     * dragged widget as already occupying its destination. The old footprint
-     * of the dragged widget is available for the covered widget to use.
-     */
-    if (displaced_widget != NULL) {
-        int32_t old_column = widget->column;
-        int32_t old_row = widget->row;
-
-        widget->column = column;
-        widget->row = row;
-        bool found = action_widget_find_free_rect(
-            displaced_widget, -1, -1,
-            &displaced_widget_column, &displaced_widget_row);
-        widget->column = old_column;
-        widget->row = old_row;
-
-        if (!found) {
-            return false;
-        }
-
-        /* Do not place the covered widget over shortcuts being displaced. */
-        for (int32_t y = displaced_widget_row;
-             y < displaced_widget_row + displaced_widget->row_span; y++) {
-            for (int32_t x = displaced_widget_column;
-                 x < displaced_widget_column + displaced_widget->column_span;
-                 x++) {
-                for (size_t i = 0; i < destination_count; i++) {
-                    if (destination_columns[i] == x &&
-                        destination_rows[i] == y) {
-                        return false;
-                    }
-                }
-            }
-        }
-    }
-
-    /* All destinations are valid; now commit the complete move. */
-    for (size_t i = 0; i < displaced_count; i++) {
-        displaced[i]->column = destination_columns[i];
-        displaced[i]->row = destination_rows[i];
-        action_icon_set_grid_cell(
-            displaced[i]->button,
-            displaced[i]->column,
-            displaced[i]->row);
-    }
-
-    if (displaced_widget != NULL) {
-        action_widget_set_grid_cell(
-            displaced_widget,
-            displaced_widget_column,
-            displaced_widget_row);
-    }
-
-    action_widget_set_grid_cell(widget, column, row);
-    if (objects.home != NULL) {
-        lv_obj_update_layout(objects.home);
-    }
-    return true;
 }
 
 static void action_layout_drag_take_snapshot(void)
@@ -1132,8 +801,6 @@ static void action_widget_drag_long_pressed(lv_event_t *event)
     s_widget_drag.indev = indev;
     s_widget_drag.start_x = lv_obj_get_x(object);
     s_widget_drag.start_y = lv_obj_get_y(object);
-    s_widget_drag.start_widget_column = widget->column;
-    s_widget_drag.start_widget_row = widget->row;
     s_widget_drag.grab_column_offset = column - widget->column;
     s_widget_drag.grab_row_offset = row - widget->row;
     action_widget_drag_take_snapshot();
@@ -1316,9 +983,8 @@ static void action_icon_finish(lv_obj_t *button)
     }
 
     /*
-     * Commit the dragged icon to its current Grid cell before returning it
-     * to the Grid layout. The other icon, if any, has already been moved
-     * into the cell that the dragged icon left.
+     * The shared preview planner has already placed every displaced object.
+     * Commit only the dragged icon's candidate when the preview is valid.
      */
     app_icon_slot_t *slot = action_icon_find_slot(button);
     if (slot != NULL && s_icon_drag.preview_valid) {
