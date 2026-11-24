@@ -557,8 +557,12 @@ static bool action_layout_drag_preview(
     for (size_t i = 0; i < s_app_icon_count; i++) {
         icon_columns[i] = s_layout_drag_snapshot.icon_columns[i];
         icon_rows[i] = s_layout_drag_snapshot.icon_rows[i];
-        if (s_app_icons[i].button == NULL ||
-            s_app_icons[i].button == dragged_icon) {
+        if (s_app_icons[i].button == dragged_icon) {
+            icon_columns[i] = column;
+            icon_rows[i] = row;
+            continue;
+        }
+        if (s_app_icons[i].button == NULL) {
             continue;
         }
         displaced_icons[i] =
@@ -569,8 +573,12 @@ static bool action_layout_drag_preview(
     for (size_t i = 0; i < HOME_WIDGET_COUNT; i++) {
         widget_columns[i] = s_layout_drag_snapshot.widget_columns[i];
         widget_rows[i] = s_layout_drag_snapshot.widget_rows[i];
-        if (s_home_widgets[i].object == NULL ||
-            &s_home_widgets[i] == dragged_widget) {
+        if (&s_home_widgets[i] == dragged_widget) {
+            widget_columns[i] = column;
+            widget_rows[i] = row;
+            continue;
+        }
+        if (s_home_widgets[i].object == NULL) {
             continue;
         }
 
