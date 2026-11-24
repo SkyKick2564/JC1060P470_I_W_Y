@@ -172,9 +172,30 @@ static void action_home_layout_save(void)
         return;
     }
 
-    if (nvs_set_blob(nvs, HOME_LAYOUT_NVS_KEY, &blob, sizeof(blob)) == ESP_OK) {
-        nvs_commit(nvs);
+    /*
+     * NVS stores one bounded layout blob under one stable key.
+     * Do not write or commit when the serialized layout is unchanged.
+     * This is important during boot: restoring the same layout must not
+     * generate another flash write.
+     */
+    home_layout_blob_t current_blob;
+    size_t current_size = sizeof(current_blob);
+    esp_err_t read_err = nvs_get_blob(
+        nvs, HOME_LAYOUT_NVS_KEY, &current_blob, &current_size);
+
+    if (read_err == ESP_OK &&
+        current_size == sizeof(blob) &&
+        memcmp(&current_blob, &blob, sizeof(blob)) == 0) {
+        nvs_close(nvs);
+        return;
     }
+
+    esp_err_t write_err = nvs_set_blob(
+        nvs, HOME_LAYOUT_NVS_KEY, &blob, sizeof(blob));
+    if (write_err == ESP_OK) {
+        write_err = nvs_commit(nvs);
+    }
+
     nvs_close(nvs);
 }
 
