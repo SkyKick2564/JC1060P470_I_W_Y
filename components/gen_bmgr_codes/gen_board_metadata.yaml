@@ -112,3 +112,9 @@ peripherals:
     io:
       tx_io_num: 26
       rx_io_num: 27
+
+  adc_battery:
+    type: adc
+    role: oneshot
+    io:
+      channel_id: 53

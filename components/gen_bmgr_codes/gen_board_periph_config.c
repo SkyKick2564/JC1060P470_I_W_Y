@@ -15,6 +15,7 @@
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_ldo_regulator.h"
 #include "hal/gpio_types.h"
+#include "periph_adc.h"
 #include "periph_gpio.h"
 #include "periph_i2s.h"
 #include "periph_ledc.h"
@@ -193,6 +194,24 @@ const static periph_uart_config_t esp_bmgr_uart_1_cfg = {
     .uart_mode = UART_MODE_UART,
 };
 
+const static periph_adc_config_t esp_bmgr_adc_battery_cfg = {
+    .role = ESP_BOARD_PERIPH_ROLE_ONESHOT,
+    .cfg = {
+        .oneshot = {
+            .channel_id = 4,
+            .unit_cfg = {
+                .unit_id = ADC_UNIT_2,
+                .clk_src = 0,
+                .ulp_mode = ADC_ULP_MODE_DISABLE,
+            },
+            .chan_cfg = {
+                .atten = ADC_ATTEN_DB_12,
+                .bitwidth = ADC_BITWIDTH_DEFAULT,
+            },
+        },
+    },
+};
+
 // Peripheral descriptor array
 const esp_board_periph_desc_t g_esp_board_peripherals[] = {
     {
@@ -266,13 +285,23 @@ const esp_board_periph_desc_t g_esp_board_peripherals[] = {
         .id = 0,
     },
     {
-        .next = NULL,
+        .next = &g_esp_board_peripherals[8],
         .name = "uart_1",
         .type = "uart",
         .format = NULL,
         .role = ESP_BOARD_PERIPH_ROLE_NONE,
         .cfg = &esp_bmgr_uart_1_cfg,
         .cfg_size = sizeof(esp_bmgr_uart_1_cfg),
+        .id = 0,
+    },
+    {
+        .next = NULL,
+        .name = "adc_battery",
+        .type = "adc",
+        .format = NULL,
+        .role = ESP_BOARD_PERIPH_ROLE_ONESHOT,
+        .cfg = &esp_bmgr_adc_battery_cfg,
+        .cfg_size = sizeof(esp_bmgr_adc_battery_cfg),
         .id = 0,
     },
 };

@@ -96,3 +96,13 @@ peripherals:
         flags:
           allow_pd: 0
           backup_before_sleep: 0
+
+  - name: adc_battery
+    type: adc
+    role: oneshot
+    config:
+      unit_id: ADC_UNIT_2
+      channel_id: 4
+      atten: ADC_ATTEN_DB_12
+      bit_width: ADC_BITWIDTH_DEFAULT
+      ulp_mode: ADC_ULP_MODE_DISABLE

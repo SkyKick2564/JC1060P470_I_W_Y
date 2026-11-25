@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include "esp_board_periph.h"
+#include "periph_adc.h"
 #include "periph_dsi.h"
 #include "periph_gpio.h"
 #include "periph_i2c.h"
@@ -22,41 +23,48 @@
 esp_board_periph_entry_t g_esp_board_periph_handles[] = {
     {
         .next = &g_esp_board_periph_handles[1],
+        .type = "adc",
+        .role = ESP_BOARD_PERIPH_ROLE_ONESHOT,
+        .init = periph_adc_init,
+        .deinit = periph_adc_deinit
+    },
+    {
+        .next = &g_esp_board_periph_handles[2],
         .type = "dsi",
         .role = ESP_BOARD_PERIPH_ROLE_NONE,
         .init = periph_dsi_init,
         .deinit = periph_dsi_deinit
     },
     {
-        .next = &g_esp_board_periph_handles[2],
+        .next = &g_esp_board_periph_handles[3],
         .type = "gpio",
         .role = ESP_BOARD_PERIPH_ROLE_IO,
         .init = periph_gpio_init,
         .deinit = periph_gpio_deinit
     },
     {
-        .next = &g_esp_board_periph_handles[3],
+        .next = &g_esp_board_periph_handles[4],
         .type = "i2c",
         .role = ESP_BOARD_PERIPH_ROLE_MASTER,
         .init = periph_i2c_init,
         .deinit = periph_i2c_deinit
     },
     {
-        .next = &g_esp_board_periph_handles[4],
+        .next = &g_esp_board_periph_handles[5],
         .type = "i2s",
         .role = ESP_BOARD_PERIPH_ROLE_MASTER,
         .init = periph_i2s_init,
         .deinit = periph_i2s_deinit
     },
     {
-        .next = &g_esp_board_periph_handles[5],
+        .next = &g_esp_board_periph_handles[6],
         .type = "ldo",
         .role = ESP_BOARD_PERIPH_ROLE_NONE,
         .init = periph_ldo_init,
         .deinit = periph_ldo_deinit
     },
     {
-        .next = &g_esp_board_periph_handles[6],
+        .next = &g_esp_board_periph_handles[7],
         .type = "ledc",
         .role = ESP_BOARD_PERIPH_ROLE_NONE,
         .init = periph_ledc_init,

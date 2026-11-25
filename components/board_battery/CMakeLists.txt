@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS
-        "board_battery.c"
+        "src/board_battery.c"
     INCLUDE_DIRS
         "include"
     PRIV_INCLUDE_DIRS
