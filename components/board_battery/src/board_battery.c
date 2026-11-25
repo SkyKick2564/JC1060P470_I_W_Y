@@ -16,7 +16,7 @@
 
 static const char *TAG = "board_battery";
 
-ESP_EVENT_DEFINE_BASE(ฺBOARD_BATTERY_EVENT);
+ESP_EVENT_DEFINE_BASE(BOARD_BATTERY_EVENT);
 
 static void board_battery_task(void *arg);
 
@@ -208,49 +208,111 @@ static void board_battery_task(void *arg)
 {
     board_battery_context_t *ctx = (board_battery_context_t *)arg;
 
+    TickType_t last_get_time = xTaskGetTickCount();
+    TickType_t last_update_time = last_get_time;
+
+    TickType_t sample_interval = pdMS_TO_TICKS(500);
+    TickType_t update_interval = pdMS_TO_TICKS(5000);
+
     while (!ctx->stopping) {
-        float capacity = 0.0f;
-        float voltage = 0.0f;
-        bool is_charging = false;
+        TickType_t now = xTaskGetTickCount();
+        TickType_t wait_ticks = portMAX_DELAY;
 
-        esp_err_t err = adc_battery_estimation_get_capacity(
-            ctx->estimation_handle,
-            &capacity
-        );
+        TickType_t sample_elapsed = now - last_get_time;
+        TickType_t update_elapsed = now - last_update_time;
 
-        if (err == ESP_OK) {
-            err = adc_battery_estimation_get_voltage(
-                ctx->estimation_handle,
-                &voltage
-            );
-        }
-
-        if (err == ESP_OK) {
-            err = adc_battery_estimation_get_charging_state(
-                ctx->estimation_handle,
-                &is_charging
-            );
-        }
-
-        if (err == ESP_OK) {
-            if (capacity < 0.0f) {
-                capacity = 0.0f;
-            } else if (capacity > 100.0f) {
-                capacity = 100.0f;
-            }
-
-            if (xSemaphoreTake(ctx->mutex, portMAX_DELAY) == pdTRUE) {
-                ctx->voltage_mv = (uint32_t)(voltage * 1000.0f + 0.5f);
-                ctx->percentage = (uint8_t)(capacity + 0.5f);
-                ctx->is_charging = is_charging;
-
-                xSemaphoreGive(ctx->mutex);
-            }
+        if (sample_elapsed < sample_interval) {
+            wait_ticks = sample_interval - sample_elapsed;
         } else {
-            ESP_LOGW(TAG, "Battery update failed: %s", esp_err_to_name(err));
+            wait_ticks = 0;
+        }
+        TickType_t update_wait =
+            (update_elapsed >= update_interval)
+                ? 0
+                : update_interval - update_elapsed;
+        if (update_wait < wait_ticks) {
+            wait_ticks = update_wait;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        if (wait_ticks > 0) {
+            vTaskDelay(wait_ticks);
+        }
+
+        now = xTaskGetTickCount();
+
+        if ((now - last_get_time) >= sample_interval) {
+            last_get_time = now;
+            board_battery_event_data_t sample;
+            bool charging_changed = false;
+
+            esp_err_t err = adc_battery_estimation_get_capacity(
+                ctx->estimation_handle,
+                &sample.percentage
+            );
+            if (err == ESP_OK) {
+                err = adc_battery_estimation_get_voltage(
+                    ctx->estimation_handle,
+                    &sample.voltage
+                );
+            }
+            if (err == ESP_OK) {
+                err = adc_battery_estimation_get_charging_state(
+                    ctx->estimation_handle,
+                    &sample.is_charging
+                );
+            }
+            if (err == ESP_OK) {
+                if (sample.percentage < 0.0f) {
+                    sample.percentage = 0.0f;
+                } else if (sample.percentage > 100.0f) {
+                    sample.percentage = 100.0f;
+                }
+
+                if (xSemaphoreTake(ctx->mutex, portMAX_DELAY) == pdTRUE) {
+                    charging_changed = (ctx->latest_data.is_charging != sample.is_charging);
+
+                    ctx->latest_data.voltage = sample.voltage;
+                    ctx->latest_data.percentage = sample.percentage;
+                    ctx->latest_data.is_charging = sample.is_charging;
+
+                    xSemaphoreGive(ctx->mutex);
+
+                    if(charging_changed) {
+                        ESP_LOGI(TAG, "Battery charging state changed: %s",
+                                sample.is_charging ? "Charging" : "Not Charging");
+                        esp_event_post(
+                            BOARD_BATTERY_EVENT,
+                            BOARD_BATTERY_EVENT_CHARGING_CHANGED,
+                            &sample,
+                            sizeof(sample),
+                            portMAX_DELAY
+                        );
+                    }
+                }
+            } else {
+                ESP_LOGW(TAG, "Battery update failed: %s", esp_err_to_name(err));
+            }
+        }
+
+        now = xTaskGetTickCount();
+        if ((now - last_update_time) >= update_interval) {
+            last_update_time = now;
+            board_battery_event_data_t event_data;
+            if (xSemaphoreTake(ctx->mutex, portMAX_DELAY) == pdTRUE) {
+                event_data = ctx->latest_data;
+                xSemaphoreGive(ctx->mutex);
+
+                ESP_LOGI(TAG, "Battery update : voltage: %.2f V, percentage: %.2f%%",
+                      event_data.voltage,
+                      event_data.percentage);
+                esp_event_post(
+                    BOARD_BATTERY_EVENT,
+                    BOARD_BATTERY_EVENT_DATA_UPDATED,
+                    &event_data,
+                    sizeof(event_data),
+                    portMAX_DELAY);
+            }
+        }
     }
 
     xSemaphoreGive(ctx->task_exit_sem);

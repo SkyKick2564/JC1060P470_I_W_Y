@@ -5,8 +5,20 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "esp_event.h"
 /* Board Battery Event Base */
-ESP_EVENT_DECLARE_BASE(ฺBOARD_BATTERY_EVENT);
+ESP_EVENT_DECLARE_BASE(BOARD_BATTERY_EVENT);
+
+typedef enum {
+    BOARD_BATTERY_EVENT_DATA_UPDATED,
+    BOARD_BATTERY_EVENT_CHARGING_CHANGED,
+} board_battery_event_id_t;
+
+typedef struct {
+    float voltage;
+    float percentage;
+    bool is_charging;
+} board_battery_event_data_t;
 
 typedef struct board_battery_context *board_battery_handle_t;
 
@@ -14,11 +26,11 @@ esp_err_t board_battery_init(board_battery_handle_t *handle);
 
 esp_err_t board_battery_get_voltage(
     board_battery_handle_t handle,
-    uint32_t *voltage_mv);
+    float *voltage);
 
 esp_err_t board_battery_get_percentage(
     board_battery_handle_t handle,
-    uint8_t *percentage);
+    float *percentage);
 
 esp_err_t board_battery_get_charging_state(
     board_battery_handle_t handle,

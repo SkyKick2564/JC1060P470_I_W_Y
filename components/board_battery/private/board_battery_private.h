@@ -45,9 +45,7 @@ typedef struct board_battery_context {
     SemaphoreHandle_t mutex;
 
     /* Latest Battery Data */
-    uint32_t voltage_mv;
-    uint8_t percentage;
-    bool is_charging;
+    board_battery_event_data_t latest_data;
 
     /* State */
     bool initialized;

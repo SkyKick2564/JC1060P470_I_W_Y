@@ -7,6 +7,7 @@ idf_component_register(
         "private"
     REQUIRES
         esp_board_manager
+        esp_event
         adc_battery_estimation
         freertos
         log
