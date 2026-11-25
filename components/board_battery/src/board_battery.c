@@ -159,6 +159,36 @@ esp_err_t board_battery_init(board_battery_handle_t *handle)
     return ESP_OK;
 }
 
+esp_err_t board_battery_deinit(board_battery_handle_t handle)
+{
+    if (handle == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!handle->initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    handle->stopping = true;
+
+    /* Wait for the task to exit */
+    if (xSemaphoreTake(handle->task_exit_sem, portMAX_DELAY) != pdTRUE) {
+        return ESP_FAIL;
+    }
+
+    vTaskSuspend(handle->task);
+    vTaskDelete(handle->task);
+    handle->task = NULL;
+
+    adc_battery_estimation_destroy(handle->estimation_handle);
+    adc_cali_delete_scheme_curve_fitting(handle->adc_cali_handle);
+    vSemaphoreDelete(handle->mutex);
+    vSemaphoreDelete(handle->task_exit_sem);
+    heap_caps_free(handle);
+
+    return ESP_OK;
+}
+
 static void board_battery_task(void *arg)
 {
     board_battery_context_t *ctx = (board_battery_context_t *)arg;
@@ -167,6 +197,7 @@ static void board_battery_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    ctx->task = NULL;
-    vTaskDelete(NULL);
+    xSemaphoreGive(ctx->task_exit_sem);
+    vTaskSuspend(NULL);
 }
+

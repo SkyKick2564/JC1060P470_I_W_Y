@@ -88,10 +88,9 @@ typedef struct network_manager {
 
     StaticTask_t task_buffer;
     StackType_t task_stack[NETWORK_MANAGER_TASK_STACK_DEPTH];
-    TaskHandle_t task;
-
     StaticSemaphore_t task_exit_sem_buffer;
     SemaphoreHandle_t task_exit_sem;
+    TaskHandle_t task;
     
     StaticSemaphore_t status_mutex_buffer;
     SemaphoreHandle_t status_mutex;

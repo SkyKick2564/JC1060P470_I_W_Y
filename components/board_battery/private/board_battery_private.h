@@ -37,7 +37,10 @@ typedef struct board_battery_context {
     /* FreeRTOS */
     StaticTask_t task_buffer;
     StackType_t task_stack[BOARD_BATTERY_TASK_STACK_DEPTH];
+    StaticSemaphore_t task_exit_sem_buffer;
+    SemaphoreHandle_t task_exit_sem;
     TaskHandle_t task;
+    
     StaticSemaphore_t mutex_buffer;
     SemaphoreHandle_t mutex;
 
