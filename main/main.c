@@ -12,6 +12,7 @@
 #include "ota_manager.h"
 #include "app_config.h"
 #include "esp_board_manager.h"
+#include "board_battery.h"
 #include "app.h"
 #include "ui.h"
 
@@ -71,6 +72,7 @@ static void app_update_available(
 void app_main(void)
 {
     network_manager_handle_t network = NULL;
+    board_battery_handle_t battery_handle = NULL;
     esp_err_t err;
 
     // 1. Initialize Board Hardware
@@ -82,6 +84,13 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Board Manager initialized");
 
+    err = board_battery_init(&battery_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Battery init failed: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "Battery initialized");
     /* Initialize application and EEZ UI before registering the video target. */
     err = app_init();
     if (err != ESP_OK) {

@@ -9,4 +9,5 @@ idf_component_register(
         network_manager
         ota_manager
         esp_board_manager
+        board_battery
 )
