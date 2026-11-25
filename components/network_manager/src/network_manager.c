@@ -1347,8 +1347,8 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
 
     manager->task = xTaskCreateStatic(
         network_manager_task,
-        "network_mgr",
-        NETWORK_MANAGER_TASK_STACK_SIZE,
+        "network_mgr_task",
+        NETWORK_MANAGER_TASK_STACK_DEPTH,
         manager,
         NETWORK_MANAGER_TASK_PRIORITY,
         manager->task_stack,
@@ -1380,7 +1380,7 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
 
         vQueueDelete(manager->queue);
         vSemaphoreDelete(manager->status_mutex);
-        free(manager);
+        heap_caps_free(manager);
         return err;
     }
 

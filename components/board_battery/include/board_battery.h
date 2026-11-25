@@ -1,38 +1,26 @@
 #ifndef BOARD_BATTERY_H
 #define BOARD_BATTERY_H
 
+#include "esp_err.h"
+#include <stdbool.h>
 #include <stdint.h>
 
-#include "esp_err.h"
+typedef struct board_battery_context *board_battery_handle_t;
 
-/**
- * @brief Initialize battery voltage measurement and capacity estimation.
- *
- * @return ESP_OK on success, otherwise an error code.
- */
-esp_err_t board_battery_init(void);
+esp_err_t board_battery_init(board_battery_handle_t *handle);
 
-/**
- * @brief Get the measured battery voltage in volts.
- *
- * @param voltage Pointer to receive the battery voltage.
- * @return ESP_OK on success, otherwise an error code.
- */
-esp_err_t board_battery_get_voltage(float *voltage);
+esp_err_t board_battery_get_voltage(
+    board_battery_handle_t handle,
+    uint32_t *voltage_mv);
 
-/**
- * @brief Get the estimated battery capacity in percent (0-100).
- *
- * @param percentage Pointer to receive the estimated capacity.
- * @return ESP_OK on success, otherwise an error code.
- */
-esp_err_t board_battery_get_percentage(uint8_t *percentage);
+esp_err_t board_battery_get_percentage(
+    board_battery_handle_t handle,
+    uint8_t *percentage);
 
-/**
- * @brief Deinitialize battery measurement and release its resources.
- *
- * @return ESP_OK on success, otherwise an error code.
- */
-esp_err_t board_battery_deinit(void);
+esp_err_t board_battery_get_charging_state(
+    board_battery_handle_t handle,
+    bool *is_charging);
+
+esp_err_t board_battery_deinit(board_battery_handle_t handle);
 
 #endif /* BOARD_BATTERY_H */
