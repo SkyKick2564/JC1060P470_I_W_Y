@@ -1394,6 +1394,7 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
             return err;
         }
 
+        vTaskSuspend(manager->task);
         vTaskDelete(manager->task);
         manager->task = NULL;
 
@@ -1452,6 +1453,7 @@ esp_err_t network_manager_deinit(network_manager_handle_t handle)
         return ESP_FAIL;
     }
 
+    vTaskSuspend(handle->task);
     vTaskDelete(handle->task);
     handle->task = NULL;
 
