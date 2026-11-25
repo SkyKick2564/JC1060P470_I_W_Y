@@ -81,6 +81,7 @@ esp_err_t board_battery_init(board_battery_handle_t *handle)
     /* Create ADC Calibration */
     adc_cali_curve_fitting_config_t cali_config = {
         .unit_id = ctx->adc_config->cfg.oneshot.unit_cfg.unit_id,
+        .chan = ctx->adc_config->cfg.oneshot.channel_id,
         .atten = ctx->adc_config->cfg.oneshot.chan_cfg.atten,
         .bitwidth = ctx->adc_config->cfg.oneshot.chan_cfg.bitwidth,
     };
