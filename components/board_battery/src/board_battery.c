@@ -16,6 +16,8 @@
 
 static const char *TAG = "board_battery";
 
+ESP_EVENT_DEFINE_BASE(ฺBOARD_BATTERY_EVENT);
+
 static void board_battery_task(void *arg);
 
 esp_err_t board_battery_init(board_battery_handle_t *handle)
@@ -134,6 +136,18 @@ esp_err_t board_battery_init(board_battery_handle_t *handle)
         return ESP_FAIL;
     }
 
+    ctx->task_exit_sem = xSemaphoreCreateBinaryStatic(
+        &ctx->task_exit_sem_buffer
+    );
+    if (ctx->task_exit_sem == NULL) {
+        ESP_LOGE(TAG, "Failed to Create Task Exit Semaphore");
+        adc_battery_estimation_destroy(ctx->estimation_handle);
+        adc_cali_delete_scheme_curve_fitting(ctx->adc_cali_handle);
+        vSemaphoreDelete(ctx->mutex);
+        heap_caps_free(ctx);
+        return ESP_FAIL;
+    }
+
     ctx->task = xTaskCreateStatic(
         board_battery_task,
         "board_battery_task",
@@ -145,9 +159,10 @@ esp_err_t board_battery_init(board_battery_handle_t *handle)
     );
     if (ctx->task == NULL) {
         ESP_LOGE(TAG, "Failed to Create Battery Task");
-        vSemaphoreDelete(ctx->mutex);
         adc_battery_estimation_destroy(ctx->estimation_handle);
         adc_cali_delete_scheme_curve_fitting(ctx->adc_cali_handle);
+        vSemaphoreDelete(ctx->mutex);
+        vSemaphoreDelete(ctx->task_exit_sem);
         heap_caps_free(ctx);
         return ESP_ERR_NO_MEM;
     }
@@ -194,7 +209,48 @@ static void board_battery_task(void *arg)
     board_battery_context_t *ctx = (board_battery_context_t *)arg;
 
     while (!ctx->stopping) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        float capacity = 0.0f;
+        float voltage = 0.0f;
+        bool is_charging = false;
+
+        esp_err_t err = adc_battery_estimation_get_capacity(
+            ctx->estimation_handle,
+            &capacity
+        );
+
+        if (err == ESP_OK) {
+            err = adc_battery_estimation_get_voltage(
+                ctx->estimation_handle,
+                &voltage
+            );
+        }
+
+        if (err == ESP_OK) {
+            err = adc_battery_estimation_get_charging_state(
+                ctx->estimation_handle,
+                &is_charging
+            );
+        }
+
+        if (err == ESP_OK) {
+            if (capacity < 0.0f) {
+                capacity = 0.0f;
+            } else if (capacity > 100.0f) {
+                capacity = 100.0f;
+            }
+
+            if (xSemaphoreTake(ctx->mutex, portMAX_DELAY) == pdTRUE) {
+                ctx->voltage_mv = (uint32_t)(voltage * 1000.0f + 0.5f);
+                ctx->percentage = (uint8_t)(capacity + 0.5f);
+                ctx->is_charging = is_charging;
+
+                xSemaphoreGive(ctx->mutex);
+            }
+        } else {
+            ESP_LOGW(TAG, "Battery update failed: %s", esp_err_to_name(err));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 
     xSemaphoreGive(ctx->task_exit_sem);

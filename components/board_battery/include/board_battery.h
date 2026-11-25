@@ -5,6 +5,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* Board Battery Event Base */
+ESP_EVENT_DECLARE_BASE(ฺBOARD_BATTERY_EVENT);
+
 typedef struct board_battery_context *board_battery_handle_t;
 
 esp_err_t board_battery_init(board_battery_handle_t *handle);
