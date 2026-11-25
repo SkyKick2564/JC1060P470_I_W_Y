@@ -302,9 +302,10 @@ static void board_battery_task(void *arg)
                 event_data = ctx->latest_data;
                 xSemaphoreGive(ctx->mutex);
 
-                ESP_LOGI(TAG, "Battery update : voltage: %.2f V, percentage: %.2f%%",
+                ESP_LOGI(TAG, "Battery update : voltage: %.2f V, percentage: %.2f%%, charging: %s",
                       event_data.voltage,
-                      event_data.percentage);
+                      event_data.percentage,
+                      event_data.is_charging ? "Yes" : "No");
                 esp_event_post(
                     BOARD_BATTERY_EVENT,
                     BOARD_BATTERY_EVENT_DATA_UPDATED,
