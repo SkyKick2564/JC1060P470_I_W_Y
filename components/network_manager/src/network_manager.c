@@ -1333,7 +1333,7 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
     }
 
     manager->task_exit_sem = xSemaphoreCreateBinaryStatic(
-    &manager->task_exit_sem_buffer
+        &manager->task_exit_sem_buffer
     );
 
     if (manager->task_exit_sem == NULL) {
@@ -1385,16 +1385,23 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
         };
         esp_err_t exit_err = network_manager_submit(manager, &exit_request);
         if (exit_err != ESP_OK) {
-            /* Keep the task-owned object alive if hardware cleanup failed. */
             ESP_LOGE(TAG, "Network Manager cleanup failed: %s",
-                     esp_err_to_name(exit_err));
+                    esp_err_to_name(exit_err));
             return err;
         }
+
+        if (xSemaphoreTake(manager->task_exit_sem, portMAX_DELAY) != pdTRUE) {
+            return err;
+        }
+
+        vTaskDelete(manager->task);
+        manager->task = NULL;
 
         vQueueDelete(manager->queue);
         vSemaphoreDelete(manager->status_mutex);
         vSemaphoreDelete(manager->task_exit_sem);
         heap_caps_free(manager);
+
         return err;
     }
 
@@ -1441,9 +1448,18 @@ esp_err_t network_manager_deinit(network_manager_handle_t handle)
         return err;
     }
 
+    if (xSemaphoreTake(handle->task_exit_sem, portMAX_DELAY) != pdTRUE) {
+        return ESP_FAIL;
+    }
+
+    vTaskDelete(handle->task);
+    handle->task = NULL;
+
     vQueueDelete(handle->queue);
     vSemaphoreDelete(handle->status_mutex);
+    vSemaphoreDelete(handle->task_exit_sem);
     heap_caps_free(handle);
+
     return ESP_OK;
 }
 
