@@ -1192,11 +1192,12 @@ static void network_manager_task(void *arg)
                     &exit_task
                 );
 
-                xSemaphoreGive(request->completed);
-
                 if (exit_task) {
-                    manager->task = NULL;
-                    vTaskDelete(NULL);
+                    xSemaphoreGive(request->completed);
+                    xSemaphoreGive(manager->task_exit_sem);
+                    vTaskSuspend(NULL);
+                }else{
+                    xSemaphoreGive(request->completed);
                 }
             } else {
                 network_manager_process_event(manager, &message);
@@ -1331,6 +1332,16 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
         return ESP_ERR_NO_MEM;
     }
 
+    manager->task_exit_sem = xSemaphoreCreateBinaryStatic(
+    &manager->task_exit_sem_buffer
+    );
+
+    if (manager->task_exit_sem == NULL) {
+        vSemaphoreDelete(manager->status_mutex);
+        heap_caps_free(manager);
+        return ESP_FAIL;
+    }
+
     manager->queue = xQueueCreateStatic(
         NETWORK_MANAGER_QUEUE_LENGTH,
         sizeof(network_message_t),
@@ -1339,6 +1350,7 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
     );
     if (manager->queue == NULL) {
         vSemaphoreDelete(manager->status_mutex);
+        vSemaphoreDelete(manager->task_exit_sem);
         heap_caps_free(manager);
         return ESP_ERR_NO_MEM;
     }
@@ -1357,6 +1369,7 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
     if (manager->task == NULL) {
         vQueueDelete(manager->queue);
         vSemaphoreDelete(manager->status_mutex);
+        vSemaphoreDelete(manager->task_exit_sem);
         heap_caps_free(manager);
         return ESP_ERR_NO_MEM;
     }
@@ -1380,6 +1393,7 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
 
         vQueueDelete(manager->queue);
         vSemaphoreDelete(manager->status_mutex);
+        vSemaphoreDelete(manager->task_exit_sem);
         heap_caps_free(manager);
         return err;
     }
