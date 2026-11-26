@@ -8,6 +8,8 @@
 #include "esp_err.h"
 #include "network_manager.h"
 
+typedef struct ota_manager_context *ota_manager_handle_t;
+
 typedef enum {
     OTA_MODE_AUTO = 0,   /* Install immediately when a newer version is found. */
     OTA_MODE_MANUAL      /* Notify the application and wait for confirmation. */
@@ -45,6 +47,8 @@ typedef void (*ota_update_available_cb_t)(
 );
 
 typedef struct {
+    network_manager_handle_t network;
+
     const char *manifest_url;
     /* Optional: NULL or empty for public OTA endpoints. */
     const char *auth_token;
@@ -60,30 +64,27 @@ typedef struct {
 } ota_manager_config_t;
 
 /*
- * Initialize OTA Manager with the existing Network Manager handle and
- * application-provided configuration. OTA Manager does not control Wi-Fi.
+ * Initialize OTA Manager using the existing Network Manager handle
+ * retrieved from the application context provided through config->user_ctx.
+ * OTA Manager does not control Wi-Fi.
  */
 esp_err_t ota_manager_init(
-    network_manager_handle_t network,
+    ota_manager_handle_t *out_handle,
     const ota_manager_config_t *config
 );
-
-/* Start the OTA polling FreeRTOS task. Safe to call once. */
-esp_err_t ota_manager_start(void);
 
 /* Confirm the running image after essential application startup succeeds. */
 void ota_manager_confirm_running_firmware(void);
 
-/*
- * Confirm the firmware currently pending in OTA_MODE_MANUAL.
- * Returns ESP_OK without action if no update is waiting for confirmation.
- */
-esp_err_t ota_manager_confirm_update(void);
+/* Confirm the firmware currently pending in OTA_MODE_MANUAL. */
+esp_err_t ota_manager_confirm_update(
+    ota_manager_handle_t handle
+);
 
-/*
- * Read a snapshot of the current firmware and pending OTA state.
- * The caller owns the returned data; no callback is required to read it.
- */
-esp_err_t ota_manager_get_status(ota_manager_status_t *status);
+/* Read a snapshot of the current firmware and pending OTA state. */
+esp_err_t ota_manager_get_status(
+    ota_manager_handle_t handle,
+    ota_manager_status_t *status
+);
 
 #endif /* OTA_MANAGER_H */

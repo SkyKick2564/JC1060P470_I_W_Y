@@ -1339,7 +1339,7 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
     if (manager->task_exit_sem == NULL) {
         vSemaphoreDelete(manager->status_mutex);
         heap_caps_free(manager);
-        return ESP_FAIL;
+        return ESP_ERR_NO_MEM;
     }
 
     manager->queue = xQueueCreateStatic(

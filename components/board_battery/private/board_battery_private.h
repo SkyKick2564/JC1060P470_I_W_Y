@@ -23,6 +23,9 @@
 #define BOARD_BATTERY_TASK_PRIORITY      5
 #define BOARD_BATTERY_NVS_NAMESPACE      "board_battery"
 
+#define BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES    9
+#define BOARD_BATTERY_VOLTAGE_EMA_ALPHA         0.25f
+
 typedef struct board_battery_context {
     /* Board Manager ADC */
     periph_adc_handle_t *adc_periph;
@@ -31,8 +34,12 @@ typedef struct board_battery_context {
     /* ADC Calibration */
     adc_cali_handle_t adc_cali_handle;
 
-    /* Battery Estimation */
-    adc_battery_estimation_handle_t estimation_handle;
+    /* Voltage Filter */
+    int voltage_samples[BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES];
+    uint8_t voltage_sample_count;
+    uint8_t voltage_sample_index;
+    float voltage_ema;
+    bool voltage_ema_initialized;
 
     /* FreeRTOS */
     StaticTask_t task_buffer;

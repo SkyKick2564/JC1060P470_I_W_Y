@@ -4,7 +4,6 @@
 #include "esp_heap_caps.h"
 
 #include "esp_board_manager.h"
-#include "adc_battery_estimation.h"
 #include "periph_adc.h"
 
 #include "esp_adc/adc_cali.h"
@@ -19,6 +18,64 @@ static const char *TAG = "board_battery";
 ESP_EVENT_DEFINE_BASE(BOARD_BATTERY_EVENT);
 
 static void board_battery_task(void *arg);
+
+static esp_err_t battery_voltage_filter(
+    board_battery_context_t *ctx,
+    int voltage_mv,
+    int *filtered_voltage_mv
+)
+{
+    if (ctx == NULL || filtered_voltage_mv == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    ctx->voltage_samples[ctx->voltage_sample_index] = voltage_mv;
+
+    ctx->voltage_sample_index = 
+        (ctx->voltage_sample_index + 1) % 
+        BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES;
+    
+    if (ctx->voltage_sample_count < BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES) {
+        ctx->voltage_sample_count++;
+    }
+
+    /* Warm-up: wait until all 9 samples are available */
+    if (ctx->voltage_sample_count < BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES) {
+        return ESP_ERR_NOT_FINISHED;
+    }
+
+    /* Copy samples for sorting */
+    int sorted[BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES];
+    for (int i = 0; i < BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES; i++) {
+        sorted[i] = ctx->voltage_samples[i];
+    }
+    for (int i = 0; i < BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES - 1; i++) {
+        for (int j = i + 1; j < BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES; j++) {
+            if (sorted[i] > sorted[j]) {
+                int temp = sorted[i];
+                sorted[i] = sorted[j];
+                sorted[j] = temp;
+            }
+        }
+    }
+
+    /* Calculate Median */
+    int median_mv = sorted[BOARD_BATTERY_VOLTAGE_FILTER_SAMPLES / 2];
+
+    /* Initialize EMA after warm-up */
+    if (!ctx->voltage_ema_initialized) {
+        ctx->voltage_ema = (float)median_mv;
+        ctx->voltage_ema_initialized = true;
+    } else {
+        /* Apply EMA Low-pass Filter */
+        ctx->voltage_ema =
+            (BOARD_BATTERY_VOLTAGE_EMA_ALPHA * (float)median_mv) +
+            ((1.0f - BOARD_BATTERY_VOLTAGE_EMA_ALPHA) * ctx->voltage_ema);
+    }
+
+    *filtered_voltage_mv = (int)(ctx->voltage_ema + 0.5f);
+
+    return ESP_OK;
+}
 
 esp_err_t board_battery_init(board_battery_handle_t *handle)
 {
@@ -98,40 +155,9 @@ esp_err_t board_battery_init(board_battery_handle_t *handle)
     }
     ESP_LOGI(TAG, "ADC Calibration created successfully");
 
-    /* Create Battery Estimation */
-    adc_battery_estimation_t estimation_config = {
-        .external = {
-            .adc_handle = ctx->adc_periph->oneshot,
-            .adc_cali_handle = ctx->adc_cali_handle,
-        },
-        .adc_channel = ctx->adc_config->cfg.oneshot.channel_id,
-        .upper_resistor = 68000,
-        .lower_resistor = 100000,
-        .battery_points = NULL,
-        .battery_points_count = 0,
-        .charging_detect_cb = NULL,
-        .charging_detect_user_data = NULL,
-        .standby_detect_cb = NULL,
-        .standby_detect_user_data = NULL,
-    };
-
-    ctx->estimation_handle = adc_battery_estimation_create(
-        &estimation_config
-    );
-
-    if (ctx->estimation_handle == NULL) {
-        ESP_LOGE(TAG, "Failed to Create Battery Estimation");
-        adc_cali_delete_scheme_curve_fitting(ctx->adc_cali_handle);
-        heap_caps_free(ctx);
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "Battery Estimation created successfully");
-
     ctx->mutex = xSemaphoreCreateMutexStatic(&ctx->mutex_buffer);
     if (ctx->mutex == NULL) {
         ESP_LOGE(TAG, "Failed to Create Battery Mutex");
-        adc_battery_estimation_destroy(ctx->estimation_handle);
         adc_cali_delete_scheme_curve_fitting(ctx->adc_cali_handle);
         heap_caps_free(ctx);
         return ESP_FAIL;
@@ -142,12 +168,13 @@ esp_err_t board_battery_init(board_battery_handle_t *handle)
     );
     if (ctx->task_exit_sem == NULL) {
         ESP_LOGE(TAG, "Failed to Create Task Exit Semaphore");
-        adc_battery_estimation_destroy(ctx->estimation_handle);
         adc_cali_delete_scheme_curve_fitting(ctx->adc_cali_handle);
         vSemaphoreDelete(ctx->mutex);
         heap_caps_free(ctx);
         return ESP_FAIL;
     }
+
+    ctx->initialized = true;
 
     ctx->task = xTaskCreateStatic(
         board_battery_task,
@@ -160,15 +187,12 @@ esp_err_t board_battery_init(board_battery_handle_t *handle)
     );
     if (ctx->task == NULL) {
         ESP_LOGE(TAG, "Failed to Create Battery Task");
-        adc_battery_estimation_destroy(ctx->estimation_handle);
         adc_cali_delete_scheme_curve_fitting(ctx->adc_cali_handle);
         vSemaphoreDelete(ctx->mutex);
         vSemaphoreDelete(ctx->task_exit_sem);
         heap_caps_free(ctx);
         return ESP_ERR_NO_MEM;
     }
-    ctx->initialized = true;
-
     ESP_LOGI(TAG, "Battery Task created successfully");
     *handle = ctx;
     // Initialization logic for board battery
@@ -196,7 +220,6 @@ esp_err_t board_battery_deinit(board_battery_handle_t handle)
     vTaskDelete(handle->task);
     handle->task = NULL;
 
-    adc_battery_estimation_destroy(handle->estimation_handle);
     adc_cali_delete_scheme_curve_fitting(handle->adc_cali_handle);
     vSemaphoreDelete(handle->mutex);
     vSemaphoreDelete(handle->task_exit_sem);
@@ -209,112 +232,8 @@ static void board_battery_task(void *arg)
 {
     board_battery_context_t *ctx = (board_battery_context_t *)arg;
 
-    TickType_t last_get_time = xTaskGetTickCount();
-    TickType_t last_update_time = last_get_time;
-
-    TickType_t sample_interval = pdMS_TO_TICKS(500);
-    TickType_t update_interval = pdMS_TO_TICKS(5000);
-
     while (!ctx->stopping) {
-        TickType_t now = xTaskGetTickCount();
-        TickType_t wait_ticks = portMAX_DELAY;
-
-        TickType_t sample_elapsed = now - last_get_time;
-        TickType_t update_elapsed = now - last_update_time;
-
-        if (sample_elapsed < sample_interval) {
-            wait_ticks = sample_interval - sample_elapsed;
-        } else {
-            wait_ticks = 0;
-        }
-        TickType_t update_wait =
-            (update_elapsed >= update_interval)
-                ? 0
-                : update_interval - update_elapsed;
-        if (update_wait < wait_ticks) {
-            wait_ticks = update_wait;
-        }
-
-        if (wait_ticks > 0) {
-            vTaskDelay(wait_ticks);
-        }
-
-        now = xTaskGetTickCount();
-
-        if ((now - last_get_time) >= sample_interval) {
-            last_get_time = now;
-            board_battery_event_data_t sample;
-            bool charging_changed = false;
-
-            esp_err_t err = adc_battery_estimation_get_capacity(
-                ctx->estimation_handle,
-                &sample.percentage
-            );
-            if (err == ESP_OK) {
-                err = adc_battery_estimation_get_voltage(
-                    ctx->estimation_handle,
-                    &sample.voltage
-                );
-            }
-            if (err == ESP_OK) {
-                err = adc_battery_estimation_get_charging_state(
-                    ctx->estimation_handle,
-                    &sample.is_charging
-                );
-            }
-            if (err == ESP_OK) {
-                if (sample.percentage < 0.0f) {
-                    sample.percentage = 0.0f;
-                } else if (sample.percentage > 100.0f) {
-                    sample.percentage = 100.0f;
-                }
-
-                if (xSemaphoreTake(ctx->mutex, portMAX_DELAY) == pdTRUE) {
-                    charging_changed = (ctx->latest_data.is_charging != sample.is_charging);
-
-                    ctx->latest_data.voltage = sample.voltage;
-                    ctx->latest_data.percentage = sample.percentage;
-                    ctx->latest_data.is_charging = sample.is_charging;
-
-                    xSemaphoreGive(ctx->mutex);
-
-                    if(charging_changed) {
-                        ESP_LOGI(TAG, "Battery charging state changed: %s",
-                                sample.is_charging ? "Charging" : "Not Charging");
-                        esp_event_post(
-                            BOARD_BATTERY_EVENT,
-                            BOARD_BATTERY_EVENT_CHARGING_CHANGED,
-                            &sample,
-                            sizeof(sample),
-                            portMAX_DELAY
-                        );
-                    }
-                }
-            } else {
-                ESP_LOGW(TAG, "Battery update failed: %s", esp_err_to_name(err));
-            }
-        }
-
-        now = xTaskGetTickCount();
-        if ((now - last_update_time) >= update_interval) {
-            last_update_time = now;
-            board_battery_event_data_t event_data;
-            if (xSemaphoreTake(ctx->mutex, portMAX_DELAY) == pdTRUE) {
-                event_data = ctx->latest_data;
-                xSemaphoreGive(ctx->mutex);
-
-                ESP_LOGI(TAG, "Battery update : voltage: %.2f V, percentage: %.2f%%, charging: %s",
-                      event_data.voltage,
-                      event_data.percentage,
-                      event_data.is_charging ? "Yes" : "No");
-                esp_event_post(
-                    BOARD_BATTERY_EVENT,
-                    BOARD_BATTERY_EVENT_DATA_UPDATED,
-                    &event_data,
-                    sizeof(event_data),
-                    portMAX_DELAY);
-            }
-        }
+        vTaskDelay(pdMS_TO_TICKS(5000)); /* 1 second delay */
     }
 
     xSemaphoreGive(ctx->task_exit_sem);

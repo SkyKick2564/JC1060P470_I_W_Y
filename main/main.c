@@ -11,6 +11,7 @@
 #include "network_manager.h"
 #include "ota_manager.h"
 #include "app_config.h"
+#include "app_context.h"
 #include "esp_board_manager.h"
 #include "board_battery.h"
 #include "app.h"
@@ -18,16 +19,17 @@
 
 static const char *TAG = "MAIN";
 
+static app_context_t app_context;
+
 static esp_err_t app_before_update(void *user_ctx)
 {
     esp_err_t err;
-    network_manager_handle_t network =
-        (network_manager_handle_t)user_ctx;
+    app_context_t *app_ctx = (app_context_t *)user_ctx;
 
     ESP_LOGW(TAG, "OTA: Application pre-flash callback");
 
     /* Deinit performs STOP internally, then tears down Wi-Fi and ESP-Hosted. */
-    err = network_manager_deinit(network);
+    err = network_manager_deinit(app_ctx->network);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Network Manager deinit failed: %s",
                  esp_err_to_name(err));
@@ -71,8 +73,9 @@ static void app_update_available(
 
 void app_main(void)
 {
-    network_manager_handle_t network = NULL;
-    board_battery_handle_t battery_handle = NULL;
+    app_context.network = NULL;
+    app_context.battery = NULL;
+    app_context.ota = NULL;
     esp_err_t err;
 
     // 1. Initialize Board Hardware
@@ -84,7 +87,7 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Board Manager initialized");
 
-    err = board_battery_init(&battery_handle);
+    err = board_battery_init(&app_context.battery);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Battery init failed: %s",
                  esp_err_to_name(err));
@@ -108,7 +111,7 @@ void app_main(void)
      */
     ota_manager_confirm_running_firmware();
 
-    err = network_manager_init(&network);
+    err = network_manager_init(&app_context.network);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Network Manager init failed: %s",
                  esp_err_to_name(err));
@@ -117,22 +120,16 @@ void app_main(void)
     ESP_LOGI(TAG, "Network Manager initialized");
 
     ota_manager_config_t ota_config = APP_OTA_CONFIG;
-    ota_config.user_ctx = network;
-    err = ota_manager_init(network, &ota_config);
+    ota_config.network = app_context.network;
+    ota_config.user_ctx = &app_context;
+    err = ota_manager_init(
+        &app_context.ota,
+        &ota_config
+    );
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
                  esp_err_to_name(err));
-    } else {
-        ESP_LOGI(TAG, "OTA Manager initialized");
-        err = ota_manager_start();
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "OTA Manager start failed: %s",
-                    esp_err_to_name(err));
-        } else {
-            ESP_LOGI(TAG, "OTA Manager started");
-        }
-    }
-
+    } 
     // err = network_manager_set_wifi_config(
     //     network,
     //     "PoomChalermpol_2.4G",
@@ -144,7 +141,7 @@ void app_main(void)
     //     return;
     // }
 
-    err = network_manager_start(network);
+    err = network_manager_start(app_context.network);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Network Manager start failed: %s",
                  esp_err_to_name(err));
