@@ -3,7 +3,9 @@
 
 #include "esp_err.h"
 
-esp_err_t app_lvgl_deinit(void);
+/* Application Handle */
+typedef struct app_context *app_handle_t;
+
 esp_err_t app_init(void);
 
 #endif

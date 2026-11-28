@@ -1,6 +1,7 @@
 {
   "files": [
     "fonts.h",
+    "fonts/ui_font_detroit_.c",
     "fonts/ui_font_noto_sans_thai18.c",
     "fonts/ui_font_noto_sans_thai_22.c",
     "fonts/ui_font_noto_sans_thai_24.c",
@@ -10,6 +11,8 @@
     "images.c",
     "images.h",
     "images/ui_image_camera_icon.c",
+    "images/ui_image_critical_icon.c",
+    "images/ui_image_display_icon.c",
     "images/ui_image_lightning.c",
     "images/ui_image_media_icon.c",
     "images/ui_image_setting_icon.c",

@@ -1,3 +1,4 @@
+#include "board_battery.h"
 #include "board_battery_private.h"
 
 #include "esp_log.h"

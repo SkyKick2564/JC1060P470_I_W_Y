@@ -1,8 +1,12 @@
 #include "app.h"
-#include "app_touch_multi.h"
-#include "actions.h"
+#include "app_context.h"
+#include "app_config.h"
+
 #include "esp_err.h"
 #include "esp_log.h"
+
+#include "app_touch_multi.h"
+#include "actions.h"
 
 #include "ui.h"
 
@@ -10,101 +14,101 @@
 #include "esp_lvgl_port.h"
 #include "esp_lvgl_port_disp.h"
 #include "esp_lcd_mipi_dsi.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 
 #include "dev_display_lcd.h"
 #include "dev_lcd_touch.h"
 
+#include "esp_heap_caps.h"
+
 static const char *TAG = "APP";
 
-static lv_display_t *s_display = NULL;
-static esp_lcd_panel_handle_t s_panel_handle = NULL;
+static app_context_t app_context;
 
-static void show_settings_event(lv_event_t *event)
+static esp_err_t app_before_update(void *user_ctx)
 {
-    lv_obj_add_flag(objects.home, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(objects.setting, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void show_home_event(lv_event_t *event)
-{
-    lv_obj_add_flag(objects.setting, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(objects.home, LV_OBJ_FLAG_HIDDEN);
-}
-
-esp_err_t app_lvgl_deinit(void)
-{
-    esp_err_t err;
-
-    ESP_LOGI(TAG, "Deinitializing LVGL...");
-
-    if (!lvgl_port_lock(0)) {
-        ESP_LOGE(TAG, "Failed to lock LVGL");
-        return ESP_FAIL;
-    }
-
-    /*
-     * lvgl_port_add_disp_dsi() registers a DPI ISR callback with the panel.
-     * lvgl_port_remove_disp() frees the LVGL display context but the current
-     * esp_lvgl_port implementation does not unregister that callback.
-     * Clear it here, while the panel and display context are still alive.
-     */
-    if (s_panel_handle != NULL) {
-        const esp_lcd_dpi_panel_event_callbacks_t empty_callbacks = {0};
-        err = esp_lcd_dpi_panel_register_event_callbacks(
-            s_panel_handle, &empty_callbacks, NULL);
-        if (err != ESP_OK) {
-            lvgl_port_unlock();
-            ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
-                     esp_err_to_name(err));
-            return err;
-        }
-
-        /* Let a callback already executing on the other core finish. */
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-
-    /* Remove all five LVGL touch pointers before deinitializing GT911 */
-    err = app_touch_multi_remove();
-    if (err != ESP_OK) {
-        lvgl_port_unlock();
-        ESP_LOGE(TAG, "Failed to remove multi-touch: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
-
-    /* Remove display from LVGL */
-    if (s_display != NULL) {
-        err = lvgl_port_remove_disp(s_display);
-        if (err != ESP_OK) {
-            lvgl_port_unlock();
-            ESP_LOGE(TAG, "Failed to remove display: %s",
-                     esp_err_to_name(err));
-            return err;
-        }
-
-        s_display = NULL;
-        s_panel_handle = NULL;
-        ESP_LOGI(TAG, "Display removed");
-    }
-
-    lvgl_port_unlock();
-
-    /* Stop LVGL task and deinitialize LVGL */
-    err = lvgl_port_deinit();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "LVGL port deinit failed: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
-
-    ESP_LOGI(TAG, "LVGL deinitialized");
-
     return ESP_OK;
 }
 
-esp_err_t app_init(void)
+static void app_update_available(
+    const ota_firmware_info_t *info,
+    void *user_ctx)
+{
+    
+}
+// static void show_settings_event(lv_event_t *event)
+// {
+//     lv_obj_add_flag(objects.home, LV_OBJ_FLAG_HIDDEN);
+//     lv_obj_remove_flag(objects.setting, LV_OBJ_FLAG_HIDDEN);
+// }
+
+// static void show_home_event(lv_event_t *event)
+// {
+//     lv_obj_add_flag(objects.setting, LV_OBJ_FLAG_HIDDEN);
+//     lv_obj_remove_flag(objects.home, LV_OBJ_FLAG_HIDDEN);
+// }
+
+static esp_err_t unregister_dsi_callbacks(app_context_t *ctx)
+{
+    esp_err_t err;
+
+    if (ctx->panel == NULL) {
+        return ESP_OK;
+    }
+
+    const esp_lcd_dpi_panel_event_callbacks_t empty_callbacks = {0};
+
+    err = esp_lcd_dpi_panel_register_event_callbacks(
+        ctx->panel, &empty_callbacks, NULL);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "DSI callbacks unregistered");
+    return ESP_OK;
+}
+
+static esp_err_t app_remove_touch_multi(void)
+{
+    esp_err_t err;
+    err = app_touch_multi_remove();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to remove multi-touch: %s",
+            esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Multi-touch removed");
+    return ESP_OK;
+}
+
+static esp_err_t app_remove_disp(app_context_t *ctx)
+{
+    esp_err_t err;
+
+    if (ctx->display == NULL) {
+        return ESP_OK;
+    }
+
+    err = lvgl_port_remove_disp(ctx->display);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to remove display: %s",
+            esp_err_to_name(err));
+        return err;
+    }
+    ctx->display = NULL;
+    ctx->panel = NULL;
+
+    ESP_LOGI(TAG, "Display removed");
+    return ESP_OK;
+}
+
+static esp_err_t app_lvgl_init(app_context_t *ctx)
 {
     esp_err_t err;
 
@@ -154,11 +158,8 @@ esp_err_t app_init(void)
 
     /* Initialize LVGL port */
     lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
-    /*
-     * Keep LVGL/UI refresh on Core 0. Media extraction, decode and video
-     * rendering are pinned to Core 1 in media_manager_video_player.c.
-     */
     lvgl_cfg.task_affinity = 0;
+    lvgl_cfg.task_priority = 5;
     err = lvgl_port_init(&lvgl_cfg);
     if(err != ESP_OK)
     {
@@ -197,12 +198,6 @@ esp_err_t app_init(void)
             .direct_mode = true,
         },
     };
-
-    /*
-     * The JD9165 DSI panel is configured with three frame buffers.
-     * Render directly into the panel frame buffers and wait for the
-     * frame-buffer-complete callback before LVGL reuses a buffer.
-     */
     const lvgl_port_display_dsi_cfg_t dsi_cfg = {
         .flags = {
             .avoid_tearing = true,
@@ -216,18 +211,20 @@ esp_err_t app_init(void)
      */
     if (!lvgl_port_lock(0)) {
         ESP_LOGE(TAG, "Failed to lock LVGL");
+        lvgl_port_stop();
+        lvgl_port_deinit();
         return ESP_FAIL;
     }
-
-    s_display = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
-    s_panel_handle = lcd->panel_handle;
-
-    if (s_display == NULL) {
+    
+    ctx->display = lvgl_port_add_disp_dsi(&disp_cfg, &dsi_cfg);
+    ctx->panel = lcd->panel_handle;
+    if (ctx->display == NULL) {
         ESP_LOGE(TAG, "Failed to add LVGL DSI display");
         lvgl_port_unlock();
+        lvgl_port_stop();
+        lvgl_port_deinit();
         return ESP_FAIL;
     }
-
     ESP_LOGI(TAG, "LVGL display initialized successfully");
 
     /* Get Touch device handle from Board Manager */
@@ -236,28 +233,55 @@ esp_err_t app_init(void)
         "lcd_touch",
         (void **)&touch
     );
-
     if (err != ESP_OK || touch == NULL ||
         touch->touch_handle == NULL) {
+        esp_err_t init_err = err != ESP_OK
+            ? err : ESP_ERR_INVALID_STATE;
+
         ESP_LOGE(TAG, "Failed to get Touch handle: %s",
-                esp_err_to_name(err));
+                esp_err_to_name(init_err));
+
+        err = unregister_dsi_callbacks(ctx);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
+                    esp_err_to_name(err));
+        }
+        err = app_remove_disp(ctx);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to remove display: %s",
+                     esp_err_to_name(err));
+        }
         lvgl_port_unlock();
-        return err != ESP_OK ? err : ESP_ERR_INVALID_STATE;
+        lvgl_port_stop();
+        lvgl_port_deinit();
+        return init_err;
     }
 
     /* Register GT911 as five independent LVGL pointer devices */
-    err = app_touch_multi_add(s_display, touch->touch_handle);
+    err = app_touch_multi_add(ctx->display, touch->touch_handle);
     if (err != ESP_OK) {
+        esp_err_t init_err = err;
         ESP_LOGE(TAG, "Failed to add five-point LVGL Touch: %s",
                  esp_err_to_name(err));
+        err = unregister_dsi_callbacks(ctx);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
+                    esp_err_to_name(err));
+        }
+        err = app_remove_disp(ctx);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to remove display: %s",
+                     esp_err_to_name(err));
+        }
         lvgl_port_unlock();
-        return err;
+        lvgl_port_stop();
+        lvgl_port_deinit();
+        return init_err;
     }
-
     ESP_LOGI(TAG, "Five-point LVGL Touch initialized successfully");
 
     /* Set initial screen background before first refresh */
-    lv_obj_t *screen = lv_display_get_screen_active(s_display);
+    lv_obj_t *screen = lv_display_get_screen_active(ctx->display);
 
     lv_obj_set_style_bg_color(
         screen,
@@ -274,33 +298,170 @@ esp_err_t app_init(void)
     // /* Initialize EEZ UI */
     ui_init();
 
-    /* Install app-owned handlers after EEZ has created all UI objects. */
-    err = app_actions_init();
+    /* Allow LVGL task to start rendering */
+    lvgl_port_unlock();
+    ESP_LOGI(TAG, "Application initialized");
+
+    return ESP_OK;
+}
+
+static esp_err_t app_lvgl_deinit(app_context_t *ctx)
+{
+    esp_err_t err;
+
+    ESP_LOGI(TAG, "Deinitializing LVGL...");
+
+    if (!lvgl_port_lock(0)) {
+        ESP_LOGE(TAG, "Failed to lock LVGL");
+        return ESP_FAIL;
+    }
+
+    /* Unregister DSI panel callbacks */
+    err = unregister_dsi_callbacks(handle);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize application actions: %s",
-                 esp_err_to_name(err));
         lvgl_port_unlock();
+        ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
+                 esp_err_to_name(err));
         return err;
     }
 
-    // Settings button
-    lv_obj_add_event_cb(
-        objects.setting_btn,
-        show_settings_event,
-        LV_EVENT_CLICKED,
-        NULL
-    );
+    /* Remove all five LVGL touch pointers */
+    err = app_remove_touch_multi();
+    if (err != ESP_OK) {
+        lvgl_port_unlock();
+        ESP_LOGE(TAG, "Failed to remove multi-touch: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
 
-    lv_obj_add_event_cb(
-        objects.back_setting_btn,
-        show_home_event,
-        LV_EVENT_CLICKED,
-        NULL
-    );
-    /* Allow LVGL task to start rendering */
+    err = app_remove_disp(handle);
+    if (err != ESP_OK) {
+        lvgl_port_unlock();
+        ESP_LOGE(TAG, "Failed to remove display: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
     lvgl_port_unlock();
 
-    ESP_LOGI(TAG, "Application initialized");
+    /* Stop LVGL timer */
+    err = lvgl_port_stop();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to stop LVGL timer: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
 
+    /* Stop LVGL task and deinitialize LVGL */
+    err = lvgl_port_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL port deinit failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "LVGL deinitialized");
+
+    return ESP_OK;
+}
+
+static esp_err_t app_process_request(
+    app_context_t *ctx,
+    const app_request_t *request)
+{
+    switch (request->type)
+    {
+    case APP_REQUEST_STARTUP:
+        esp_err_t err = app_lvgl_init(&app_context);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "LVGL init failed: %s",
+                    esp_err_to_name(err));
+            return err;
+        }
+        
+        break;
+    case APP_REQUEST_COMPONENT_READY:
+        break;
+    case APP_REQUEST_COMPONENT_ERROR:
+        break;
+    case APP_REQUEST_SHOW_SCREEN:
+        break;
+    case APP_REQUEST_SHUTDOWN:
+        break;
+    default:
+        ESP_LOGW(TAG, "Unknown App Request: %d", request->type);
+        return ESP_ERR_INVALID_ARG;
+        break;
+    }
+    return ESP_OK;
+}
+
+static void app_main_task(void *arg)
+{
+    app_context_t *ctx = (app_context_t *)arg;
+    app_request_t request;
+
+    for(;;){
+        if (xQueueReceive(ctx->queue, &request, portMAX_DELAY) == pdTRUE) {
+            esp_err_t err = app_process_request(ctx, &request);
+            if(err != ESP_OK){
+                ESP_LOGE(TAG, "App Task stopped due to error");
+                return;
+            }
+        }
+    }
+}
+
+esp_err_t app_init(void)
+{
+    // esp_err_t err = app_lvgl_init(&app_context);
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "LVGL init failed: %s",
+    //              esp_err_to_name(err));
+    //     return err;
+    // }
+    
+    // err = network_manager_init(&app_context.network);
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "Network Manager init failed: %s",
+    //              esp_err_to_name(err));
+    // }else{
+    //     ESP_LOGI(TAG, "Network Manager initialized");   
+    // }
+    memset(&app_context, 0, sizeof(app_context));
+
+    app_context.queue = xQueueCreateStatic(
+        APP_QUEUE_LENGTH,
+        sizeof(app_request_t),
+        app_context.queue_storage,
+        &app_context.queue_buffer
+    );
+    if (app_context.queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create App Queue");
+        return ESP_ERR_NO_MEM;
+    }
+
+    app_context.task = xTaskCreateStatic(
+        app_main_task,
+        "app_task",
+        APP_TASK_STACK_DEPTH,
+        &app_context,
+        APP_TASK_PRIORITY,
+        app_context.task_stack,
+        &app_context.task_buffer
+    );
+    if (app_context.task == NULL) {
+        ESP_LOGE(TAG, "Failed to create App Task");
+        return ESP_ERR_NO_MEM;
+    }
+    /* Send Startup Request */
+    app_request_t request = {
+        .type = APP_REQUEST_STARTUP
+    };
+
+    if (xQueueSend(app_context.queue, &request, 0) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to send App Startup Request");
+        return ESP_FAIL;
+    }
     return ESP_OK;
 }

@@ -65,7 +65,7 @@ typedef struct {
 
 /*
  * Initialize OTA Manager using the existing Network Manager handle
- * retrieved from the application context provided through config->user_ctx.
+ * supplied through config->network.
  * OTA Manager does not control Wi-Fi.
  */
 esp_err_t ota_manager_init(

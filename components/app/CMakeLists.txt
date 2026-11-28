@@ -51,15 +51,21 @@ idf_component_register(
         "src/ui/fonts/ui_font_noto_sans_thai_26.c"
         "src/ui/fonts/ui_font_noto_sans_thai_32.c"
         "src/ui/fonts/ui_font_noto_sans_thai_40.c"
+        "src/ui/fonts/ui_font_detroit_.c"
         "src/ui/images/ui_image_lightning.c"
         "src/ui/images/ui_image_setting_icon.c"
         "src/ui/images/ui_image_camera_icon.c"
         "src/ui/images/ui_image_media_icon.c"
         "src/ui/images/ui_image_spotify_icon.c"
+        "src/ui/images/ui_image_critical_icon.c"
+        "src/ui/images/ui_image_display_icon.c"
     INCLUDE_DIRS
         "include"
         "src/ui"
         "${EEZ_OBJECT_MAP_DIR}"
+
+    PRIV_INCLUDE_DIRS
+        "private"
 
     REQUIRES
         lvgl
@@ -67,6 +73,9 @@ idf_component_register(
         esp_board_manager
         esp_lcd_touch
         nvs_flash
+        network_manager
+        ota_manager
+        board_battery
         freertos
         log
 )

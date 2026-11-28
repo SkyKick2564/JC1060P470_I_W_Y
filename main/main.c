@@ -1,81 +1,65 @@
-#include <stdbool.h>
-#include <stdio.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include "esp_log.h"
 #include "esp_err.h"
-#include "network_manager.h"
-#include "ota_manager.h"
-#include "app_config.h"
-#include "app_context.h"
+
 #include "esp_board_manager.h"
-#include "board_battery.h"
 #include "app.h"
-#include "ui.h"
 
 static const char *TAG = "MAIN";
 
-static app_context_t app_context;
+// static app_context_t app_context;
 
-static esp_err_t app_before_update(void *user_ctx)
-{
-    esp_err_t err;
-    app_context_t *app_ctx = (app_context_t *)user_ctx;
+// static esp_err_t app_before_update(void *user_ctx)
+// {
+//     esp_err_t err;
+//     app_context_t *app_ctx = (app_context_t *)user_ctx;
 
-    ESP_LOGW(TAG, "OTA: Application pre-flash callback");
+//     ESP_LOGW(TAG, "OTA: Application pre-flash callback");
 
-    /* Deinit performs STOP internally, then tears down Wi-Fi and ESP-Hosted. */
-    err = network_manager_deinit(app_ctx->network);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Network Manager deinit failed: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
+//     /* Deinit performs STOP internally, then tears down Wi-Fi and ESP-Hosted. */
+//     err = network_manager_deinit(app_ctx->network);
+//     if (err != ESP_OK) {
+//         ESP_LOGE(TAG, "Network Manager deinit failed: %s",
+//                  esp_err_to_name(err));
+//         return err;
+//     }
 
-    ESP_LOGI(TAG, "Network Manager and ESP-Hosted deinitialized");
+//     ESP_LOGI(TAG, "Network Manager and ESP-Hosted deinitialized");
 
-    /* LVGL can be deinitialized only after all media tasks have exited. */
-    err = app_lvgl_deinit();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "LVGL deinit failed: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
+//     /* LVGL can be deinitialized only after all media tasks have exited. */
+//     err = app_lvgl_deinit();
+//     if (err != ESP_OK) {
+//         ESP_LOGE(TAG, "LVGL deinit failed: %s",
+//                  esp_err_to_name(err));
+//         return err;
+//     }
 
-    err = esp_board_manager_deinit();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Board Manager deinit failed: %s",
-                 esp_err_to_name(err));
-        return err;
-    }
-    ESP_LOGI(TAG, "Board Manager deinitialized");
-    return ESP_OK;
-}
+//     err = esp_board_manager_deinit();
+//     if (err != ESP_OK) {
+//         ESP_LOGE(TAG, "Board Manager deinit failed: %s",
+//                  esp_err_to_name(err));
+//         return err;
+//     }
+//     ESP_LOGI(TAG, "Board Manager deinitialized");
+//     return ESP_OK;
+// }
 
-static void app_update_available(
-    const ota_firmware_info_t *info,
-    void *user_ctx)
-{
-    (void)user_ctx;
+// static void app_update_available(
+//     const ota_firmware_info_t *info,
+//     void *user_ctx)
+// {
+//     (void)user_ctx;
 
-    ESP_LOGW(TAG, "OTA: Update available");
-    ESP_LOGI(TAG, "  Version: %s", info->version);
-    ESP_LOGI(TAG, "  Description: %s",
-             info->description[0] != '\0' ? info->description : "(none)");
-    ESP_LOGI(TAG, "  Release date: %s",
-             info->release_date[0] != '\0' ? info->release_date : "(none)");
-    ESP_LOGI(TAG, "  Size: %u bytes", (unsigned)info->size);
-}
+//     ESP_LOGW(TAG, "OTA: Update available");
+//     ESP_LOGI(TAG, "  Version: %s", info->version);
+//     ESP_LOGI(TAG, "  Description: %s",
+//              info->description[0] != '\0' ? info->description : "(none)");
+//     ESP_LOGI(TAG, "  Release date: %s",
+//              info->release_date[0] != '\0' ? info->release_date : "(none)");
+//     ESP_LOGI(TAG, "  Size: %u bytes", (unsigned)info->size);
+// }
 
 void app_main(void)
 {
-    app_context.network = NULL;
-    app_context.battery = NULL;
-    app_context.ota = NULL;
     esp_err_t err;
 
     // 1. Initialize Board Hardware
@@ -87,49 +71,63 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "Board Manager initialized");
 
-    err = board_battery_init(&app_context.battery);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Battery init failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-    ESP_LOGI(TAG, "Battery initialized");
-    /* Initialize application and EEZ UI before registering the video target. */
     err = app_init();
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Application initialization failed: %s",
+        ESP_LOGE(TAG, "App initialization failed: %s",
                  esp_err_to_name(err));
         return;
     }
+    // err = board_battery_init(&app_context.battery);
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "Battery init failed: %s",
+    //              esp_err_to_name(err));
+    //     return;
+    // }
+    // ESP_LOGI(TAG, "Battery initialized");
+    // /* Initialize application and EEZ UI before registering the video target. */
+    // err = app_init();
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "Application initialization failed: %s",
+    //              esp_err_to_name(err));
+    //     return;
+    // }
 
-    ESP_LOGI(TAG, "Application started");
+    // ESP_LOGI(TAG, "Application started");
 
-    /*
-     * Confirm a pending OTA image as soon as the board and essential UI
-     * initialization have succeeded. Do not make rollback confirmation
-     * depend on optional SD/media playback or later network startup.
-     */
-    ota_manager_confirm_running_firmware();
+    // /*
+    //  * Confirm a pending OTA image as soon as the board and essential UI
+    //  * initialization have succeeded. Do not make rollback confirmation
+    //  * depend on optional SD/media playback or later network startup.
+    //  */
+    // ota_manager_confirm_running_firmware();
 
-    err = network_manager_init(&app_context.network);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Network Manager init failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-    ESP_LOGI(TAG, "Network Manager initialized");
+    // err = network_manager_init(&app_context.network);
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "Network Manager init failed: %s",
+    //              esp_err_to_name(err));
+    //     return;
+    // }
+    // ESP_LOGI(TAG, "Network Manager initialized");
 
-    ota_manager_config_t ota_config = APP_OTA_CONFIG;
-    ota_config.network = app_context.network;
-    ota_config.user_ctx = &app_context;
-    err = ota_manager_init(
-        &app_context.ota,
-        &ota_config
-    );
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
-                 esp_err_to_name(err));
-    } 
+    // err = network_manager_start(app_context.network);
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "Network Manager start failed: %s",
+    //              esp_err_to_name(err));
+    //     return;
+    // }
+    // ESP_LOGI(TAG, "Network Manager started");
+
+    // ota_manager_config_t ota_config = APP_OTA_CONFIG;
+    // ota_config.network = app_context.network;
+    // ota_config.user_ctx = &app_context;
+    // err = ota_manager_init(
+    //     &app_context.ota,
+    //     &ota_config
+    // );
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
+    //              esp_err_to_name(err));
+    // } 
     // err = network_manager_set_wifi_config(
     //     network,
     //     "PoomChalermpol_2.4G",
@@ -141,11 +139,5 @@ void app_main(void)
     //     return;
     // }
 
-    err = network_manager_start(app_context.network);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Network Manager start failed: %s",
-                 esp_err_to_name(err));
-        return;
-    }
-    ESP_LOGI(TAG, "Network Manager started");
+    
 }

@@ -11,6 +11,7 @@
 #define OTA_TASK_STACK_DEPTH  \
     (OTA_TASK_STACK_SIZE / sizeof(StackType_t))
 
+#define OTA_TASK_CORE_ID          1
 #define OTA_TASK_PRIORITY         4
 #define OTA_NO_NETWORK_RETRY_MS   5000
 #define OTA_HTTP_TIMEOUT_MS       15000
@@ -52,10 +53,6 @@ typedef struct ota_manager_context {
     /* Manifest Mutex */
     StaticSemaphore_t manifest_mutex_buffer;
     SemaphoreHandle_t manifest_mutex;
-
-    /* Task Exit Semaphore */
-    StaticSemaphore_t task_exit_sem_buffer;
-    SemaphoreHandle_t task_exit_sem;
 
     ota_manifest_t pending_manifest;
     bool update_pending;

@@ -13,6 +13,7 @@ extern const lv_font_t ui_font_noto_sans_thai_24;
 extern const lv_font_t ui_font_noto_sans_thai_26;
 extern const lv_font_t ui_font_noto_sans_thai_32;
 extern const lv_font_t ui_font_noto_sans_thai_40;
+extern const lv_font_t ui_font_detroit_;
 
 #ifndef EXT_FONT_DESC_T
 #define EXT_FONT_DESC_T

@@ -1,3 +1,4 @@
+#include "ota_manager.h"
 #include "ota_manager_private.h"
 
 #include <stdbool.h>
@@ -855,6 +856,7 @@ static void ota_check_for_update(
 void ota_manager_confirm_running_firmware(void)
 {
     const esp_partition_t *running = esp_ota_get_running_partition();
+
     if (running == NULL) {
         ESP_LOGE(TAG, "Could not get running OTA partition");
         return;
@@ -863,17 +865,37 @@ void ota_manager_confirm_running_firmware(void)
     esp_ota_img_states_t state;
     esp_err_t err = esp_ota_get_state_partition(running, &state);
 
-    if (err == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY) {
+    if (err == ESP_ERR_NOT_FOUND) {
+        ESP_LOGI(TAG, "Running firmware has no OTA state");
+        return;
+    }
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Could not read OTA image state: %s",
+                 esp_err_to_name(err));
+        return;
+    }
+
+    switch (state) {
+    case ESP_OTA_IMG_PENDING_VERIFY:
         err = esp_ota_mark_app_valid_cancel_rollback();
+
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Could not confirm running firmware: %s",
                      esp_err_to_name(err));
         } else {
             ESP_LOGI(TAG, "Running firmware confirmed; rollback cancelled");
         }
-    } else if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
-        ESP_LOGW(TAG, "Could not read OTA image state: %s",
-                 esp_err_to_name(err));
+        break;
+
+    case ESP_OTA_IMG_VALID:
+        ESP_LOGD(TAG, "Running firmware already confirmed");
+        break;
+
+    default:
+        ESP_LOGW(TAG, "Running firmware has unexpected OTA state: %d",
+                 (int)state);
+        break;
     }
 }
 
@@ -1021,30 +1043,21 @@ esp_err_t ota_manager_init(
         return ESP_ERR_NO_MEM;
     }
 
-    ctx->task_exit_sem = xSemaphoreCreateBinaryStatic(
-        &ctx->task_exit_sem_buffer
-    );
-    if (ctx->task_exit_sem == NULL) {
-        vSemaphoreDelete(ctx->manifest_mutex);
-        heap_caps_free(ctx);
-        return ESP_ERR_NO_MEM;
-    }
-
     *out_handle = ctx;
 
-    ctx->task = xTaskCreateStatic(
+    ctx->task = xTaskCreateStaticPinnedToCore(
         ota_manager_task,
         "ota_manager_task",
         OTA_TASK_STACK_DEPTH,
         ctx,
         OTA_TASK_PRIORITY,
         ctx->task_stack,
-        &ctx->task_buffer
+        &ctx->task_buffer,
+        OTA_TASK_CORE_ID
     );
     if (ctx->task == NULL) {
         *out_handle = NULL;
         vSemaphoreDelete(ctx->manifest_mutex);
-        vSemaphoreDelete(ctx->task_exit_sem);
         heap_caps_free(ctx);
         return ESP_ERR_NO_MEM;
     }

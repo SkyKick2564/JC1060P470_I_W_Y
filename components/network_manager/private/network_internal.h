@@ -17,7 +17,8 @@
 #define NETWORK_MANAGER_TASK_STACK_DEPTH  \
     (NETWORK_MANAGER_TASK_STACK_SIZE / sizeof(StackType_t))
 
-#define NETWORK_MANAGER_TASK_PRIORITY      5
+#define NETWORK_MANAGER_TASK_CORE_ID            0
+#define NETWORK_MANAGER_TASK_PRIORITY           5
 #define NETWORK_MANAGER_NVS_NAMESPACE          "network_mgr"
 #define NETWORK_MANAGER_NVS_WIFI_KEY           "wifi_profiles"
 #define NETWORK_MANAGER_NVS_LEGACY_WIFI_KEY    "wifi_config"

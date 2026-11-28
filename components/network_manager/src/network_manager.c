@@ -1,3 +1,4 @@
+#include "network_manager.h"
 #include "network_internal.h"
 
 #include <stdlib.h>
@@ -1357,14 +1358,15 @@ esp_err_t network_manager_init(network_manager_handle_t *out_handle)
 
     manager->status.state = NETWORK_STATE_UNINITIALIZED;
 
-    manager->task = xTaskCreateStatic(
+    manager->task = xTaskCreateStaticPinnedToCore(
         network_manager_task,
         "network_mgr_task",
         NETWORK_MANAGER_TASK_STACK_DEPTH,
         manager,
         NETWORK_MANAGER_TASK_PRIORITY,
         manager->task_stack,
-        &manager->task_buffer
+        &manager->task_buffer,
+        NETWORK_MANAGER_TASK_CORE_ID
     );
     if (manager->task == NULL) {
         vQueueDelete(manager->queue);
