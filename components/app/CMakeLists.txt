@@ -39,9 +39,9 @@ idf_component_register(
         "src/app.c"
         "src/app_touch_multi.c"
         "src/actions.c"
-        "src/home_actions.c"
-        "src/control_center_actions.c"
-        "src/init_screen_actions.c"
+        "src/actions/home_actions.c"
+        "src/actions/control_center_actions.c"
+        "src/actions/init_screen_actions.c"
         "src/ui/ui.c"
         "src/ui/screens.c"
         "src/ui/styles.c"
@@ -62,6 +62,7 @@ idf_component_register(
         "src/ui/images/ui_image_display_icon.c"
     INCLUDE_DIRS
         "include"
+        "include/actions"
         "src/ui"
         "${EEZ_OBJECT_MAP_DIR}"
 

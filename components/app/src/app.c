@@ -440,6 +440,13 @@ static esp_err_t app_process_request(
             return err;
         }
 
+        err = board_battery_init(&ctx->battery);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Battery init failed: %s",
+                     esp_err_to_name(err));
+            return err;
+        }
+
         err = network_manager_init(&ctx->network);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Network Manager init failed: %s",
@@ -448,7 +455,7 @@ static esp_err_t app_process_request(
             ESP_LOGI(TAG, "Network Manager initialized");   
         }
 
-        init_screen_update_progress(50,"Network Manager initialized..");
+        init_screen_update_progress(30,"Network Manager initialized..");
 
         err = network_manager_start(ctx->network);
         if (err != ESP_OK) {
@@ -473,7 +480,7 @@ static esp_err_t app_process_request(
         } else {
             ESP_LOGI(TAG, "OTA Manager initialized");
         }
-        
+
         init_screen_update_progress(100,"OTA Manager initialized");
         /*
         * Confirm a pending OTA image as soon as the board and essential UI
