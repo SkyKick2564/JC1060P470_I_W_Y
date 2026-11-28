@@ -27,9 +27,40 @@
 static const char *TAG = "APP";
 
 static app_context_t app_context;
+static esp_err_t app_lvgl_deinit(app_context_t *ctx);
 
 static esp_err_t app_before_update(void *user_ctx)
 {
+    esp_err_t err;
+    app_context_t *app_ctx = (app_context_t *)user_ctx;
+
+    ESP_LOGW(TAG, "OTA: Application pre-flash callback");
+
+    /* Deinit performs STOP internally, then tears down Wi-Fi and ESP-Hosted. */
+    err = network_manager_deinit(app_ctx->network);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Network Manager deinit failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Network Manager and ESP-Hosted deinitialized");
+
+    /* LVGL can be deinitialized only after all media tasks have exited. */
+    err = app_lvgl_deinit(app_ctx);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL deinit failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+
+    err = esp_board_manager_deinit();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Board Manager deinit failed: %s",
+                 esp_err_to_name(err));
+        return err;
+    }
+    ESP_LOGI(TAG, "Board Manager deinitialized");
     return ESP_OK;
 }
 
@@ -37,8 +68,17 @@ static void app_update_available(
     const ota_firmware_info_t *info,
     void *user_ctx)
 {
-    
+    (void)user_ctx;
+
+    ESP_LOGW(TAG, "OTA: Update available");
+    ESP_LOGI(TAG, "  Version: %s", info->version);
+    ESP_LOGI(TAG, "  Description: %s",
+             info->description[0] != '\0' ? info->description : "(none)");
+    ESP_LOGI(TAG, "  Release date: %s",
+             info->release_date[0] != '\0' ? info->release_date : "(none)");
+    ESP_LOGI(TAG, "  Size: %u bytes", (unsigned)info->size);
 }
+
 // static void show_settings_event(lv_event_t *event)
 // {
 //     lv_obj_add_flag(objects.home, LV_OBJ_FLAG_HIDDEN);
@@ -317,7 +357,7 @@ static esp_err_t app_lvgl_deinit(app_context_t *ctx)
     }
 
     /* Unregister DSI panel callbacks */
-    err = unregister_dsi_callbacks(handle);
+    err = unregister_dsi_callbacks(ctx);
     if (err != ESP_OK) {
         lvgl_port_unlock();
         ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
@@ -334,7 +374,7 @@ static esp_err_t app_lvgl_deinit(app_context_t *ctx)
         return err;
     }
 
-    err = app_remove_disp(handle);
+    err = app_remove_disp(ctx);
     if (err != ESP_OK) {
         lvgl_port_unlock();
         ESP_LOGE(TAG, "Failed to remove display: %s",
@@ -372,13 +412,42 @@ static esp_err_t app_process_request(
     switch (request->type)
     {
     case APP_REQUEST_STARTUP:
-        esp_err_t err = app_lvgl_init(&app_context);
+        esp_err_t err = app_lvgl_init(ctx);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "LVGL init failed: %s",
                     esp_err_to_name(err));
             return err;
         }
-        
+
+        err = network_manager_init(&ctx->network);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Network Manager init failed: %s",
+                    esp_err_to_name(err));
+        }else{
+            ESP_LOGI(TAG, "Network Manager initialized");   
+        }
+
+        err = network_manager_start(ctx->network);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Network Manager start failed: %s",
+                    esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "Network Manager started");
+        }
+
+        ota_manager_config_t ota_config = APP_OTA_CONFIG;
+        ota_config.network = ctx->network;
+        ota_config.user_ctx = ctx;
+        err = ota_manager_init(
+            &ctx->ota,
+            &ota_config
+        );
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "OTA Manager init failed; networking will continue: %s",
+                    esp_err_to_name(err));
+        } else {
+            ESP_LOGI(TAG, "OTA Manager initialized");
+        }
         break;
     case APP_REQUEST_COMPONENT_READY:
         break;
