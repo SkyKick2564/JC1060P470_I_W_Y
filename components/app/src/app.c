@@ -7,6 +7,9 @@
 
 #include "app_touch_multi.h"
 #include "actions.h"
+#include "init_screen_actions.h"
+#include "home_actions.h"
+#include "control_center_actions.h"
 
 #include "ui.h"
 
@@ -275,68 +278,86 @@ static esp_err_t app_lvgl_init(app_context_t *ctx)
     );
     if (err != ESP_OK || touch == NULL ||
         touch->touch_handle == NULL) {
-        esp_err_t init_err = err != ESP_OK
-            ? err : ESP_ERR_INVALID_STATE;
-
         ESP_LOGE(TAG, "Failed to get Touch handle: %s",
-                esp_err_to_name(init_err));
+                esp_err_to_name(err != ESP_OK
+                    ? err : ESP_ERR_INVALID_STATE));
 
-        err = unregister_dsi_callbacks(ctx);
-        if (err != ESP_OK) {
+        esp_err_t cleanup_err = unregister_dsi_callbacks(ctx);
+        if (cleanup_err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
-                    esp_err_to_name(err));
+                    esp_err_to_name(cleanup_err));
         }
-        err = app_remove_disp(ctx);
-        if (err != ESP_OK) {
+        cleanup_err = app_remove_disp(ctx);
+        if (cleanup_err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to remove display: %s",
-                     esp_err_to_name(err));
+                     esp_err_to_name(cleanup_err));
         }
         lvgl_port_unlock();
         lvgl_port_stop();
         lvgl_port_deinit();
-        return init_err;
+        return err != ESP_OK? err : ESP_ERR_INVALID_STATE;
     }
 
     /* Register GT911 as five independent LVGL pointer devices */
     err = app_touch_multi_add(ctx->display, touch->touch_handle);
     if (err != ESP_OK) {
-        esp_err_t init_err = err;
         ESP_LOGE(TAG, "Failed to add five-point LVGL Touch: %s",
                  esp_err_to_name(err));
-        err = unregister_dsi_callbacks(ctx);
-        if (err != ESP_OK) {
+        esp_err_t cleanup_err = unregister_dsi_callbacks(ctx);
+        if (cleanup_err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
-                    esp_err_to_name(err));
+                    esp_err_to_name(cleanup_err));
         }
-        err = app_remove_disp(ctx);
-        if (err != ESP_OK) {
+        cleanup_err = app_remove_disp(ctx);
+        if (cleanup_err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to remove display: %s",
-                     esp_err_to_name(err));
+                     esp_err_to_name(cleanup_err));
         }
         lvgl_port_unlock();
         lvgl_port_stop();
         lvgl_port_deinit();
-        return init_err;
+        return err;
     }
     ESP_LOGI(TAG, "Five-point LVGL Touch initialized successfully");
 
-    /* Set initial screen background before first refresh */
-    lv_obj_t *screen = lv_display_get_screen_active(ctx->display);
+    // /* Set initial screen background before first refresh */
+    // lv_obj_t *screen = lv_display_get_screen_active(ctx->display);
 
-    lv_obj_set_style_bg_color(
-        screen,
-        lv_color_hex(0x000000),
-        LV_PART_MAIN
-    );
+    // lv_obj_set_style_bg_color(
+    //     screen,
+    //     lv_color_hex(0x000000),
+    //     LV_PART_MAIN
+    // );
 
-    lv_obj_set_style_bg_opa(
-        screen,
-        LV_OPA_COVER,
-        LV_PART_MAIN
-    );
+    // lv_obj_set_style_bg_opa(
+    //     screen,
+    //     LV_OPA_COVER,
+    //     LV_PART_MAIN
+    // );
 
     // /* Initialize EEZ UI */
     ui_init();
+
+    // 3. Initialize App Actions
+    err = app_actions_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "App Actions init failed: %s",
+             esp_err_to_name(err));
+        esp_err_t cleanup_err = unregister_dsi_callbacks(ctx);
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to unregister DSI callbacks: %s",
+                    esp_err_to_name(cleanup_err));
+        }
+        cleanup_err = app_remove_disp(ctx);
+        if (cleanup_err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to remove display: %s",
+                    esp_err_to_name(cleanup_err));
+        }
+        lvgl_port_unlock();
+        lvgl_port_stop();
+        lvgl_port_deinit();
+        return err;
+    }
 
     /* Allow LVGL task to start rendering */
     lvgl_port_unlock();
@@ -427,6 +448,8 @@ static esp_err_t app_process_request(
             ESP_LOGI(TAG, "Network Manager initialized");   
         }
 
+        init_screen_update_progress(50,"Network Manager initialized..");
+
         err = network_manager_start(ctx->network);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Network Manager start failed: %s",
@@ -434,6 +457,8 @@ static esp_err_t app_process_request(
         } else {
             ESP_LOGI(TAG, "Network Manager started");
         }
+
+        init_screen_update_progress(80,"Network Manager started..");
 
         ota_manager_config_t ota_config = APP_OTA_CONFIG;
         ota_config.network = ctx->network;
@@ -448,6 +473,15 @@ static esp_err_t app_process_request(
         } else {
             ESP_LOGI(TAG, "OTA Manager initialized");
         }
+        
+        init_screen_update_progress(100,"OTA Manager initialized");
+        /*
+        * Confirm a pending OTA image as soon as the board and essential UI
+        * initialization have succeeded. Do not make rollback confirmation
+        * depend on optional SD/media playback or later network startup.
+        */
+        ota_manager_confirm_running_firmware();
+
         break;
     case APP_REQUEST_COMPONENT_READY:
         break;

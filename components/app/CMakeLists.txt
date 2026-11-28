@@ -41,6 +41,7 @@ idf_component_register(
         "src/actions.c"
         "src/home_actions.c"
         "src/control_center_actions.c"
+        "src/init_screen_actions.c"
         "src/ui/ui.c"
         "src/ui/screens.c"
         "src/ui/styles.c"
